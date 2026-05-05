@@ -30,7 +30,9 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
   ref
 ) {
   const autoId = useId();
-  const sId = id ?? autoId;
+  // Skip the DOM id when there's no label — useId() values diverge between
+  // SSR and client when provider nesting shifts the fiber counter.
+  const sId = id ?? (label ? autoId : undefined);
 
   return (
     <div className="flex flex-col gap-1.5">

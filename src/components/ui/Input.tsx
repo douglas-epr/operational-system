@@ -35,7 +35,9 @@ const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   ref
 ) {
   const autoId = useId();
-  const inputId = id ?? autoId;
+  // Skip the DOM id when there's no label — useId() values diverge between
+  // SSR and client when provider nesting shifts the fiber counter.
+  const inputId = id ?? (label ? autoId : undefined);
 
   return (
     <div className="flex flex-col gap-1.5">
