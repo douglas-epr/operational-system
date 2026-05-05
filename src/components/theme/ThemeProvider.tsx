@@ -101,7 +101,7 @@ export function useTheme(): ThemeContextValue {
     // the provider (e.g. in a test that doesn't wrap it). System pref +
     // a no-op setter is the safest fallback.
     return {
-      theme: "system",
+      theme: "dark",
       resolvedTheme: "dark",
       setTheme: () => {},
     };
