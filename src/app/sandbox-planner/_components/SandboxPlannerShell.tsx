@@ -283,6 +283,8 @@ export default function SandboxPlannerShell({
             ideas={ideas}
             projects={projects}
             userName={userName}
+            currentUserId={currentUserId}
+            isAdminOrManager={isAdminOrManager}
             onSelectIdea={selectIdea}
             selectedProjectId={selectedProjectId}
             hasAiConfigured={hasAiConfigured}
