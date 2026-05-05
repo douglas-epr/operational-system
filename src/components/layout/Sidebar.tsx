@@ -5,49 +5,119 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import type { UserProfile } from "@/types/projects";
 import { createClient } from "@/lib/supabase/client";
+import Avatar from "@/components/ui/Avatar";
+import {
+  DashboardIcon,
+  DocumentIcon,
+  TargetIcon,
+  FolderIcon,
+  StarIcon,
+  BriefcaseIcon,
+  ChatIcon,
+  BookIcon,
+  UsersIcon,
+  ChartIcon,
+  UserIcon,
+  IdeaIcon,
+  SettingsIcon,
+  ChevronUpIcon,
+  LogoutIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
+} from "@/components/ui/icons";
+import { useSidebar } from "./SidebarContext";
 
-// ── Nav items ─────────────────────────────────────────────────────────────────
+// Old hand-rolled SVGs replaced by lucide imports above. Pages should
+// follow the same rule: never inline an `<svg>` for a concept that has
+// a canonical icon — import from `@/components/ui/icons`.
 
-const NAV_ITEMS = [
-  { label: "Dashboard",             href: "/dashboard",             icon: IconGrid },
-  { label: "SOPs",                  href: "/sops",                  icon: IconDocument },
-  { label: "OKRs",                  href: "/okrs",                  icon: IconTarget },
-  { label: "Internal Projects",     href: "/internal-projects",     icon: IconFolder },
-  { label: "Recommended Projects",  href: "/recommended-projects",  icon: IconStar },
-  { label: "Projects",              href: "/projects",              icon: IconBriefcase },
-  { label: "Docs",                  href: "/docs",                  icon: IconBook },
-  { label: "Talent Pool",           href: "/talent-pool",           icon: IconUsers },
-  { label: "Leads",                 href: "/leads",                 icon: IconChart },
-  { label: "Users",                 href: "/users",                 icon: IconPerson },
-  { label: "Sandbox Planner",       href: "/sandbox-planner",       icon: IconLightbulb },
-  { label: "Settings",              href: "/settings",              icon: IconSettings },
-] as const;
+const IconGrid       = DashboardIcon;
+const IconDocument   = DocumentIcon;
+const IconTarget     = TargetIcon;
+const IconFolder     = FolderIcon;
+const IconStar       = StarIcon;
+const IconBriefcase  = BriefcaseIcon;
+const IconChatBubble = ChatIcon;
+const IconBook       = BookIcon;
+const IconUsers      = UsersIcon;
+const IconChart      = ChartIcon;
+const IconPerson     = UserIcon;
+const IconLightbulb  = IdeaIcon;
+const IconStarFilled = StarIcon;
+const IconPrompt     = DocumentIcon;
+const IconSettings   = SettingsIcon;
 
-const ADMIN_NAV_ITEMS = [
-  { label: "Prompts", href: "/prompts", icon: IconPrompt },
-] as const;
+type SidebarRole =
+  | "admin"
+  | "manager"
+  | "operational"
+  | "developer"
+  | "client"
+  | "qa"
+  | "referrer"
+  | "lead";
+
+type NavIcon = React.ComponentType<{ className?: string; strokeWidth?: number | string }>;
+
+interface NavItem {
+  label: string;
+  href: string;
+  icon: NavIcon;
+  roles: readonly SidebarRole[];
+  group?: "workspace" | "collaboration" | "operations" | "administration";
+}
+
+const ALL_STAFF_AND_CLIENTS: readonly SidebarRole[] = [
+  "admin", "manager", "operational", "developer", "qa", "client",
+];
+
+const ADMIN_MANAGER: readonly SidebarRole[] = ["admin", "manager"];
+const ADMIN_MANAGER_OPERATIONAL: readonly SidebarRole[] = [
+  "admin", "manager", "operational",
+];
+
+const NAV_ITEMS: readonly NavItem[] = [
+  // Workspace
+  { label: "Dashboard",            href: "/dashboard",            icon: IconGrid,       roles: ADMIN_MANAGER,                         group: "workspace" },
+  { label: "Projects",             href: "/projects",             icon: IconBriefcase,  roles: ALL_STAFF_AND_CLIENTS,                 group: "workspace" },
+  { label: "Internal Projects",    href: "/internal-projects",    icon: IconFolder,     roles: ADMIN_MANAGER_OPERATIONAL,             group: "workspace" },
+  { label: "Recommended Projects", href: "/recommended-projects", icon: IconStar,       roles: [...ADMIN_MANAGER_OPERATIONAL, "referrer"] as const, group: "workspace" },
+
+  // Collaboration
+  { label: "Chat",                 href: "/chat",                 icon: IconChatBubble, roles: ALL_STAFF_AND_CLIENTS,                 group: "collaboration" },
+  { label: "Docs",                 href: "/docs",                 icon: IconBook,       roles: ALL_STAFF_AND_CLIENTS,                 group: "collaboration" },
+  { label: "Sandbox Planner",      href: "/sandbox-planner",      icon: IconLightbulb,  roles: ["admin","manager","operational","developer","client","lead"] as const, group: "collaboration" },
+
+  // Operations
+  { label: "OKRs",                 href: "/okrs",                 icon: IconTarget,     roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
+  { label: "SOPs",                 href: "/sops",                 icon: IconDocument,   roles: ALL_STAFF_AND_CLIENTS,                 group: "operations" },
+  { label: "Talent Pool",          href: "/talent-pool",          icon: IconUsers,      roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
+  { label: "Leads",                href: "/leads",                icon: IconChart,      roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
+
+  // Administration
+  { label: "Users",                href: "/users",                icon: IconPerson,     roles: ADMIN_MANAGER,                         group: "administration" },
+  { label: "Prompts",              href: "/prompts",              icon: IconPrompt,     roles: ADMIN_MANAGER,                         group: "administration" },
+  { label: "Feedback",             href: "/feedback",             icon: IconStarFilled, roles: ["admin","manager","operational","developer","client","qa","referrer","lead"] as const, group: "administration" },
+  { label: "Settings",             href: "/settings",             icon: IconSettings,   roles: ["admin","manager","operational","developer","client","qa","lead"] as const, group: "administration" },
+];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function Sidebar({ profile }: { profile: UserProfile | null }) {
   const pathname = usePathname();
   const router   = useRouter();
+  const { pinned, hovered, expanded, togglePin, setHovered } = useSidebar();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const userName =
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "User";
   const userRole = profile?.type
     ? profile.type.charAt(0).toUpperCase() + profile.type.slice(1)
     : "";
-  const initials = userName
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
 
-  // Close menu when clicking outside
+  // Close popover when clicking outside.
   useEffect(() => {
     if (!menuOpen) return;
     function handleClick(e: MouseEvent) {
@@ -59,223 +129,234 @@ export default function Sidebar({ profile }: { profile: UserProfile | null }) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpen]);
 
+  // Close popover when sidebar visually contracts (avoids drifting overlay).
+  useEffect(() => {
+    if (!expanded) setMenuOpen(false);
+  }, [expanded]);
+
+  // Hover handlers — delayed close so the popover and submenus don't
+  // snap shut when the cursor crosses a sub-element edge.
+  function handleMouseEnter() {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHovered(true);
+  }
+  function handleMouseLeave() {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => setHovered(false), 150);
+  }
+  // Cleanup pending timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    };
+  }, []);
+
   async function handleSignOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/signin");
   }
 
+  // Resolve the visible nav for this role.
+  const role = (profile?.type ?? null) as SidebarRole | null;
+  const visible: readonly NavItem[] =
+    role === "referrer"
+      ? [
+          { label: "Dashboard", href: "/recommended-projects", icon: IconGrid,       roles: ["referrer"] as const, group: "workspace" },
+          { label: "Feedback",  href: "/feedback",             icon: IconStarFilled, roles: ["referrer"] as const, group: "administration" },
+        ]
+      : NAV_ITEMS.filter((item) => (role ? item.roles.includes(role) : false));
+
+  const GROUPS = [
+    { key: "workspace",      label: "Workspace"      },
+    { key: "collaboration",  label: "Collaboration"  },
+    { key: "operations",     label: "Operations"     },
+    { key: "administration", label: "Administration" },
+  ] as const;
+
+  function renderItem({ label, href, icon: Icon }: NavItem) {
+    const isActive =
+      pathname === href ||
+      (href !== "/dashboard" && pathname.startsWith(href));
+    return (
+      <Link
+        key={href}
+        href={href}
+        title={!expanded ? label : undefined}
+        aria-label={label}
+        className={[
+          "relative flex items-center rounded-md text-sm mb-0.5 transition-colors",
+          expanded ? "gap-2.5 pl-4 pr-3 py-2" : "justify-center w-9 h-9 mx-auto",
+          isActive
+            ? "bg-accent-subtle text-text-primary font-medium"
+            : "text-text-secondary hover:text-text-primary hover:bg-muted",
+        ].join(" ")}
+      >
+        {isActive && expanded && (
+          <span
+            aria-hidden
+            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-accent"
+          />
+        )}
+        <Icon
+          className={[
+            "w-4 h-4 shrink-0 transition-colors",
+            isActive ? "text-accent" : "text-text-muted",
+          ].join(" ")}
+          strokeWidth={1.8}
+        />
+        {expanded && <span className="truncate leading-none">{label}</span>}
+      </Link>
+    );
+  }
+
+  // Width strategy:
+  // - pinned       → element width = layout var (--sidebar-width = 232 px)
+  // - hovered only → element width = 232 px (overlay) but layout var stays 60 px
+  // - default      → element width = layout var (60 px)
+  const overlayWidth = "232px";
+  const isOverlay = !pinned && hovered;
+  const asideStyle: React.CSSProperties = {
+    width: pinned ? "var(--sidebar-width)" : isOverlay ? overlayWidth : "var(--sidebar-width)",
+    zIndex: isOverlay ? 30 : undefined,
+    boxShadow: isOverlay ? "var(--shadow-lg)" : undefined,
+    transition: "width 180ms ease, box-shadow 200ms ease",
+  };
+
   return (
-    <aside className="sidebar">
-      {/* ── Logo ──────────────────────────────────────────────────── */}
-      <div className="px-4 py-5 flex items-center gap-2.5 shrink-0">
-        <div className="w-6 h-6 rounded bg-accent flex items-center justify-center text-white text-xs font-bold select-none leading-none">
-          b
+    <aside
+      className="sidebar"
+      style={asideStyle}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* ── Logo + pin toggle ───────────────────────────────────── */}
+      <div
+        className={[
+          "shrink-0 flex items-center pt-5 pb-4",
+          expanded ? "gap-2.5 px-4" : "flex-col gap-3 px-2",
+        ].join(" ")}
+      >
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="w-7 h-7 rounded-md bg-accent flex items-center justify-center text-white text-sm font-bold select-none leading-none font-display shrink-0">
+            b
+          </div>
+          {expanded && (
+            <span className="text-[15px] font-semibold text-text-primary tracking-tight font-display truncate">
+              Blur Studio
+            </span>
+          )}
         </div>
-        <span className="text-sm font-semibold text-text-primary tracking-tight">
-          Blur Studio
-        </span>
+        {/* Pin toggle — only meaningful when sidebar is open (pinned or hovered). */}
+        {expanded && (
+          <button
+            type="button"
+            onClick={togglePin}
+            aria-label={pinned ? "Unpin sidebar" : "Pin sidebar open"}
+            aria-pressed={pinned}
+            title={pinned ? "Unpin sidebar" : "Pin sidebar open"}
+            className={[
+              "shrink-0 w-7 h-7 rounded-md inline-flex items-center justify-center transition-colors",
+              pinned
+                ? "text-accent hover:bg-muted"
+                : "text-text-muted hover:text-text-primary hover:bg-muted",
+            ].join(" ")}
+          >
+            {pinned ? (
+              <SidebarCollapseIcon className="w-4 h-4" strokeWidth={1.8} />
+            ) : (
+              <SidebarExpandIcon className="w-4 h-4" strokeWidth={1.8} />
+            )}
+          </button>
+        )}
       </div>
 
       {/* ── Navigation ────────────────────────────────────────────── */}
-      <nav className="flex-1 px-2 overflow-y-auto">
-        {[
-          ...NAV_ITEMS,
-          ...(profile?.type === "admin" || profile?.type === "manager" ? ADMIN_NAV_ITEMS : []),
-        ].map(({ label, href, icon: Icon }) => {
-          const isActive =
-            pathname === href ||
-            (href !== "/dashboard" && pathname.startsWith(href));
+      <nav
+        className={[
+          "flex-1 overflow-y-auto pb-2",
+          expanded ? "px-2" : "px-1",
+        ].join(" ")}
+      >
+        {GROUPS.map(({ key, label }, idx) => {
+          const items = visible.filter((i) => i.group === key);
+          if (items.length === 0) return null;
           return (
-            <Link
-              key={href}
-              href={href}
-              className={[
-                "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm mb-0.5 transition-colors",
-                isActive
-                  ? "bg-accent text-white"
-                  : "text-text-secondary hover:text-text-primary hover:bg-muted",
-              ].join(" ")}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              <span className="truncate leading-none">{label}</span>
-            </Link>
+            <div key={key}>
+              {expanded ? (
+                <div className={`px-3 mb-2 text-label ${idx === 0 ? "mt-1" : "mt-5"}`}>{label}</div>
+              ) : (
+                idx > 0 && <div aria-hidden className="my-3 mx-3 border-t border-border" />
+              )}
+              {items.map(renderItem)}
+            </div>
           );
         })}
       </nav>
 
       {/* ── User ──────────────────────────────────────────────────── */}
-      <div ref={menuRef} className="relative shrink-0">
-        {/* Profile / Sign Out popover */}
+      <div ref={menuRef} className="relative shrink-0 border-t border-border">
         {menuOpen && (
-          <div className="absolute bottom-full left-2 right-2 mb-1 bg-elevated border border-border rounded-lg shadow-xl overflow-hidden z-50">
+          <div
+            className={[
+              "absolute bottom-full mb-1 bg-elevated border border-border rounded-md overflow-hidden z-50 shadow-[var(--shadow-lg)]",
+              expanded ? "left-2 right-2" : "left-full ml-1 w-44",
+            ].join(" ")}
+          >
             <Link
               href="/profile"
               onClick={() => setMenuOpen(false)}
               className="flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary hover:text-text-primary hover:bg-muted transition-colors"
             >
-              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
+              <UserIcon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
               Profile
             </Link>
+
             <button
               onClick={handleSignOut}
-              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary hover:text-red-400 hover:bg-muted transition-colors"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary hover:text-danger-strong hover:bg-muted transition-colors border-t border-border/60"
             >
-              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Sign Out
+              <LogoutIcon className="w-4 h-4 shrink-0" strokeWidth={1.8} />
+              Sign out
             </button>
           </div>
         )}
 
-        {/* Clickable user row */}
         <button
           onClick={() => setMenuOpen((v) => !v)}
-          className="w-full px-3 py-4 border-t border-border flex items-center gap-2.5 hover:bg-muted/50 transition-colors"
+          title={!expanded ? `${userName} · ${userRole}` : undefined}
+          className={[
+            "w-full flex items-center hover:bg-muted/50 transition-colors",
+            expanded ? "px-3 py-3 gap-2.5" : "py-3 justify-center",
+          ].join(" ")}
         >
-          <div className="w-8 h-8 rounded-full bg-muted overflow-hidden shrink-0 flex items-center justify-center text-text-muted text-xs font-semibold">
-            {profile?.picture ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={profile.picture}
-                alt={userName}
-                className="w-full h-full object-cover"
+          <Avatar
+            name={userName}
+            src={profile?.picture ?? null}
+            size="md"
+            variant={profile?.picture ? "muted" : "accent"}
+          />
+          {expanded && (
+            <>
+              <div className="min-w-0 flex-1 text-left">
+                <p className="text-xs font-semibold text-text-primary truncate leading-tight">
+                  {userName}
+                </p>
+                <p className="text-[11px] text-text-muted truncate capitalize leading-tight mt-0.5">
+                  {userRole}
+                </p>
+              </div>
+              <ChevronUpIcon
+                className={`w-3.5 h-3.5 shrink-0 text-text-muted transition-transform ${menuOpen ? "" : "rotate-180"}`}
+                strokeWidth={2}
               />
-            ) : (
-              initials
-            )}
-          </div>
-          <div className="min-w-0 flex-1 text-left">
-            <p className="text-xs font-medium text-text-primary truncate leading-tight">
-              {userName}
-            </p>
-            <p className="text-xs text-text-muted truncate capitalize leading-tight">
-              {userRole}
-            </p>
-          </div>
-          <svg
-            className={`w-3.5 h-3.5 shrink-0 text-text-muted transition-transform ${menuOpen ? "rotate-180" : ""}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
-          </svg>
+            </>
+          )}
         </button>
       </div>
     </aside>
-  );
-}
-
-// ── Icons (inline SVG) ────────────────────────────────────────────────────────
-
-function IconGrid({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <rect x="3" y="3" width="7" height="7" rx="1" />
-      <rect x="14" y="3" width="7" height="7" rx="1" />
-      <rect x="3" y="14" width="7" height="7" rx="1" />
-      <rect x="14" y="14" width="7" height="7" rx="1" />
-    </svg>
-  );
-}
-
-function IconDocument({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-    </svg>
-  );
-}
-
-function IconTarget({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <circle cx="12" cy="12" r="9" />
-      <circle cx="12" cy="12" r="5" />
-      <circle cx="12" cy="12" r="1" />
-    </svg>
-  );
-}
-
-function IconFolder({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-    </svg>
-  );
-}
-
-function IconStar({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-    </svg>
-  );
-}
-
-function IconBriefcase({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-    </svg>
-  );
-}
-
-function IconBook({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-    </svg>
-  );
-}
-
-function IconUsers({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-    </svg>
-  );
-}
-
-function IconChart({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-    </svg>
-  );
-}
-
-function IconPerson({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-    </svg>
-  );
-}
-
-function IconLightbulb({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-    </svg>
-  );
-}
-
-function IconSettings({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.573-1.066z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-    </svg>
-  );
-}
-
-function IconPrompt({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-    </svg>
   );
 }

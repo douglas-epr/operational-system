@@ -16,6 +16,8 @@ interface TasksKanbanProps {
   profiles?: UserProfile[];
   currentUserId: string;
   milestones?: Task[];
+  authorizedUserIds?: string[];
+  unreadByTaskId?: Record<string, number>;
 }
 
 const COLUMNS: { key: Task["status"]; label: string }[] = [
@@ -49,11 +51,13 @@ interface CreateContext {
 }
 
 export default function TasksKanban({
-  tasks, userType, projectId, type, onTrackQATime, profiles = [], currentUserId, milestones = [],
+  tasks, userType, projectId, type, onTrackQATime, profiles = [], currentUserId, milestones = [], authorizedUserIds, unreadByTaskId = {},
 }: TasksKanbanProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const canEdit = userType === "admin" || userType === "manager" || userType === "developer" || userType === "qa";
+  const canEdit =
+    userType === "admin" || userType === "manager" || userType === "developer" || userType === "qa" ||
+    (userType === "client" && type === "client_requests");
 
   const [taskModal, setTaskModal] = useState<{ open: boolean; taskId: string | null; createCtx?: CreateContext }>({
     open: false, taskId: null,
@@ -224,13 +228,16 @@ export default function TasksKanban({
                 ) : (
                   col.map((task) => {
                     const isBeforeThis = dropTarget?.type === "before" && dropTarget.taskId === task.id;
+                    const canDelete = userType === "admin" || userType === "manager" || task.created_by === currentUserId;
                     return (
                       <KanbanCard
                         key={task.id}
                         task={task}
                         canEdit={canEdit}
+                        canDelete={canDelete}
                         isDragging={draggingId === task.id}
                         showInsertBefore={isBeforeThis}
+                        unreadCount={unreadByTaskId[task.id] ?? 0}
                         onEdit={() => openEdit(task.id)}
                         onDelete={() => setDeleteModal({ open: true, taskId: task.id })}
                         onDragStart={(e) => onDragStart(e, task.id)}
@@ -299,6 +306,7 @@ export default function TasksKanban({
         milestones={milestones}
         defaultStatus={taskModal.createCtx?.status}
         defaultOrder={taskModal.createCtx?.order}
+        authorizedUserIds={authorizedUserIds}
       />
       <ConfirmDeleteModal
         open={deleteModal.open}
@@ -312,13 +320,15 @@ export default function TasksKanban({
 }
 
 function KanbanCard({
-  task, canEdit, isDragging, showInsertBefore, onEdit, onDelete,
+  task, canEdit, canDelete, isDragging, showInsertBefore, unreadCount, onEdit, onDelete,
   onDragStart, onDragEnd, onDragOver, onDrop,
 }: {
   task: Task;
   canEdit: boolean;
+  canDelete: boolean;
   isDragging: boolean;
   showInsertBefore: boolean;
+  unreadCount: number;
   onEdit: () => void;
   onDelete: () => void;
   onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
@@ -348,8 +358,16 @@ function KanbanCard({
         } ${isDragging ? "opacity-40 scale-95" : "hover:border-accent/40"}`}
       >
         <div className="flex items-start justify-between gap-2">
-          <p className="text-sm text-text-primary leading-snug flex-1 min-w-0">
-            {task.name ?? "Untitled"}
+          <p className="text-sm text-text-primary leading-snug flex-1 min-w-0 flex items-center gap-1.5">
+            <span className="min-w-0 truncate">{task.name ?? "Untitled"}</span>
+            {unreadCount > 0 && (
+              <span
+                className="shrink-0 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none px-1"
+                title={`${unreadCount} unread message${unreadCount === 1 ? "" : "s"}`}
+              >
+                {unreadCount}
+              </span>
+            )}
           </p>
           {canEdit && (
             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
@@ -362,15 +380,17 @@ function KanbanCard({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
               </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                className="p-1 text-text-muted hover:text-red-400 transition-colors rounded"
-                title="Delete"
-              >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
+              {canDelete && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  className="p-1 text-text-muted hover:text-red-400 transition-colors rounded"
+                  title="Delete"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              )}
             </div>
           )}
         </div>

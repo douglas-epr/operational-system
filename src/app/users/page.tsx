@@ -1,27 +1,22 @@
-import { redirect } from "next/navigation";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
+import { requirePageAccess } from "@/lib/auth/page-gate";
 import type { UserRow, UserType } from "@/types/projects";
-import Sidebar from "@/components/layout/Sidebar";
+import PageShell from "@/components/layout/PageShell";
+import PageHeader from "@/components/layout/PageHeader";
 import UsersList from "./_components/UsersList";
 
 export default async function UsersPage() {
-  const supabase = await createClient();
+  // Gate: admin/manager only. Other roles get role-specific redirects
+  // (operational → /internal-projects, dev/client/qa → /projects,
+  // referrer → /recommended-projects, lead → /sandbox-planner).
+  const { supabase, userId } = await requirePageAccess(["admin", "manager"]);
 
-  // Auth check
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/signin");
-
-  // Fetch current user profile
+  // Fetch current user profile (for the Sidebar avatar/name).
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, first_name, last_name, picture, type")
-    .eq("id", user.id)
+    .eq("id", userId)
     .single();
-
-  // Only admin and manager can access this page
-  if (profile?.type !== "admin" && profile?.type !== "manager") {
-    redirect("/projects");
-  }
 
   // Fetch all profiles
   const { data: profilesData } = await supabase
@@ -49,17 +44,15 @@ export default async function UsersPage() {
   }));
 
   return (
-    <div className="flex h-screen bg-base overflow-hidden">
-      <Sidebar profile={profile} />
-      <main className="flex flex-col flex-1 ml-[220px] min-w-0 overflow-auto">
-        {/* Page header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border shrink-0">
-          <h1 className="text-heading-2 text-text-primary">Users</h1>
-          <span className="text-xs text-text-muted">{users.length} user{users.length !== 1 ? "s" : ""}</span>
-        </div>
-
-        <UsersList users={users} />
-      </main>
-    </div>
+    <PageShell profile={profile} flush>
+      <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+        <PageHeader
+          title="Users"
+          subtitle={`${users.length} user${users.length !== 1 ? "s" : ""}`}
+          compact
+        />
+      </div>
+      <UsersList users={users} />
+    </PageShell>
   );
 }

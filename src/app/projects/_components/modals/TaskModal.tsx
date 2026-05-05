@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition, useRef } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "./Modal";
 import DatePicker from "@/components/DatePicker";
@@ -11,7 +11,6 @@ import type {
   TaskLevel,
   TimeTrack,
   UserProfile,
-  TaskComment,
 } from "@/types/projects";
 import { TIME_OPTIONS, minToTimeStr, timeStrToMin } from "@/types/projects";
 import {
@@ -19,10 +18,12 @@ import {
   updateTask,
   upsertTimeEntry,
   deleteTimeEntry,
-  getTaskComments,
-  createTaskComment,
+  getTaskTimeEntries,
   type TaskInput,
 } from "../../actions";
+import RichTextEditor from "@/app/sandbox-planner/_components/RichTextEditor";
+import UserPicker from "@/components/UserPicker";
+import TaskChat from "./TaskChat";
 
 interface TaskModalProps {
   open: boolean;
@@ -34,6 +35,9 @@ interface TaskModalProps {
   type: TaskType;
   level: TaskLevel;
   profiles: UserProfile[];
+  /** User IDs allowed to be assigned to this task (project.authorized_users).
+   *  If omitted, all profiles are available. */
+  authorizedUserIds?: string[];
   /** Existing time track entries for this task */
   timeEntries?: TimeTrack[];
   currentUserId: string;
@@ -77,6 +81,7 @@ export default function TaskModal({
   type,
   level,
   profiles,
+  authorizedUserIds,
   timeEntries = [],
   currentUserId,
   milestones = [],
@@ -118,28 +123,22 @@ export default function TaskModal({
   );
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
 
-  // Comments
-  const [comments, setComments] = useState<TaskComment[]>([]);
-  const [commentText, setCommentText] = useState("");
-  const [isSendingComment, setIsSendingComment] = useState(false);
-  const commentsEndRef = useRef<HTMLDivElement>(null);
-
+  // Fetch saved time entries when editing an existing task
   useEffect(() => {
-    if (open && isEdit && task) {
-      getTaskComments(task.id).then(setComments);
-    }
+    if (!open || !isEdit || !task) return;
+    getTaskTimeEntries(task.id).then((rows) => {
+      setEntries(
+        rows.map((e) => ({
+          id: e.id,
+          date: e.start_date ?? today,
+          startMin: e.start_time_min ?? 540,
+          endMin: e.end_time_min ?? 1020,
+          isNew: false,
+        }))
+      );
+      setDeletedIds([]);
+    });
   }, [open, isEdit, task]);
-
-  useEffect(() => {
-    // Scroll to bottom when comments change
-    commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [comments]);
-
-  const toggleAssignee = (id: string) => {
-    setAssigneeIds((prev) =>
-      prev.includes(id) ? prev.filter((u) => u !== id) : [...prev, id]
-    );
-  };
 
   const addEntry = () => {
     setEntries((prev) => [
@@ -212,32 +211,9 @@ export default function TaskModal({
     });
   };
 
-  const handleSendComment = async () => {
-    const msg = commentText.trim();
-    if (!msg || !task?.id) return;
-    setIsSendingComment(true);
-    setCommentText("");
-    // Optimistic
-    const optimistic: TaskComment = {
-      id: `tmp-${Date.now()}`,
-      task_id: task.id,
-      project_id: projectId,
-      owner_id: currentUserId,
-      message: msg,
-      created_at: new Date().toISOString(),
-      profiles: null,
-    };
-    setComments((prev) => [...prev, optimistic]);
-    await createTaskComment(task.id, projectId, msg);
-    // Reload to get real data with profiles
-    const refreshed = await getTaskComments(task.id);
-    setComments(refreshed);
-    setIsSendingComment(false);
-  };
-
   return (
     <Modal open={open} onClose={onClose} title="Task" width="max-w-2xl">
-      <div className="px-6 pb-2 space-y-5">
+      <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-2 space-y-5">
         {/* Name */}
         <div>
           <label className="text-xs font-medium text-text-secondary mb-1 block">Name</label>
@@ -253,12 +229,13 @@ export default function TaskModal({
         {/* Milestone picker for client/qa requests */}
         {showMilestonePicker && (
           <div>
-            <label className="text-xs font-medium text-text-secondary mb-1 block">Milestone</label>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Milestone (optional)</label>
             <select
               value={selectedMilestoneId}
               onChange={(e) => setSelectedMilestoneId(e.target.value)}
               className="input-field"
             >
+              <option value="">No milestone</option>
               {milestones.map((m) => (
                 <option key={m.id} value={m.id}>{m.name ?? "Untitled Milestone"}</option>
               ))}
@@ -278,32 +255,11 @@ export default function TaskModal({
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Assignees</label>
-            <div className="flex flex-wrap gap-1.5 p-2 bg-muted border border-border rounded-md min-h-[40px]">
-              {profiles.map((p) => {
-                const fullName = [p.first_name, p.last_name].filter(Boolean).join(" ") || "?";
-                const selected = assigneeIds.includes(p.id);
-                const initial = fullName[0]?.toUpperCase() ?? "?";
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    title={fullName}
-                    onClick={() => toggleAssignee(p.id)}
-                    className={`w-7 h-7 rounded-full text-[11px] font-semibold flex items-center justify-center overflow-hidden border-2 transition-all ${
-                      selected ? "border-accent" : "border-transparent opacity-40"
-                    }`}
-                    style={{ background: "#3b82f6" }}
-                  >
-                    {p.picture ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.picture} alt={fullName} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="text-white">{initial}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            <UserPicker
+              profiles={authorizedUserIds ? profiles.filter((p) => authorizedUserIds.includes(p.id)) : profiles}
+              selectedIds={assigneeIds}
+              onChange={setAssigneeIds}
+            />
           </div>
         </div>
 
@@ -323,21 +279,21 @@ export default function TaskModal({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Start Date (Estimated)</label>
-            <DatePicker value={startEst} onChange={setStartEst} />
+            <DatePicker value={startEst} onChange={setStartEst} maxDate={endEst || null} />
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">End Date (Estimated)</label>
-            <DatePicker value={endEst} onChange={setEndEst} />
+            <DatePicker value={endEst} onChange={setEndEst} minDate={startEst || null} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">Start Date (Real)</label>
-            <DatePicker value={startReal} onChange={setStartReal} />
+            <DatePicker value={startReal} onChange={setStartReal} readOnly />
           </div>
           <div>
             <label className="text-xs font-medium text-text-secondary mb-1 block">End Date (Real)</label>
-            <DatePicker value={endReal} onChange={setEndReal} />
+            <DatePicker value={endReal} onChange={setEndReal} readOnly />
           </div>
         </div>
 
@@ -405,86 +361,27 @@ export default function TaskModal({
         {/* Description */}
         <div>
           <label className="text-xs font-medium text-text-secondary mb-1 block">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            className="input-field resize-none"
+          <RichTextEditor
+            content={description}
+            onChange={setDescription}
             placeholder="Task description…"
+            minHeight="min-h-24"
           />
         </div>
 
-        {/* Comments */}
+        {/* Chat */}
         <div>
-          <p className="text-xs font-medium text-text-secondary mb-2">Comments</p>
-          {!isEdit ? (
+          <p className="text-xs font-medium text-text-secondary mb-2">Chat</p>
+          {!isEdit || !task ? (
             <div className="flex flex-col items-center justify-center py-6 text-text-muted rounded-md border border-border bg-muted/30">
-              <p className="text-xs">Save the task first to add comments.</p>
+              <p className="text-xs">Save the task first to start chatting.</p>
             </div>
           ) : (
-            <div className="rounded-md border border-border overflow-hidden flex flex-col">
-              {/* Message list */}
-              <div className="flex flex-col gap-3 p-3 max-h-[220px] overflow-y-auto bg-muted/20">
-                {comments.length === 0 && (
-                  <p className="text-xs text-text-muted text-center py-4">No comments yet.</p>
-                )}
-                {comments.map((c) => {
-                  const isMine = c.owner_id === currentUserId;
-                  const p = c.profiles;
-                  const name = p ? [p.first_name, p.last_name].filter(Boolean).join(" ") || "?" : "?";
-                  const initial = name[0]?.toUpperCase() ?? "?";
-                  const time = new Date(c.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                  return (
-                    <div key={c.id} className={`flex items-end gap-2 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
-                      {/* Avatar */}
-                      <div className="w-6 h-6 rounded-full bg-accent flex items-center justify-center text-white text-[9px] font-semibold shrink-0 overflow-hidden">
-                        {p?.picture ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.picture} alt={name} className="w-full h-full object-cover" />
-                        ) : initial}
-                      </div>
-                      {/* Bubble */}
-                      <div className={`flex flex-col gap-0.5 max-w-[70%] ${isMine ? "items-end" : "items-start"}`}>
-                        {!isMine && (
-                          <span className="text-[10px] text-text-muted px-1">{name}</span>
-                        )}
-                        <div className={`rounded-2xl px-3 py-2 text-xs leading-relaxed ${
-                          isMine
-                            ? "bg-accent text-white rounded-br-sm"
-                            : "bg-muted text-text-primary rounded-bl-sm"
-                        }`}>
-                          {c.message}
-                        </div>
-                        <span className="text-[10px] text-text-muted px-1">{time}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={commentsEndRef} />
-              </div>
-
-              {/* Input */}
-              <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/30">
-                <input
-                  type="text"
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendComment(); } }}
-                  placeholder="Type here..."
-                  className="flex-1 bg-transparent text-xs text-text-primary placeholder:text-text-muted outline-none"
-                  disabled={isSendingComment}
-                />
-                <button
-                  onClick={handleSendComment}
-                  disabled={!commentText.trim() || isSendingComment}
-                  className="p-1.5 rounded-md bg-accent hover:bg-accent-hover text-white transition-colors disabled:opacity-40"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.269 20.876L5.999 12zm0 0h7.5" />
-                  </svg>
-                </button>
-              </div>
-            </div>
+            <TaskChat
+              taskId={task.id}
+              projectId={projectId}
+              currentUserId={currentUserId}
+            />
           )}
         </div>
 

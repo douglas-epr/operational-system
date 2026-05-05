@@ -8,6 +8,8 @@ import { getScheduleProgressBadge, PROGRAM_LABELS, STAGE_LABELS, STAGE_ORDER } f
 import ProjectModal from "./modals/ProjectModal";
 import ConfirmDeleteModal from "./modals/ConfirmDeleteModal";
 import { deleteProject, updateProject } from "../actions";
+import { Button, IconButton, Input, Select, EmptyState } from "@/components/ui";
+import { SearchIcon, AddIcon, EditIcon, DeleteIcon } from "@/components/ui/icons";
 
 type TaskProgress = { totalEst: number; doneOrQaEst: number; doneEst: number };
 
@@ -76,7 +78,12 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
   const statusPopupRef = useRef<HTMLDivElement>(null);
 
   // Inline authorized users popup
-  const [usersPopup, setUsersPopup] = useState<{ projectId: string; users: string[] } | null>(null);
+  const [usersPopup, setUsersPopup] = useState<{
+    projectId: string;
+    users: string[];
+    top: number;
+    right: number;
+  } | null>(null);
   const usersPopupRef = useRef<HTMLDivElement>(null);
 
   const canEdit = userType === "admin" || userType === "manager";
@@ -135,67 +142,48 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Search */}
-          <div className="relative">
-            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Search projects…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 pr-3 py-1.5 text-sm bg-muted border border-border rounded-md text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent w-52"
-            />
-          </div>
-
-          {/* Status filter */}
-          <select
+          <Input
+            type="text"
+            placeholder="Search projects…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leadingIcon={<SearchIcon strokeWidth={1.8} />}
+            className="w-52"
+          />
+          <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm bg-muted border border-border rounded-md text-text-secondary focus:outline-none focus:border-accent"
-          >
-            <option value="all">All Statuses</option>
-            {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-
-          {/* Program filter */}
-          <select
+            options={[
+              { value: "all", label: "All Statuses" },
+              ...STATUS_OPTIONS,
+            ]}
+          />
+          <Select
             value={programFilter}
             onChange={(e) => setProgramFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm bg-muted border border-border rounded-md text-text-secondary focus:outline-none focus:border-accent"
-          >
-            <option value="all">All Programs</option>
-            {Object.entries(PROGRAM_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-
-          {/* Stage filter */}
-          <select
+            options={[
+              { value: "all", label: "All Programs" },
+              ...Object.entries(PROGRAM_LABELS).map(([k, v]) => ({ value: k, label: v })),
+            ]}
+          />
+          <Select
             value={stageFilter}
             onChange={(e) => setStageFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm bg-muted border border-border rounded-md text-text-secondary focus:outline-none focus:border-accent"
-          >
-            <option value="all">All Stages</option>
-            {STAGE_ORDER.map((s) => (
-              <option key={s} value={s}>{STAGE_LABELS[s]}</option>
-            ))}
-          </select>
+            options={[
+              { value: "all", label: "All Stages" },
+              ...STAGE_ORDER.map((s) => ({ value: s, label: STAGE_LABELS[s] })),
+            ]}
+          />
         </div>
 
         {canEdit && (
-          <button
+          <Button
+            variant="primary"
+            leadingIcon={<AddIcon strokeWidth={2} />}
             onClick={() => setProjectModal({ open: true, project: null })}
-            className="flex items-center gap-2 px-4 py-2 rounded-md bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
             New Project
-          </button>
+          </Button>
         )}
       </div>
 
@@ -215,12 +203,7 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
         </div>
 
         {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-text-muted">
-            <svg className="w-10 h-10 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-            </svg>
-            <p className="text-sm">No projects found.</p>
-          </div>
+          <EmptyState title="No projects found." size="sm" />
         )}
 
         {filtered.map((project, idx) => {
@@ -300,7 +283,7 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
               {/* Inline authorized users */}
               <div className="relative">
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
                     if (!canEdit) return;
                     if (usersPopup?.projectId === project.id) {
                       // Save and close
@@ -313,7 +296,14 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
                       }
                       setUsersPopup(null);
                     } else {
-                      setUsersPopup({ projectId: project.id, users: [...authUsers] });
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const popupHeight = 260;
+                      const spaceBelow = window.innerHeight - rect.bottom;
+                      const top = spaceBelow < popupHeight
+                        ? Math.max(8, rect.top - popupHeight - 4)
+                        : rect.bottom + 4;
+                      const right = window.innerWidth - rect.right;
+                      setUsersPopup({ projectId: project.id, users: [...authUsers], top, right });
                     }
                   }}
                   className={`flex items-center gap-0.5 ${canEdit ? "cursor-pointer" : "cursor-default"}`}
@@ -348,7 +338,8 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
                 {canEdit && usersPopup?.projectId === project.id && (
                   <div
                     ref={usersPopupRef}
-                    className="absolute right-0 top-full mt-1 z-50 bg-elevated border border-border rounded-md shadow-lg py-2 min-w-[200px] max-h-60 overflow-y-auto"
+                    className="fixed z-50 bg-elevated border border-border rounded-md shadow-lg py-2 min-w-[200px] max-h-60 overflow-y-auto"
+                    style={{ top: usersPopup.top, right: usersPopup.right }}
                   >
                     <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider px-3 pb-1.5">
                       Authorized Users
@@ -385,25 +376,20 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
               </div>
 
               {canEdit && (
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <IconButton
+                    icon={<EditIcon strokeWidth={1.8} />}
+                    aria-label="Edit project"
+                    size="sm"
                     onClick={() => setProjectModal({ open: true, project })}
-                    className="p-1 text-text-muted hover:text-text-primary transition-colors"
-                    title="Edit"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
-                  <button
+                  />
+                  <IconButton
+                    icon={<DeleteIcon strokeWidth={1.8} />}
+                    aria-label="Delete project"
+                    size="sm"
+                    tone="danger"
                     onClick={() => setDeleteModal({ open: true, project })}
-                    className="p-1 text-text-muted hover:text-red-400 transition-colors"
-                    title="Delete"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  />
                 </div>
               )}
             </div>
@@ -418,6 +404,7 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
         project={projectModal.project}
         profiles={profiles}
         taskProgress={projectModal.project ? (taskProgressMap[projectModal.project.id] ?? null) : null}
+        userType={userType}
       />
       <ConfirmDeleteModal
         open={deleteModal.open}

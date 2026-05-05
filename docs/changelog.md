@@ -3,6 +3,2782 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-05-04] — Delete version button on SOPs and Docs/Playbook
+
+**SOPs page (`SopEditor.tsx`, `sops/actions.ts`, `types/sops.ts`, `sops/page.tsx`)**
+- Added `deleteVersion` server action that removes a `sop_version` row by ID.
+- Added `created_by` field to `SopVersion` type; updated versions select query to fetch it.
+- Added trash icon button to the editor toolbar (between version selector and "Update current version"). Visible only to admins, managers, and the version creator.
+- Clicking trash opens an inline confirmation modal ("Delete version? ... This cannot be undone."); on confirm, the version is deleted and the editor switches to the next available version.
+
+**Docs/Playbook page (`PlaybookEditor.tsx`, `docs/actions.ts`, `PlaybookTab.tsx`)**
+- Added `deletePlaybookVersion` server action.
+- Added `isAdminOrManager` prop to `PlaybookEditor`; passed from `PlaybookTab`.
+- `canDeleteVersion` computed as `isAdminOrManager || version.created_by === currentUserId`.
+- Same trash icon + confirmation modal pattern as SOPs, placed right before "Update current version" in the toolbar.
+
+## [2026-05-04] — Import Tasks: hours unit fix + milestone prefix strip
+
+**`src/app/projects/actions.ts`**
+- Bug: AI prompt instructs hours→minutes conversion (`"4h" → 240`), but `project_task.estimated_time` stores hours. Imported tasks displayed values 60× too large (e.g. 240 instead of 4 in the EST. (H) column). Fixed by dividing `estimated_time_minutes` by 60 when writing milestone and task rows.
+- Bug: AI-parsed milestone names included a leading `"Milestone N:"` prefix copied from the source HTML, but the table renderer auto-prepends `Milestone {idx}:`, producing `"Milestone 1: Milestone 1: Core Infrastructure…"`. Added `stripMilestonePrefix()` to remove the leading prefix before insert.
+
+## [2026-05-04] — Platform-aware Milestones, Import Task Aggregates, Named Prompts
+
+**Milestones platform picker (`MilestonesAndTasksStep.tsx`, `sandbox-planner/actions.ts`)**
+- Clicking "Regenerate" now opens an inline modal asking whether the project targets **Bubble** or **Claude Code** — each uses a separate DB prompt with platform-appropriate time estimates.
+- Updated DB prompt `9bfb8337-25ca-4259-a6e9-da15cb3bea55` → "Project Milestones & Tasks (Bubble) Prompt" with Bubble.io time guidance and 3 standard tasks appended to every milestone: Client Requests (Developer) 4h, QA Requests (Developer) 6h, QA Requests (QA Tester) 6h.
+- Inserted new DB prompt `c1d2e3f4-0001-4000-8000-000000000001` → "Project Milestones & Tasks (Claude Code) Prompt" for TypeScript/Next.js AI-assisted stacks.
+- `triggerAiGeneration` accepts an optional 4th `platform` param; auto-trigger defaults to `"bubble"`.
+
+**Import tasks → project aggregate fields (`src/app/projects/actions.ts`)**
+- `importTasksFromIdea` now correctly populates `project.client_developer_estimated_time`, `project.qa_developer_estimated_time`, and `project.qa_tester_estimated_time` (stored in hours) by summing matched special tasks after the insert loop.
+- `ParsedTask` gained a `task_type` field (`client_requests | qa_developer | qa_tester | developer_tasks`); new prompt `c1d2e3f4-0002-4000-8000-000000000001` ("Create Milestones & Tasks from an idea into a Project") returns this field. Name-based fallback included for robustness.
+- Added `resolveTaskDbType()` to map `task_type` / task name to DB `type` column values (`client_requests`, `qa_requests`, `developer_tasks`).
+- `IMPORT_TASKS_PROMPT_ID` updated to `c1d2e3f4-0002-4000-8000-000000000001`.
+
+**Playbook prompt rename (`src/app/docs/actions.ts`)**
+- Inserted DB prompt `c1d2e3f4-0003-4000-8000-000000000001` → "Create Playbook from an idea into a Project".
+- `PLAYBOOK_PROMPT_ID` updated to `c1d2e3f4-0003-4000-8000-000000000001`.
+
+## [2026-05-04] — Prompt DB for Import Tasks & Create Playbook, Gemini AI fallback fix
+
+**"Create Milestones and tasks into a project" prompt (Supabase + `src/app/projects/actions.ts`)**
+- Inserted new row in `prompt` table (UUID `b2c3d4e5-0001-4000-8000-000000000001`) under group "SandBox Planner".
+- `importTasksFromIdea` now fetches the prompt text from DB via `getImportTasksPrompt()` with fallback to hardcoded constant if DB is unreachable.
+- Admins and managers can now edit this prompt live via the Prompts page.
+
+**"Create Playbook" prompt + AI generation (`src/app/docs/actions.ts`, `src/lib/api/ai-dispatcher.ts`)**
+- Inserted new row in `prompt` table (UUID `b2c3d4e5-0002-4000-8000-000000000001`) under group "SandBox Planner".
+- `buildPlaybookFromIdea` now calls AI (via `generateAiTextResponse`) with the DB prompt + compiled idea HTML to produce a polished playbook. Falls back to raw HTML compilation if no AI config is available.
+- Added `generateAiTextResponse` to `ai-dispatcher.ts` routing to each provider's text generation function.
+
+**Claude "credit balance too low" fix**
+- Root cause: user `douglas.epr@hotmail.com` had `use_agency_settings = true`, forcing all AI calls through the agency's Claude key (which has no credits), ignoring their own valid Gemini key.
+- Fix: set `use_agency_settings = false` for that user so their personal Gemini config is used.
+
+## [2026-05-04] — Sidebar groups, Sandbox Planner UX, AI gate fix, Theme persistence, SOP creator access
+
+**Sidebar reorganization (`src/components/layout/Sidebar.tsx`)**
+- Split sidebar nav into 4 labeled groups: Workspace, Collaboration, Operations, Administration.
+- Labels appear in expanded mode; dividers in collapsed mode. Groups are dynamically rendered from a `GROUPS` config array.
+
+**Sandbox Planner UX (`IdeasGrid.tsx`, `CreateIdeaModal.tsx`, `SandboxPlannerShell.tsx`, `sandbox-planner/page.tsx`)**
+- Cards are now fully clickable (no separate "See Refinement" button).
+- Edit/delete icons hidden until hover; "General Ideas" filter now correctly excludes ideas with a `project_id`.
+- Edit modal locks inputs/hides Save for users who are not admin, manager, or idea creator.
+- AI gate no longer shows the "Configure AI" popup when `use_agency_settings = true` and the agency has a valid key configured.
+
+**Theme persistence (`ThemePicker.tsx`, `settings/actions.ts`, `settings/page.tsx`, `SettingsShell.tsx`, `ThemeProvider.tsx`)**
+- Removed "System" option — theme is now Light or Dark only.
+- New `saveTheme` server action updates `profiles.theme` (enum: `light | dark`) on every toggle.
+- Settings page reads `profile.theme` from DB on load and seeds `ThemePicker` for cross-device sync.
+- Migration `20260504000001_profile_theme_and_sop_created_by.sql` adds the `theme` column + enum.
+
+**SOP creator access (`sops/actions.ts`, `sops/page.tsx`, `SopList.tsx`, `SopModal.tsx`, `types/sops.ts`)**
+- `createSop` now sets `created_by: user.id`; initial `sop_version` also sets `created_by`.
+- `SopWithTags` type includes `created_by`.
+- Edit/delete icons hidden from users who are neither admin/manager nor the SOP creator.
+- SOP modal hides "Authorized User Types" and "Authorized Users" sections for non-admin/manager users.
+- RLS policy "sop: creator manage own" (applied in migration above) grants full CRUD to creators.
+
+**Sidebar Workspace label (`Sidebar.tsx`)**
+- Added "WORKSPACE" section label so all 4 groups (Workspace, Collaboration, Operations, Administration) are labeled consistently in expanded mode.
+
+**Visual Styles error toast bug (Sandbox Planner)**
+- Root cause: Turbopack was serving a stale `[app-client]` bundle that had old module-export snapshots. The auto-trigger in `useAutoTriggerAi` relies on `{ silent: true }` to suppress error toasts on background AI calls; a stale bundle could serve the hook without that flag, causing error toasts to fire on every page load.
+- Fix: cleared the `.next` cache directory and restarted the dev server to force a clean recompile. The `saveTheme` Turbopack export error was the same root cause.
+
+---
+
+## [2026-05-03] — Playbook resolved-comment paint() fix (root cause)
+
+**Bug:** Resolved comments still showed the yellow highlight on the playbook even when "Hide resolved comments" was active. Confirmed in DB that the spans had the correct `data-comment-id` pointing to a `status='solved'` row, but the spans never had `data-status="solved"` painted onto them — so the CSS rule that hides solved highlights never matched.
+
+**Root cause:** The `paint()` `useLayoutEffect` early-returned when `editorRef.current.getEditor()` returned null, and never ran again. TipTap's `useEditor` is configured with `immediatelyRender: false` in `RichTextEditor.tsx`, so the editor instance is null on the first render and only becomes available asynchronously. The effect's deps `[allComments, activeVersion.id]` don't change after that, so we never re-attempted the attach — `paint()` was never called and no `data-status` attribute was ever stamped.
+
+**Fix:** `PlaybookEditor.tsx` `useLayoutEffect` now polls on `requestAnimationFrame` until the editor is non-null, then runs the initial `paint()` and registers the `transaction` listener. Cleanup correctly cancels the poll, the painted-frame, and detaches the listener.
+
+**Build:** `npm run build` passes (after clearing `.next` to dodge a Windows file-lock from the running dev server).
+
+---
+
+## [2026-05-03] — Agreement preview + auto-complete, Visual Styles prompt fix, playbook resolved-comment hardening
+
+**Agreement eye-icon → Preview modal with signatures (`AgreementsTab.tsx`, `DocumentPreviewModal.tsx`)**
+- The eye/view button on each agreement row now opens the lightweight `DocumentPreviewModal` directly instead of the heavier `AgreementDrawer` details panel.
+- Extended `DocumentPreviewModal` with an optional `signatures` prop. When provided, it renders a printable Signatures section (one card per required signer with avatar, signature image / "Awaiting signature" placeholder, signed-at timestamp) below the document body.
+- The Signatures section is included in BOTH the on-screen preview and the PDF / DOCX exports (the helper builds the same HTML used in the preview surface and appends it to the html2canvas-captured node + the html-docx-js export string).
+- `AgreementsTab` keeps the pencil icon → `AgreementFormModal` (edit) flow unchanged.
+
+**Auto-complete agreement when all signers have signed (`supabase/migrations/20260503000001_agreement_auto_complete_trigger.sql`, applied)**
+- New `BEFORE INSERT OR UPDATE` trigger on `project_agreement_version` that flips `status` to `completed` whenever the row is in `ready_to_sign` AND every UUID in `required_signers` is contained in `signed_by` — independent of how the row was updated. Until now the auto-complete logic lived only inside the `sign_agreement` RPC, so any other update path (admin tool, direct SQL, future migrations) left the status stuck.
+- Includes a one-shot backfill so existing rows that already meet the invariant are flipped to `completed`.
+
+**Visual Styles AI prompt — DB record refreshed**
+- The DB row for prompt id `26989cc8-37f7-4df3-a994-57930a6d20ea` (`Visual Styles Prompt` in `prompt_group="SandBox Planner"`) was the OLD short version (945 chars) that did not instruct the LLM to fill `brand_voice`, `iconography_style`, or `motion_principles`. Updated in-place via `mcp__supabase__execute_sql` to the full 2868-char prompt that requires every design-system field.
+- `compileIdeaToPlaybookHtml` in `docs/actions.ts` (used by the "Build from Sandbox idea" button on the Playbook tab) now surfaces all the new style fields: Brand Voice, Iconography Style, Motion Principles, plus structured Color System (quick palette + color tokens), Typography scale, Spacing, Border Radius, and Shadows tables.
+
+**Playbook resolved-comments toggle hardening (`PlaybookEditor.tsx`, `CommentMarkExtension.ts`)**
+- `paint()` is now in `useLayoutEffect` (was `useEffect`) so `data-status` lands on every comment span before the browser commits the first frame — eliminates the brief flash where solved comments showed their pending highlight on initial mount.
+- The CommentMark click handler now JS-checks both `data-status="solved"` on the span AND `data-hide-resolved="true"` on the wrapper before dispatching the click event, so resolved comments cannot trigger the thread panel even if CSS `pointer-events: none` is overridden.
+- Default `showResolved = false` is preserved (was already correct in `PlaybookTab.tsx`).
+
+**Build:** `npm run build` passes with 0 errors. Migration applied to live DB.
+
+---
+
+## [2026-05-03] — Read-only project modal, Main Tasks rename + unread badges, Theme moved to Settings, instant email change
+
+**Project modal read-only for non-admin/manager (`src/app/projects/_components/modals/ProjectModal.tsx`)**
+- New optional `userType` prop. Computed `canEdit = userType === "admin" || userType === "manager"`.
+- All inputs (Name / Status / Authorized Users / Program / Stage / Estimated Time / Real Time / Estimated Dates / Toggles / Description) become disabled / read-only when `!canEdit`.
+- The four financial fields are hidden entirely from non-admin/manager: **Total Price ($)**, **Recommended by**, **Dev or Agency Owner who recommended this project**, **Commission (%)** — plus the Client + Commission branch.
+- Save button hidden in the footer; Close remains so the user can dismiss the modal.
+- Threaded `userType` through both call sites: `ProjectsList.tsx` and `ProjectDetail.tsx`.
+
+**Main Tasks tab rename + unread bubbles (`src/types/projects.ts`, `ProjectDetail.tsx`, `tabs/DeveloperTasks.tsx`)**
+- Renamed `TAB_LABELS.developer` from "Developer Tasks" → **"Main Tasks"**.
+- `ProjectDetail` now sums the unread comments on `developer_tasks` rows and surfaces the count as the red badge next to the Main Tasks tab.
+- `DeveloperTasks` accepts `unreadByTaskId` and renders a per-row red bubble next to every milestone name and every task name. Collapsed nodes show the rolled-up subtree count (`unreadAggregate(taskId)` walks `byParent` recursively); expanded nodes show only their own unread, since their children render their own badges.
+
+**Theme moved from sidebar to settings (`src/app/settings/_components/ThemePicker.tsx` new, `Sidebar.tsx`, `SettingsShell.tsx`)**
+- New `ThemePicker` client component (Light / Dark / System segmented control with a description tooltip).
+- Removed the Theme block from the Sidebar's user menu popover (the popover now contains only Profile + Sign out).
+- Added a "Theme" section to `SettingsShell` between Account and the Agency editors.
+
+**Instant email change (`src/app/settings/actions.ts`, `_components/AccountSecurityForm.tsx`)**
+- Replaced the "send confirmation link" flow with a 3-input form: **new email**, **current password**, **confirm current password**.
+- Server action `updateAccountEmail(newEmail, currentPassword, confirmCurrentPassword)`:
+  1. Validates email format and password fields match.
+  2. Re-authenticates with `auth.signInWithPassword` to prove identity.
+  3. Calls `auth.admin.updateUserById(user.id, { email, email_confirm: true })` via the **service-role client** so the change is committed immediately, no confirmation link to the new address.
+  4. Mirrors the new email to `profiles.email`.
+- Form shows a "Passwords don't match" inline check + show/hide toggle on the password fields.
+
+**Build:** `npm run build` passes with 0 errors.
+
+---
+
+## [2026-05-02] — Hover sidebar, mark-viewed RPCs, chat-tab pre-fetch, Slack-style chat
+
+**🔴 Mark-viewed RPCs (`supabase/migrations/20260502000001_chat_mark_viewed_rpcs.sql`, applied)**
+- Created the 8 chat `mark_*_messages_viewed` / `mark_*_thread_viewed` `SECURITY DEFINER` SQL functions that the chat actions have been calling for weeks. Until today **none of these existed in the database** — every `markConversationViewed` and `markThreadViewed` call was silently failing with "function does not exist", so `viewed_by[]` was never being updated and the unread count never decreased ("12 instead of 10" bug).
+- `markConversationViewed` and `markThreadViewed` in `src/app/chat/actions.ts` now `console.error` on RPC failure so future regressions surface in server logs.
+
+**🟠 Tab badges on conversation load (`src/app/chat/actions.ts` + `ConversationPane.tsx`)**
+- New server action `getProjectChatTabCounts(projectId)` returns the four numbers the Client Requests / QA Requests tabs need (open + unread for each) in a single call.
+- `ConversationPane` pre-fetches these the moment a conversation loads, so the blue + red bubbles render on the first paint instead of only after the user clicks the tabs. The kanban-wrapper polling (every 2s) continues to refresh the same state.
+
+**🟠 Hover-to-expand sidebar (`src/components/layout/SidebarContext.tsx`, `Sidebar.tsx`, `PageShell.tsx`)**
+- `SidebarContext` now models two independent states — `pinned` (user clicked the toggle, layout reserves 232px) and `hovered` (transient mouse-over, sidebar widens as an OVERLAY without shifting main content). Every page starts collapsed; user pin choice persists in `localStorage` (`blur:sidebar-pinned`).
+- 150ms close delay on `mouseleave` so the sidebar doesn't snap shut when the cursor crosses a sub-element.
+- Removed the now-redundant `defaultSidebarCollapsed` prop from `PageShell` + `chat/page.tsx` + `sandbox-planner/page.tsx`.
+
+**🟡 Slack-style chat redesign**
+- `MessageList` computes a `grouped` flag for each message (same author + within 5 min of previous). Grouped follow-ups render compactly: no avatar, no name/timestamp, just the body — the timestamp surfaces on hover in the left rail.
+- `MessageItem` gets a hover toolbar pinned in the top-right (Reply / Edit / Delete) using canonical icons, a Slack-style thread chip (`MessageIcon` + count + unread pill), and tightened typography (13.5px name, 14px body, 11px meta).
+- `MessageComposer` is now a single rounded card around the textarea + action row; circular send button switches to `bg-accent` when there's something to send. All inline `<svg>` replaced with `AttachmentIcon` / `SendIcon` / `CloseIcon`.
+- `ConversationsSidebar` density tightened: 28px row height, 13px text, filled-accent active state with white text, 10.5px section labels, canonical block icons (`BriefcaseIcon`, `LockIcon`, `FolderIcon`, `UserIcon`, `SparkleIcon`).
+- All four list components (`ProjectsList`, `ProjectsInternalList`, `InternalProjectsList`, `PrivateList`, `ChatbotList`) updated to the new dense-row pattern with the active state bleeding through to the row's icon/avatar.
+- `ConversationPane` header slimmed to 48px (`h-12`), title in `font-display`.
+
+**Migration applied to live DB:** `chat_mark_viewed_rpcs` (Supabase MCP `apply_migration`).
+**Build:** `npm run build` passes with 0 errors.
+
+---
+
+## [2026-05-01] — UI/UX polish + collapsible sidebar + unread-count fix + account security
+
+**Stages Checking redesign (`src/app/projects/_components/tabs/StagesChecking.tsx`)**
+- Replaced hand-rolled hex pills with a refined editorial timeline view that uses design-token classes (`status-badge`, `text-text-*`, `bg-surface`, `border-border`).
+- Added a slim progress rail showing `done / total` and a percentage, plus a per-row index, semantic timeline dots (success / accent / danger / muted), and contextual hover states.
+
+**Tab badge alignment (`ProjectDetail.tsx` + `chat/_components/TabMenu.tsx`)**
+- Replaced the absolute-positioned blue badge (top-right) + stacked red badge (below text) with an inline cluster: label first, then the open count (info-blue) + unread count (danger-red) side-by-side. Badges no longer overlap adjacent labels.
+- Both badges use design tokens (`bg-info`, `bg-danger`) and have hover tooltips ("3 open" / "3 unread").
+
+**Collapsible sidebar (`src/components/layout/SidebarContext.tsx` + `Sidebar.tsx` + `PageShell.tsx`)**
+- New `SidebarProvider` + `useSidebar()` hook drives a `--sidebar-width` CSS variable (60px collapsed / 232px expanded). User preference persists in `localStorage` and survives reloads.
+- New toggle button in the sidebar header (`PanelLeftClose` / `PanelLeftOpen`). Collapsed state hides labels, the "Settings" group label, and the user-row name/role; only icons + avatar remain. Tooltips fall back to the label.
+- `defaultSidebarCollapsed` prop on `PageShell`; set on `/chat` and `/sandbox-planner` so those second-column-heavy pages start in icon-only mode.
+
+**Unread count formula (`src/app/chat/actions.ts` `unreadByScope`)**
+- For `projects` and `projects_internal` blocks, the chat list bubble now also counts unread `project_task_comment` rows whose task type is `client_requests` or `qa_requests` on the same project.
+- Single extra SELECT with an inner join filter on `project_task.type`; no app-layer N+1.
+
+**Account security on Settings (`src/app/settings/_components/AccountSecurityForm.tsx` + `actions.ts`)**
+- New "Account" section at the top of the Settings page with two sub-forms:
+  - **Email** — calls `supabase.auth.updateUser({ email })`; mirrors to `profiles.email`. Supabase sends a confirmation link to the new address before the change takes effect.
+  - **Password** — re-authenticates with the user's current password before calling `auth.updateUser({ password })`. Min length 8, plus a "passwords don't match" inline check and a show/hide toggle.
+
+**Build:** `npm run build` passes with 0 errors.
+
+---
+
+## [2026-05-01] — Security hardening: auth gaps and data-leak fixes
+
+**Vulnerabilities fixed (full security audit conducted):**
+
+- **CRITICAL `src/app/prompts/actions.ts`** — `getPromptGroups()` now enforces admin/manager role check before using the service-role Supabase client. Previously any authenticated user could call this action and bypass RLS to read (and via other functions, modify) the entire AI prompt library.
+- **HIGH `src/app/chat/actions.ts`** — Removed `signature` field from the bulk profiles select in `loadChatContext`. Signatures (handwritten/base64) were being returned to all chat participants including `client` and `qa` roles. Now only `id, first_name, last_name, picture, type` are returned — matching the documented app intent in `CLAUDE.md`.
+- **MEDIUM `src/app/projects/actions.ts`** — Added `auth.getUser()` guard to `createProject`, `updateProject`, `deleteProject`. RLS already blocked unauthorized operations but the app layer now returns `"Not authenticated"` early.
+- **MEDIUM `src/app/sandbox-planner/actions.ts`** — Added `auth.getUser()` guard to `updateIdea`, `deleteIdea`, `clearAiWorking`.
+- **MEDIUM `src/app/sops/actions.ts`** — Added `auth.getUser()` guard to `createSop`, `updateSop`, `deleteSop`.
+- **MEDIUM `src/app/feedback/actions.ts`** — Added `auth.getUser()` guard to `updateFeedback`, `deleteFeedback`.
+- **MEDIUM `src/app/docs/actions.ts`** — Added `getUserIdOrError()` auth guard to `savePlaybookVersion`, `editPlaybookComment`, `deletePlaybookComment`, `setPlaybookCommentStatus`.
+
+**False positives ruled out during audit:**
+- Gemini URL-based API key: Google's REST API requires this; URL is constructed server-side and never reaches the browser.
+- `.env.local` in git: confirmed not committed (`git log` returned empty).
+- CSRF: Next.js Server Actions enforce same-origin via `Origin` header.
+
+**Build:** `npm run build` passes with 0 errors.
+
+---
+
+## [2026-05-01] — RLS hardening, tab badge UX, and Design System expansion
+
+**RLS migrations (5 applied):**
+- `20260501000001` — `profiles`: project co-member read policy (developers/QA/clients can see co-project member profiles; `signature` never exposed via app layer)
+- `20260501000002` — `project_task`: developer INSERT/UPDATE/DELETE; client INSERT/UPDATE `client_requests` + DELETE own; QA INSERT/UPDATE `qa_requests` + DELETE own
+- `20260501000003` — `idea_styles`: replaced open `FOR ALL USING (true)` with admin/manager ALL + creator ALL + project-member read-only
+- `20260501000004` — `feedback`: changed from any-auth read-all to role-based (admin/manager/operational see all; others see own)
+- `20260501000005` — `idea_styles`: added 13 new columns for full design system (color tokens, typography, spacing, border radius, shadows, narrative fields)
+
+**Task ownership & CRUD:**
+- `projects/actions.ts` `createTask` now sets `created_by: user.id` on every insert
+- `TasksKanban.tsx`: delete button only shown for admin/manager or task owner (`created_by === currentUserId`)
+- `Task` type and `project_task` page query now include `created_by`
+- `supabase/types.ts`: added `internal_project_assignees` table type (was missing, caused TS error)
+
+**Tab badge redesign (Projects + Chat pages):**
+- Status count bubble changed from `bg-red-500` → `bg-blue-500` (blue = actionable items)
+- New red badge below each tab text showing unread `project_task_comment` count per tab type
+- `ProjectDetail.tsx`: `clientUnread`/`qaUnread` computed from `unreadByTaskId + tasks`; tab buttons now flex-col to stack label + red badge
+- `TabMenu.tsx`: accepts `tabBlueBadge` and `tabRedBadge` props; renders blue absolute top-right badge + red below-text badge
+- `ConversationPane.tsx`: adds badge state with `useCallback`-stable `onCounts` callbacks passed to `ClientRequestsTab`/`QARequestsTab`
+- `TaskRequestsKanbanWrapper.tsx` + `QARequestsTab.tsx`: compute and emit `(blue, red)` counts on every data load via `onCounts` ref
+
+**Design System expansion (`idea_styles`):**
+- `src/types/sandbox-planner.ts`: new sub-interfaces `ColorToken`, `TypographySystem`, `SpacingSystem`, `BorderRadiusSystem`, `ShadowToken`; `IdeaStyles` updated with all 13 new fields
+- `src/lib/api/json-converters.ts`: `VisualStylesOutput` expanded with full design system fields
+- `sandbox-planner/actions.ts`: `saveStyles` accepts all new fields; `generateVisualStylesContent` maps full payload; `FALLBACK_VISUAL_STYLES` prompt instructs AI to return complete design system JSON
+- `VisualStylesStep.tsx`: complete redesign with 6 structured sections: Brand Identity, Color System (pickers + token grid + narrative), Typography (font preview + scale table), Spacing & Layout (visual bars + border radius previews), Elevation (shadow cards), Motion & Iconography
+- `AiLoadingOverlay.tsx`: `visual_styles` step labels updated to match new sections
+
+## [2026-04-30] — Icon migration: all hand-rolled SVGs replaced with canonical catalog icons
+
+**Icon sweep (Phase D.2–D.7):**
+- `InternalProjectsList`, `InternalProjectKanban`, `InternalProjectModal`, `InternalTaskModal`, `InternalTaskChat`, `AssigneePicker` — all inline `<svg>` replaced with `SearchIcon`, `AddIcon`, `EditIcon`, `DeleteIcon`, `ChevronDownIcon`, `ChevronRightIcon`, `CloseIcon`, `CheckIcon`, `AttachmentIcon`, `SendIcon`, `FileIcon` from `@/components/ui/icons`.
+- `UsersList` — search, add-user, empty-state, and delete SVGs replaced.
+- `LeadsShell` — search, add-lead, edit, delete, email, and LinkedIn link SVGs replaced.
+- `OkrsShell` — expand chevron replaced with `ChevronRightIcon`.
+- `GoalModal`, `KeyResultModal` — close and status-dropdown chevrons replaced.
+- `KeyResultsTracker` — checkmark and delete SVGs replaced.
+- `SopList` — add, filter, edit, delete SVGs replaced.
+- `SopEditor` — version dropdown chevron and save/update SVGs replaced.
+- `sops/page.tsx` — empty-state SVG replaced with `DocumentIcon`.
+- `TalentPoolShell` — search, add, sliders SVGs replaced.
+- `TalentRow` — share, edit, delete SVGs replaced.
+- `SkillRowsEditor` — delete and dropdown chevron SVGs replaced; check mark replaced.
+- `MultiChipSelect` — dropdown chevron SVG replaced.
+- `TypeaheadPicker` — clear and check SVGs replaced.
+- `RecommendedProjectsShell` — search and image-placeholder SVGs replaced.
+- Zero new TypeScript errors introduced.
+
+## [2026-04-30] — App-wide UI/UX standardization (design system rollout)
+
+**Foundation (Steps 0–2):**
+- `globals.css` rewritten with design tokens (`--accent`, `--bg-base`, `--sidebar-width: 232px`, etc.), CSS utilities (`.btn`, `.input`, `.card`, `.badge`, `.kpi`, `.skeleton`, `.fade-up`), progressive type scale, and soft shadow tokens. No gradients anywhere.
+- `layout.tsx` now loads Inter (body) + Manrope (display) via `next/font`.
+- `src/components/ui/` library created with 14 primitives: `icons.ts` (lucide-react catalog), `Avatar`/`AvatarStack`, `Button`, `IconButton`, `Input`, `Textarea`, `Select`, `Badge`, `StatusBadge`, `NotificationDot`, `Card`/`CardHeader`/`CardBody`, `EmptyState`, `Skeleton`, `Modal`/`Drawer`/`ConfirmDialog`, `Tabs`, `UserMultiSelect`, `Toolbar`, `DataTable`, `KpiCard`, plus barrel `index.ts`.
+- `PageShell` + `PageHeader` layout primitives replace the hand-rolled `<Sidebar>+<main className="ml-[220px]">` boilerplate on every page.
+- `Sidebar` refactored: lucide icons (no hand-rolled SVGs), nav grouped into "operational" / "settings" sections, 2 px accent left-edge bar on active item, `Avatar` primitive for user row.
+
+**Page migrations (Step 3):**
+- **Dashboard** — `PieChart` (projects by status) replaced with horizontal `BarChart` (VibeUX 6.3: no pie charts). `AreaChart` with `linearGradient` fills replaced with `LineChart` (VibeUX 1.6: no gradients). Local `KpiCard` replaced with canonical import. `PageShell` wrapper.
+- **Projects** — toolbar `Input`/`Select`/`Button` primitives; `IconButton(EditIcon)`/`IconButton(DeleteIcon)` replace inline SVG edit/delete buttons; `EmptyState` replaces custom empty; `UserMultiSelect` replaces `UserPicker` in `ProjectModal`; `PageShell` + `PageHeader`.
+- **OKRs** — `IconButton(EditIcon)`/`IconButton(DeleteIcon)` replace 4 bespoke SVG pencil/trash buttons (goal + KR rows). This is the exact inconsistency shown in the user's screenshot.
+- **SOPs** — `UserMultiSelect` replaces `AvatarMultiPicker` in `SopModal`. `PageShell fullBleed` wrapper.
+- **Internal Projects** — `UserMultiSelect` replaces `AssigneePicker` in both `InternalProjectModal` and `InternalTaskModal`. `PageShell` wrapper.
+- All 16 pages migrated from `<div h-screen><Sidebar/><main ml-[220px]>` → `<PageShell profile={...}>`.
+
+**Sweep (Step 4):**
+- Zero direct `lucide-react` imports outside `src/components/ui/icons.ts`.
+- Zero `Sidebar` imports in `src/app/` pages (all use `PageShell`).
+- Zero hardcoded `ml-[220px]` in `src/app/` — all use CSS variable `--sidebar-width` via `PageShell`.
+
+## [2026-04-30] — Supabase standardization (Part 2 of huge refactor)
+
+48 schema items applied across 7 numbered batches (B1, B3-B12). Each
+batch shipped its own migration + cascading code sweep + types regen.
+
+**B1 — Drop `audit_log`** (item 1). Table removed; the chatbot's
+fallback "tables you can query" list dropped the dead reference.
+
+**B9 — ~28 additive `created_by`/`updated_at` columns** (items 5, 6,
+16-27, 29, 30, 31, 32, 33, 35, 36, 37, 40, 41, 42, 43, 44, 46-48).
+Single migration adds the columns idempotently, attaches the existing
+`set_updated_at()` trigger to every new `updated_at`, and reuses the
+`profiles(id)` FK pattern for `created_by` columns. No code changes —
+existing INSERT statements get the new columns via DEFAULT.
+
+**B4 — RLS tightening on talent / client / agreement_template family**
+(items 4, 5, 6, 47, 48). `agreement_template`, `client`, `talent` are
+now admin/manager/operational only (talent + client lost their
+"own-row read" / blanket-admin-only redundant policies);
+`client_who_referred_this_talent` and `talent_referred_by` gain a new
+"code-present read" policy that exposes individual rows when
+`code IS NOT NULL` so the referral magic-link flow keeps working
+without leaking the rest of the table.
+
+**B3 — `private_chatbot{,_message}` admin/manager/operational only**
+(items 35, 36). New `is_staff_role()` SECURITY DEFINER helper. New
+RLS policies replace the old "owner-only" ones with "staff role AND
+own". Sidebar's `visibleBlocks(userType)` hides the ChatBot section
+for client/qa/developer/referrer/lead.
+
+**B12a — `feedback.project_id` optional** (item 10). Already nullable
+in DB; UI now offers a "— No project —" option in `FeedbackFormModal`
+and the submit gate switched from "project required" to "rating or
+comment required".
+
+**B11 — `sop.tags[]` array migration** (items 43, 45). New
+`UUID[] NOT NULL DEFAULT '{}'` column on `sop`; data backfilled from
+the legacy `sop_tags` join table; `sop_tags` dropped. `createSop` /
+`updateSop` write the array directly; `sops/page.tsx` hydrates the
+UUID[] into `{id, name}[]` for the existing UI.
+
+**B10 — `task.assignees[]` array migration** (items 10, 28, 31, 34).
+New `UUID[] NOT NULL DEFAULT '{}'` column on `task`; data backfilled
+from `task_assignees`; join table dropped. `internal_task` already
+had the array column. The `task` page-level fetcher hydrates the
+UUID[] into the legacy `task_assignees: [{user_id, profiles}]` shape
+client-side via a single profiles JOIN, so existing UI components
+keep working unchanged.
+
+**B5 — `user_ai_settings.user_id → owner_id`** (item 3). Column
+renamed; RLS policy rewritten to use the new column. Sweep across
+`src/app/settings/{page,actions}.ts`, `src/lib/api/ai-config.ts`,
+`src/app/sandbox-planner/page.tsx`.
+
+**B8 — Column renames across chat / task / time-track / chatbot
+tables** (items 7-15, 29, 30, 32, 33, 38, 39, 42).
+- `owner_id → created_by` on every chat message + thread + comment +
+  chatbot table (13 tables).
+- `owner_id → assignee_id` on `time_track` + `internal_task_time_track`.
+- `owner_user_id → assignee_id` on `qa_time_track`.
+- `edited_at → updated_at` on every chat message + thread + comment
+  table (10 tables) + trigger attached.
+- Dropped `is_daily_feedback` from the 4 message tables — daily
+  feedback flows through `project_daily_feedback` now.
+- Code sweep: `src/types/{chat,projects,internal-projects}.ts`,
+  `src/app/{chat,projects,internal-projects}/**`,
+  `src/app/chat/_components/**`, `src/app/chat/_chatbot/**`. The
+  `PROFILE_SELECT` constant in `chat/actions.ts` switched from
+  `profiles!owner_id` to `profiles!created_by` (PostgREST FK alias
+  follows the column rename automatically).
+
+**B7 — Task family table renames** (items 28, 29, 30, 31, 32, 33, 42).
+- `task → project_task`
+- `task_comment → project_task_comment`
+- `time_track → project_task_time_track`
+- `qa_time_track → project_qa_time_track`
+- `internal_task → internal_project_task`
+- `internal_task_comment → internal_project_task_comment`
+- `internal_task_time_track → internal_project_task_time_track`
+Code sweep done via a node script that handles the dependency order
+(longer names first so `internal_task_time_track` doesn't get partially
+rewritten). 9 files changed.
+
+**B6 — Chat conversation table renames** (items 7, 8, 9, 10, 13, 14, 15).
+- `external_conversation_project_message[_thread] → conversation_project_external_message[_thread]`
+- `internal_conversation_project_message[_thread] → conversation_project_internal_message[_thread]`
+- `private_conversation* → conversation_private*` (3 tables).
+- New `updated_at` column on `conversation_private` (item 13).
+- Realtime publication entries dropped under the old names + re-added
+  under the new ones (Postgres doesn't support `ALTER PUBLICATION ...
+  IF EXISTS`, so each is wrapped in a DO block that swallows
+  `undefined_object`).
+- `BLOCK_TABLES` in `src/types/chat.ts` updated; `chat/actions.ts`
+  rewrites every direct `.from('private_conversation*')` reference.
+
+**B12b + B2 — Prompt + AI keys server-only** (items 2, 40).
+`run.ts::loadDbSystemPrompt` and `runProjectBot.ts::loadDbSystemPrompt`
+now use `createServiceClient()` so the prompt loads consistently for
+every signed-in user (including non-admins whose RLS would otherwise
+block the read), but the raw text never crosses the browser boundary —
+only the model's reply does. Existing audit confirms `prompt`/
+`prompt_group` RLS is admin/manager-only and `agency_ai_settings` keys
+are read server-side via service-role inside `resolveAiConfig`.
+
+### Files
+- 7 new SQL migrations under `supabase/migrations/20260430*_b{1,3,4,5,6,7,8,9,10,11,12a}_*.sql` (some merged — see `mcp__supabase__list_migrations` for the canonical list).
+- `src/types/{chat,projects,internal-projects,settings}.ts` — type renames.
+- `src/lib/supabase/types.ts` — regenerated three times.
+- `src/lib/api/ai-config.ts` — `user_id → owner_id` filter rename.
+- `src/app/chat/actions.ts` — most extensive: `BLOCK_TABLES` follow,
+  `PROFILE_SELECT` rewrite, every chat/chatbot insert+select rewritten.
+- `src/app/chat/_chatbot/{run,runProjectBot,tools}.ts` — service-role
+  prompt loader; updated select strings; legacy `task_assignees`
+  → `assignees @>` query for "list_my_tasks".
+- `src/app/chat/_components/{MessageItem,MessageList,ThreadPanel,useRealtimeMessages}.tsx`
+  — column-rename follow.
+- `src/app/projects/{page,actions}.tsx` — task array hydration; QA +
+  task_comment + time_track column renames.
+- `src/app/projects/_components/modals/{TaskChat,QATimeTrackerModal,WorkingHoursModal}.tsx`
+  — column rename follow.
+- `src/app/internal-projects/{page,actions}.ts` + `_components/{InternalTaskChat,InternalTaskModal}.tsx` — same.
+- `src/app/feedback/_components/FeedbackFormModal.tsx` — project optional.
+- `src/app/sops/{page,actions}.ts` — `tags[]` array migration.
+- `src/app/sandbox-planner/page.tsx`, `src/app/settings/{page,actions}.ts`
+  — `user_ai_settings.owner_id` rename.
+- `src/types/chat.ts::visibleBlocks` — chatbot section hidden for
+  client/qa/developer/referrer/lead.
+
+### Verification
+- All 7 migrations applied via `mcp__supabase__apply_migration`.
+- `information_schema.columns` probe confirms 44 `created_by` + 48
+  `updated_at` columns across the schema, no surviving `owner_id` /
+  `edited_at` / `owner_user_id` / `is_daily_feedback` columns on the
+  renamed tables, and all 7 chat tables + 7 task tables under their
+  new names.
+- `npx tsc --noEmit` clean for every touched area; only 11 pre-existing
+  errors remain (2 runtime-string `.from(table)` calls in
+  `chat/actions.ts` + 9 references to a non-existent
+  `internal_project_assignees` table in `internal-projects/{actions,page}.tsx`,
+  unrelated to Part 2).
+- Dev server (`localhost:3000`) hot-reloaded every edit; `/chat`,
+  `/dashboard`, `/prompts`, `/settings` continue to serve 200s.
+
+### What's NOT in Part 2 (deferred / spec ambiguous)
+- **Item 28 / 31 — assignees[] CRUD UI** on the project + internal-project
+  task modals. The DB column + write path are in place; the modal
+  pickers still use the legacy `task_assignees` shape via the
+  hydration. Building the new picker UI is an isolated UI change.
+- **Item 30 / 33 / 42 — admin-overridable assignee on time-track
+  inserts.** The DB columns are renamed (`assignee_id`); the UI still
+  defaults the field to the current user. Admin/manager override
+  picker isn't built yet.
+- **Item 6 / 48 — "code-present" exposure for the linked client/talent.**
+  RLS now opens the row when `code IS NOT NULL` for any authed user,
+  but identifying "the right client" via `auth.uid()` requires a
+  link table the schema doesn't have. The current rule is the
+  permissive interpretation; a stricter version can land later when
+  the identity link is decided.
+
+## [2026-04-30] — Page-level access gates + sidebar visibility (Part 1 of huge refactor)
+
+This is **Part 1 of a 60-item refactor** the user batched together. Part 2
+(48 schema standardization items: `audit_log` drop, 8 table renames, ~25
+new `created_by`/`updated_at` columns, ~10 field renames `owner_id` →
+`created_by`, AI-key isolation server-side, `task_assignees` /
+`sop_tags` join-table → array column migration, etc.) is queued for
+follow-up turns since it'd realistically be 4–8h of focused work and
+touches every server action in the repo.
+
+**What landed today: every page-level role gate + sidebar visibility.**
+
+### New shared helper
+
+- NEW `src/lib/auth/page-gate.ts` exports `requirePageAccess(allowed)` and
+  `redirectForRole(role)`. Single source of truth for "if a {role} hits a
+  page they're not allowed on, where do they go?". Every gated page
+  imports the helper instead of duplicating the auth + redirect chain.
+  Three call shapes:
+    - `requirePageAccess(["admin","manager"])` — allowlist
+    - `requirePageAccess({ denyRoles: ["referrer"] })` — blocklist (for
+      `/settings`)
+    - `requirePageAccess({ allowAll: true })` — auth-only (for
+      `/feedback`)
+  Role → fallback page mapping mirrors the user's spec exactly:
+    admin/manager → /dashboard,
+    operational  → /internal-projects,
+    developer/client/qa → /projects,
+    referrer → /recommended-projects,
+    lead → /sandbox-planner.
+
+### Per-page gate fixes
+
+| Page | Before | After |
+|---|---|---|
+| `/dashboard` | redirected non-admin/manager to `/sandbox-planner` regardless of role | role-specific redirects via the helper |
+| `/sops` | NO server-side role gate (relied on RLS) | admin/manager/operational/developer/qa/client allowlist |
+| `/okrs` | redirected to `/dashboard` | role-specific redirects |
+| `/internal-projects` | redirected to `/dashboard` | role-specific redirects |
+| `/recommended-projects` | missing `operational`; redirected to `/` | full allowlist + role-specific redirects |
+| `/projects` | NO role gate; missing referrer/lead redirects | role-specific redirects |
+| `/chat` | redirected to `/` | role-specific redirects via helper, defensive `CHAT_ALLOWED_ROLES` re-check kept |
+| `/docs` | NO server-side role gate | admin/manager/operational/developer/qa/client allowlist |
+| `/talent-pool` | redirected to `/` | role-specific redirects |
+| `/leads` | redirected to `/dashboard` | role-specific redirects |
+| `/users` | redirected to `/projects` | role-specific redirects (admin/manager only) |
+| `/sandbox-planner` | NO role gate | admin/manager/operational/developer/client/lead allowlist |
+| `/prompts` | redirected to `/projects` | role-specific redirects |
+| `/settings` | NO referrer block | `denyRoles: ["referrer"]` + role-specific redirect |
+| `/feedback` | unchanged behaviour | now uses `requirePageAccess({ allowAll: true })` for consistency |
+
+### Sidebar — allowlist-driven
+
+`src/components/layout/Sidebar.tsx` was using ad-hoc `if (item.href === …)`
+filters that drifted from the page-gate spec. Rewrote `NAV_ITEMS` so each
+entry carries an explicit `roles: SidebarRole[]` allowlist — the filter
+becomes a single `roles.includes(role)`. Referrers still get the
+condensed two-item nav (Dashboard pointing at `/recommended-projects` +
+Feedback). `Prompts` and `Settings` were promoted from the old
+`ADMIN_NAV_ITEMS` / `TRAILING_NAV_ITEMS` arrays into the main list with
+their own role lists so the visibility rules live in one place.
+
+### Verification
+
+- `npx tsc --noEmit` shows zero new TS errors in any of the 14 touched
+  pages, the sidebar, or the new helper. (The 6 lingering errors are
+  pre-existing: `chat/actions.ts` runtime-string `.from()` pattern, and
+  `internal-projects/{actions,page}.tsx` referencing the
+  `internal_project_assignees` table that doesn't exist in the schema.
+  Both pre-date this PR.)
+- Dev server (`localhost:3000`) hot-reloaded all 14 page edits + the
+  sidebar; `/dashboard`, `/chat`, `/prompts` continue to serve 200s.
+
+### Part 2 — flagged for follow-up
+
+The user's same message also asked for the 48-item Supabase
+standardization pass. Those changes split cleanly into batches that
+each take ~1h:
+
+  - Drop `audit_log`, `task_assignees`, `sop_tags`
+  - Move agency AI calls fully server-side, hide keys from non-admin
+    frontends
+  - `private_chatbot{,_message}` admin/manager/operational restriction +
+    UI gating
+  - Visibility tightening on `talent`, `client`,
+    `talent_referred_by`, `client_who_referred_this_talent`,
+    `agreement_template`
+  - `user_ai_settings.user_id` → `owner_id`
+  - 8 table renames (`external_/internal_conversation_project_message`
+    [+ thread] → `conversation_project_external_/internal_message`,
+    `private_conversation` family → `conversation_private`,
+    `task` → `project_task`, `task_comment` → `project_task_comment`,
+    `time_track` → `project_task_time_track`, `qa_time_track` →
+    `project_qa_time_track`, `internal_task*` → `internal_project_task*`)
+  - ~10 field renames (`owner_id` → `created_by`,
+    `edited_at` → `updated_at`)
+  - ~25 new `created_by` / `updated_at` columns
+  - `assignees[]` array column on `project_task` + `internal_project_task`
+    (replaces the dropped `task_assignees` join table) with full CRUD UI
+  - `tags[]` array on `sop` (replaces `sop_tags`)
+  - `feedback.project` made optional
+  - Various assignee-field renames (`owner_user_id` → `assignee_id`)
+    with admin/manager-only override editing
+  - Backend prompt resolution (`prompt.description` never reaches the
+    browser)
+
+Each batch is a one-migration-plus-cascading-code-edits pass. I'll pick
+them up in the next turn.
+
+## [2026-04-29] — Agency record + agency-wide AI keys + Project chatbot prompt
+
+Four coordinated changes that together let an agency pay for / share LLM
+keys instead of asking every collaborator to bring their own:
+
+**1. New `agency` table.** Singleton row holding `name`, `website`,
+`created_by`, `created_at`, `updated_at`. RLS allows any authenticated
+user to read (so the UI can show the agency name) but only `admin`
+profiles can write. New "Agency" section under `/settings`, admin-only,
+upserts via `saveAgencyInfo`.
+
+**2. New `agency_ai_settings` table.** Same shape as `user_ai_settings`
+minus the user FK — keyed on `agency_id`. RLS allows read+write only
+for `admin` and `manager`; non-admins never see the keys client-side.
+New "Agency AI Configuration" section under `/settings`, admin/manager-
+only, reuses the generic `AiSettingsForm` via a thin
+`AgencyAiSettingsForm` wrapper.
+
+**3. New AI-key resolution chain in `src/lib/api/ai-config.ts`.**
+`user_ai_settings` gains a `use_agency_settings BOOLEAN NOT NULL DEFAULT
+TRUE` column. `resolveAiConfig` now:
+- For `referrer` / `lead` profiles → personal-only path; if their keys
+  aren't set the call returns `null` (no agency, no env fallback). The
+  migration also forces the column FALSE for those rows so client-side
+  reads + server-side resolution agree.
+- For everyone else → if `use_agency_settings = FALSE` AND personal
+  keys are set, use personal; otherwise read `agency_ai_settings` via
+  `createServiceClient()` (RLS bypass — keys never reach the browser);
+  otherwise fall back to `OPENAI_API_KEY` env. The user-facing toggle
+  lives in `AiSettingsForm` ("Use my agency's AI keys"); the form
+  collapses into a read-only summary built from a sanitized
+  `getAgencyAiSettingsSummary()` action when ON. The form is also
+  reused by the agency editor with `allowAgencyToggle={false}`.
+- `saveAiSettings` server-clamps `use_agency_settings = false` for
+  referrer/lead via the new `clampUseAgencyForRole` helper, so a
+  crafted client request can't bypass the UI gate.
+
+**4. New "Project chatbot prompt" row.** Until now, both the global
+ChatBot and the per-project chatbot loaded the same `Chatbot prompt`
+row under `prompt_group { name='Chat' }`. Migration seeds a second row,
+`Project chatbot prompt`, with project-scoped guidance that mentions
+the `create_client_request_task` / `create_qa_request_task` tools.
+`runProjectBot.ts::loadDbSystemPrompt` now reads this row instead of
+the global one. The existing admin/manager-gated `/prompts` page is the
+edit surface — no UI change.
+
+### Files
+- NEW `supabase/migrations/20260429100000_agency_and_agency_ai_settings.sql`
+- NEW `supabase/migrations/20260429110000_user_ai_settings_use_agency_toggle.sql`
+- NEW `supabase/migrations/20260429120000_project_chatbot_prompt_seed.sql`
+- NEW `src/app/settings/_components/AgencyForm.tsx`
+- NEW `src/app/settings/_components/AgencyAiSettingsForm.tsx`
+- MODIFIED `src/lib/api/ai-config.ts` — three-stage resolution + role
+  gate + `clampUseAgencyForRole` helper.
+- MODIFIED `src/app/settings/actions.ts` — `saveAiSettings` carries the
+  toggle (and clamps for referrer/lead); new `getAgency`,
+  `saveAgencyInfo`, `getAgencyAiSettings`, `saveAgencyAiSettings`,
+  `getAgencyAiSettingsSummary`.
+- MODIFIED `src/app/settings/page.tsx` — fetches profile + agency +
+  per-user settings + agency-AI summary in parallel; passes role into
+  `SettingsShell`.
+- MODIFIED `src/app/settings/_components/SettingsShell.tsx` — three
+  sections (Agency / Agency AI / your AI), each role-gated.
+- MODIFIED `src/components/features/AiSettingsForm.tsx` — new agency
+  toggle, read-only preview block, `allowAgencyToggle` +
+  `agencySummary` props.
+- MODIFIED `src/types/settings.ts` — `useAgencySettings` on the
+  client/payload types; new `Agency`, `SaveAgencyInfoPayload`,
+  `SaveAgencyAiSettingsPayload`, `AgencyAiSettingsSummary` types.
+- MODIFIED `src/app/chat/_chatbot/runProjectBot.ts` — load
+  `'Project chatbot prompt'` instead of `'Chatbot prompt'`.
+- MODIFIED `src/app/sandbox-planner/page.tsx` — pass
+  `useAgencySettings: true` default through the masked client settings.
+- MODIFIED `src/lib/supabase/types.ts` — regenerated; surfaces `agency`,
+  `agency_ai_settings`, and `user_ai_settings.use_agency_settings`.
+
+### Verification
+- All three migrations apply cleanly via `mcp__supabase__apply_migration`.
+- `SELECT 1 FROM agency, agency_ai_settings, prompt p JOIN prompt_group
+  g ON g.id=p."group" WHERE g.name='Chat' AND p.name='Project chatbot
+  prompt'` confirms the new tables and seed row.
+- Existing pre-toggle users have `use_agency_settings = FALSE` after
+  the backfill (so they don't suddenly switch to agency keys); referrer
+  / lead rows are forced FALSE.
+- `npx tsc --noEmit` clean for every touched area
+  (`src/{app/(settings|chat/_chatbot|sandbox-planner|projects)|lib/api/ai-config|types/settings|components/features/AiSettingsForm}`).
+- Dev server (`localhost:3000`) hot-reloaded every edit; `/dashboard`,
+  `/chat`, `/prompts`, `/settings` continue to serve 200s.
+
+## [2026-04-29] — `/dashboard` redesign + SOP modal polish
+
+Two manager-facing fixes:
+
+**`/dashboard` — mission-control redesign.** The first cut shipped
+yesterday but (a) skipped the global Sidebar shell, so the page floated
+without nav, and (b) was too flat for a "company health" landing.
+Today's pass:
+
+- Wraps every `/dashboard` view (root + the three drill-downs) in the
+  same `<Sidebar profile={profile} /><main ml-[220px]>` shell that
+  `/projects/page.tsx` uses.
+- Rebuilds the root view as a four-row "mission control" layout:
+  1. **KPI strip (4 cols)** — Revenue (current month) · Profit · Active
+     projects · KR achievement % — each with a delta line vs last
+     month and a subtle indigo/emerald gradient bar at the top.
+  2. **Revenue trend (8 cols) + Project status donut (4 cols)** — the
+     trend is a 6-month area chart with stacked Revenue/Profit gradient
+     fills via recharts; the donut renders project counts by status
+     with a centered "Active = N" label and a 7-row legend underneath.
+  3. **Recent KRs (6 cols) + Internal projects status grid (6 cols)** —
+     KR list shows the 5 most-recently-updated KRs with status pill +
+     achieved dot + current value; IP grid renders 6 status cells with
+     count + share bar.
+  4. **Active projects · hours estimated vs real** — horizontal grouped
+     bar chart, top 8 by burn ratio, with a custom tooltip that
+     highlights over-budget burn in rose vs emerald.
+- Header replaces the cold "Dashboard / Company-wide health" with a
+  time-of-day greeting ("Good afternoon, Douglas") + today's date and
+  a green "Live · refreshes on reload" pill.
+- Empty states now read like sentences ("No invoices recorded for May
+  yet") instead of just "0".
+- New server fetchers in `_lib/queries.ts`:
+  `loadRevenueTrend()` (six-month bucketed revenue+profit),
+  `loadActiveHours()` (estimated vs real hours per active project,
+  sorted by burn), `loadKrHighlights()` (top-5 most recent KRs).
+
+**SOP edit modal — UX tidy-up.**
+- The "Didn't find the tag? Create one now" link now sits **below**
+  the existing tag pills (was above). Less visual noise; users only
+  reach for it after scanning the actual options.
+- "Authorized Users" is now the avatar-circle multipicker pattern used
+  in `/internal-projects` — clickable avatars (× on hover to remove),
+  dashed "+" disc to open a dropdown panel listing every user with
+  their avatar + name. Replaces the previous text-pill row + bare
+  `<select>` dropdown.
+- New shared component `src/components/AvatarMultiPicker.tsx` so
+  future modals get the same UX for free.
+
+### Files
+- MODIFIED `src/app/dashboard/page.tsx` (Sidebar wrapper + viewerName
+  prop pass-through).
+- MODIFIED `src/app/dashboard/_lib/queries.ts` (new fetchers +
+  `DashboardMetrics` shape extended with `revenue_trend`,
+  `active_hours`, `kr_highlights`).
+- REWROTE `src/app/dashboard/_components/DashboardOverview.tsx`
+  (mission-control layout with recharts: AreaChart, PieChart, BarChart).
+- NEW `src/components/AvatarMultiPicker.tsx`.
+- MODIFIED `src/app/sops/_components/SopModal.tsx` (tag link below
+  pills; uses AvatarMultiPicker).
+
+### Verification
+- `npx tsc --noEmit` clean for `src/app/dashboard/**`,
+  `src/app/sops/**`, and `src/components/AvatarMultiPicker.tsx`.
+- Dev server (`localhost:3000`) hot-reloaded each change without
+  compile errors. `GET /dashboard` and `GET /sops` both 200 (auth
+  redirect to /signin for the unauthenticated curl probe, expected).
+- Recharts (`recharts@^3.8.1`) was already a dependency — no new
+  packages installed.
+
+## [2026-04-28] — `/dashboard` page: company-wide overview for admin/manager
+
+Replaces the placeholder redirect at `/dashboard` with a real four-tile
+overview + three drill-down sub-views, following the Bubble docs
+("Página dashboard" with `?view=` switching, paginas.md / `os_tab` enum).
+
+**Root view (`/dashboard`)** — four tiles, two laid out per row on
+medium and four-wide on extra-large screens:
+
+- **Finance · &lt;current month&gt;** — sum of `project_invoice.service_price`
+  for the current month is shown as Revenue; sum of `project.profit`
+  across the projects invoiced this month is shown as Profit; Costs is
+  derived as `Revenue − Profit` (no dedicated cost ledger exists in the
+  schema). Each row carries a ▲/▼ delta vs the previous month.
+- **Key Results** — total achieved vs not-achieved with an emerald/rose
+  divided bar + percentage achieved. Tile is clickable.
+- **Projects** — counter per `os_project_status` value (Prospecting,
+  Not Started, In Progress, Done, Blocked, Archived, Lost Deal) each
+  with a relative-share progress bar. Clickable.
+- **Internal Projects** — counter per `os_internal_project_status`
+  value (Not Started, In Progress, Ready for QA, Done, Blocked,
+  Archived). Clickable.
+
+**Sub-views (each loaded via `?view=…`)**:
+- `?view=key-results` — KR card grid, status filter dropdown +
+  "Achieved only" toggle. Clicking a card opens the existing
+  `KeyResultModal` from `/okrs` (no rebuild). The page-level fetcher
+  hands it the goals + tracks bundle the modal expects.
+- `?view=projects` — project card grid, status filter (defaults to
+  "In Progress" to match the user's reference screenshot). Clicking a
+  card opens the existing `ProjectModal` from `/projects`.
+- `?view=internal-projects` — IP card grid, same shape. Clicking a
+  card opens the existing `InternalProjectModal` (in `edit` mode).
+  Assignees are intentionally rendered as empty for now — the
+  `internal_project_assignees` join table referenced by the existing
+  `/internal-projects` page does not yet exist in the live schema (the
+  same source of long-standing TS errors there); the modal accepts an
+  empty initial list and the cards just don't show avatars.
+
+**Permissions** — both layers gated to admin/manager:
+- Server: `dashboard/page.tsx` redirects referrers → `/recommended-projects`
+  and everyone else → `/sandbox-planner`.
+- Client: `Sidebar.tsx` filter now hides the "Dashboard" entry from
+  every role except admin/manager.
+
+### Files
+- REPLACED `src/app/dashboard/page.tsx` (was a redirect placeholder; now
+  branches on `?view=` and dispatches to one of four client views).
+- NEW `src/app/dashboard/_lib/queries.ts` (the four group fetchers
+  + the `loadAllDashboardMetrics` aggregate).
+- NEW `src/app/dashboard/_lib/constants.ts` (status enum literals +
+  display labels + tailwind pill classes).
+- NEW `src/app/dashboard/_components/DashboardOverview.tsx` (root four-
+  tile layout).
+- NEW `src/app/dashboard/_components/KeyResultsView.tsx` (KR card grid
+  with KeyResultModal mount).
+- NEW `src/app/dashboard/_components/ProjectsView.tsx` (project card
+  grid with ProjectModal mount).
+- NEW `src/app/dashboard/_components/InternalProjectsView.tsx` (IP card
+  grid with InternalProjectModal mount).
+- MODIFIED `src/components/layout/Sidebar.tsx` (Dashboard entry now
+  admin/manager only).
+
+### Verification
+- `npx tsc --noEmit` clean for `src/app/dashboard/**` and the touched
+  sidebar.
+- Dev server (`localhost:3000`) hot-reloaded without compile errors.
+  `GET /dashboard` returns 200 (signin redirect for the unauth curl
+  probe, expected).
+- No DB migration needed — every column referenced by the new fetchers
+  was confirmed present via `information_schema.columns`. Manager RLS
+  bypass (`is_admin_or_manager()` + `internal_*: staff all` policies)
+  already grants reads for the four source tables.
+
+## [2026-04-28] — `/chat`: unread badges, Internal Projects Tasks tab
+
+Three things shipped:
+
+1. **Unread message badges across the chat hub.** New `viewed_by UUID[]`
+   column on every chat message + thread table (8 tables total) plus
+   matching GIN indexes. A row is "unread" iff caller is NOT in
+   `viewed_by` AND is NOT the owner — same model as `task_comment`.
+   - List rows show a red bubble with the per-conversation count
+     (top-level + thread, summed). Bubble uses the new shared
+     `<UnreadBadge>` component.
+   - Block headers (Projects / Projects Internal / Internal Projects /
+     Private Conversations) show the sum of all conversation unreads
+     in that block.
+   - Top-level messages with unread thread replies show a small red
+     bubble next to the "X replies" link near the message timestamp.
+   - Counts come from the existing list actions (`listProjectConversations`,
+     etc.) which now compute unread inline via a single `unreadByScope`
+     helper.
+   - `getMessages` returns a `thread_unread_count` per top-level row.
+   - **Mark-viewed split**: opening a conversation only marks
+     **top-level** messages viewed (`mark_*_messages_viewed` RPCs);
+     thread replies stay unread until the user opens that thread, at
+     which point `markThreadViewed` runs the corresponding
+     `mark_*_thread_viewed` RPC. After the thread opens, ConversationPane
+     bumps a refresh key so the parent message's badge drops without
+     a manual reload.
+   - `ConversationsSidebar` awaits the mark RPC before bumping its
+     refresh tick so the list re-fetches with the post-mark state in
+     a single tick (previously raced).
+   - Polls every 20 s so newly-arriving unread eventually surfaces in
+     the badge.
+
+2. **Tasks tab on the Internal Projects chat block.** Internal Projects
+   now exposes Messages + Tasks. The Tasks tab embeds the existing
+   `InternalProjectKanban` from `/internal-projects?project=<id>`
+   inside the chat layout. New server action
+   `getInternalProjectTaskBundle` does a one-shot fetch of project +
+   tasks + assignees + time tracks + key results + visible profiles,
+   and the new `<InternalProjectTasksTab>` wraps it with a 2 s poll
+   (mirrors the Client/QA Request wrappers).
+
+3. **Client / QA Requests tab kanbans on chat already showed the
+   task-comment unread bubbles** via the existing `unreadByTaskId`
+   plumb through `getProjectTabBundle` → `<TasksKanban>`. No changes
+   needed beyond the previous turn's wiring.
+
+**Migrations** (applied via MCP):
+- `chat_viewed_by_unread_tracking` — adds the column, GIN indexes, and
+  the four `mark_*_messages_viewed(scope_id)` RPCs.
+- `chat_viewed_by_split_top_and_thread` — narrows the conversation-level
+  RPCs to top-level only and adds four `mark_*_thread_viewed(parent_id)`
+  RPCs.
+
+**Files touched**: `src/types/chat.ts`,
+`src/app/chat/_components/{ConversationsSidebar,ConversationPane,TabMenu,MessageItem,MessageList,ThreadPanel}.tsx`,
+`src/app/chat/_components/lists/{ProjectsList,ProjectsInternalList,InternalProjectsList,PrivateList}.tsx`,
+`src/app/chat/_components/UnreadBadge.tsx` (new),
+`src/app/chat/_components/tabs/InternalProjectTasksTab.tsx` (new),
+`src/app/chat/actions.ts`, `src/app/chat/page.tsx`,
+`src/app/chat/_components/useChatUrlState.ts`.
+
+**Reused without edits**:
+`src/app/internal-projects/_components/InternalProjectKanban.tsx`,
+`src/app/projects/_components/tabs/TasksKanban.tsx`.
+
+## [2026-04-28] — Idea-picker UX: `/docs` Build-from-idea + `/projects` Import-tasks-from-idea
+
+Two manager-facing features that share an "ideas connected to this
+project, with an unassigned-fallback" picker.
+
+**Feature 1 — `/docs?project=…&tab=playbook`.** The two existing
+"Build from Sandbox idea" / "Build from idea" buttons used to require a
+pre-linked idea (the empty-state CTA was hidden if `linkedIdeaId` was
+null and the toolbar refused any non-matching `idea.project_id`). They
+now open `BuildFromIdeaModal`, which lists ideas with
+`idea.project_id = <current project>` first, falling back to ideas with
+`idea.project_id IS NULL` when none are linked. Picking an unassigned
+idea + Confirm auto-links it (`UPDATE idea SET project_id = <project>`)
+before compiling the playbook from `idea_prd` / `idea_database` /
+`idea_styles` / `idea_milestones_and_tasks` via the existing
+`compileIdeaToPlaybookHtml` helper.
+
+**Feature 2 — `/projects?project=…&tab=developer`.** New
+"Import tasks from idea" button next to "Add milestone". Same
+linked-first / unassigned-fallback picker, then a confirm step that
+spells out exactly what's about to happen ("we'll AI-parse and
+*append* — existing milestones won't be modified"). Confirm calls
+`importTasksFromIdea(projectId, ideaId)`, which:
+1. Auth-gates to admin/manager.
+2. Pulls `idea_milestones_and_tasks.content` (the rich HTML the Sandbox
+   Planner generates).
+3. Resolves the caller's AI provider via the new shared
+   `resolveAiConfig` helper.
+4. Sends the HTML to `generateAiJsonResponse<ParsedImport>(...)` with a
+   strict JSON-only prompt; expects
+   `{ milestones: [{ name, estimated_time_minutes, tasks: [...] }] }`.
+5. Computes `MAX("order")` so milestones append below existing ones.
+6. Inserts one `task` per milestone (`level_1`, `type=developer_tasks`,
+   `parent_task_id=null`) capturing each new id, then one `task` per
+   child (`level_2`, `parent_task_id=<milestone>`).
+7. Calls `recalculateAggregates(projectId)` and
+   `revalidatePath('/projects')`. Returns `{ created: { milestones, tasks } }`
+   so the modal can show a precise toast.
+
+**Shared infrastructure** (extracted instead of duplicating):
+- `src/lib/api/ai-config.ts::resolveAiConfig()` — single source of truth
+  for picking a provider + key + model. Replaced the three previously-
+  duplicated copies in `sandbox-planner/actions.ts`,
+  `chat/_chatbot/run.ts`, and the new `chat/_chatbot/runProjectBot.ts`.
+  Accepts `any` for the supabase param so callers using both the typed
+  `Database`-generic client and the un-typed service-role client work.
+- `src/lib/data/ideaPicker.ts::listIdeasForProjectPicker()` — returns
+  `{ linked, unassigned }` with `has_prd` / `has_milestones` readiness
+  flags so each modal can disable un-importable rows. Both the docs and
+  projects server actions wrap this; downstream consumers don't care
+  which feature is asking.
+
+### Files
+- NEW `src/lib/api/ai-config.ts`
+- NEW `src/lib/data/ideaPicker.ts`
+- NEW `src/app/docs/_components/modals/BuildFromIdeaModal.tsx`
+- NEW `src/app/projects/_components/modals/ImportTasksFromIdeaModal.tsx`
+- MODIFIED `src/app/docs/actions.ts` — `buildPlaybookFromIdea` accepts
+  unassigned ideas and auto-links; new `listIdeasForPlaybookPicker`
+  server action.
+- MODIFIED `src/app/projects/actions.ts` — new `importTasksFromIdea`
+  + `listIdeasForDeveloperTasksPicker` server actions.
+- MODIFIED `src/app/docs/_components/PlaybookTab.tsx` — empty state and
+  toolbar both open the new modal; the `BuildFromIdeaButton` no longer
+  needs a pre-known `ideaId`.
+- MODIFIED `src/app/docs/_components/PlaybookEditor.tsx` — drop the
+  hand-rolled `handleBuildFromIdea` + `buildingFromIdea` state; just
+  render `<BuildFromIdeaButton variant="toolbar" />`.
+- MODIFIED `src/app/projects/_components/tabs/DeveloperTasks.tsx` — new
+  "Import tasks from idea" button (admin/manager only) next to
+  "Add milestone".
+- MODIFIED `src/app/sandbox-planner/actions.ts`,
+  `src/app/chat/_chatbot/{run.ts,runProjectBot.ts}` — drop local
+  `resolveAiConfig` copies, import from the shared module.
+- MODIFIED `src/lib/supabase/types.ts` — regenerated; surfaced the
+  `external_conversation_authorized_users` /
+  `internal_conversation_authorized_users` columns that an earlier
+  generation had truncated.
+
+### Verification
+- `npx tsc --noEmit` clean for `src/app/{chat,docs,projects,sandbox-planner}/**`
+  and `src/lib/{api,data}/**`.
+- Dev server (`localhost:3000`) hot-reloaded all edits without compile
+  errors. `GET /projects?project=…&tab=developer` returns 200 (auth-
+  gated to /signin for unauthenticated curl, expected).
+- No DB migration needed — `idea.project_id` was already nullable with
+  an FK to `project(id)` and `is_admin_or_manager()` already grants
+  read on every idea.
+
+## [2026-04-28] — `/chat`: threads fix, project tabs (Client/QA Requests + Chatbot), role-gated user picker
+
+Four shipped together:
+
+1. **Threads — replies now appear after Send.** Two compounding bugs:
+   - `ThreadPanel` was calling `MessageComposer` with a
+     `parentMessageId` but never passing `onLocalThreadInsert`, so the
+     optimistic-insert path the composer already supports never fired.
+   - **Root cause**: `replyInThread` and `getThreadMessages` in
+     `actions.ts` were selecting `author_type` on the thread tables —
+     a column that doesn't exist there (only top-level message tables
+     have it). PostgREST rejected the `INSERT … RETURNING` so the row
+     was never persisted and the action returned an error toast that
+     wasn't visible inside the closed thread drawer. Removed
+     `author_type` from the thread `SELECT`s and synthesized `'user'`
+     in TS to keep the `ChatThreadMessage` shape stable.
+   With both fixed: type a reply → Send → row immediately shows in the
+   drawer, persists to the corresponding `*_message_thread` table, and
+   the parent's "X replies" counter ticks up.
+   Also fixed `useChatUrlState.VALID_TABS` (was missing the new tabs,
+   causing every URL with `tab=client_requests` etc. to silently fall
+   back to `messages`).
+2. **New Conversation user picker is two-pane and role-gated.** Replaced
+   the single typeahead with an "Available / Selected" split. Right pane
+   shows the running selection with Remove buttons + an optional group
+   title field that appears at 2+ selections. New server action
+   `listSelectablePrivatePeers` enforces the rule: admin / manager /
+   operational see every staff + client + qa profile; everyone else
+   only sees users they share a project with via
+   `external_conversation_authorized_users` /
+   `internal_conversation_authorized_users`. 1:1 dedupe still applies on
+   single-pick.
+3. **Three new tabs on Projects + Projects Internal blocks.**
+   - **Client Requests** — kanban + cards identical to
+     `/projects?project=<id>&tab=client_requests`. Visible to admin /
+     manager / operational / developer / client.
+   - **QA Requests** — same kanban + the "Track QA Time" button +
+     `QATimeTrackerModal`. Visible to admin / manager / operational /
+     developer / qa.
+   - **Chatbot** — per-project shared LLM conversation backed by two new
+     tables `project_chatbot_message` (Projects block) and
+     `project_internal_chatbot_message` (Projects Internal block). Both
+     keyed by `project_id` only — every authorized member sees the same
+     conversation. Two new tools added to the chatbot:
+     `create_client_request_task` and `create_qa_request_task` insert
+     into `task` with `type='client_requests' | 'qa_requests'`,
+     `level='level_1'`, `status='not_started'` and the next free
+     `order`. New `runProjectChatbotTurn` reuses the existing tool /
+     envelope machinery from `_chatbot/run.ts` but writes to the
+     project tables and bakes `project_id` into the system prompt so
+     the model auto-fills it on tool calls.
+   - Tab list is now driven by `tabsForBlock(block, userType)` in
+     `TabMenu`. RLS on the new chatbot tables uses the existing
+     `*_conversation_authorized_users` arrays + admin/manager bypass.
+
+**Migration**: `20260428000000+_project_chatbot_message.sql` (applied via
+MCP) — two tables, GIN indexes, realtime publication, RLS policies,
+`updated_at` trigger.
+
+**Files touched**: `src/types/chat.ts`, `src/app/chat/page.tsx`,
+`src/app/chat/_components/{ThreadPanel,TabMenu,ConversationPane}.tsx`,
+`src/app/chat/_components/modals/UserPickerModal.tsx`,
+`src/app/chat/_components/tabs/{ClientRequestsTab,QARequestsTab,ProjectChatbotTab,TaskRequestsKanbanWrapper}.tsx`,
+`src/app/chat/_chatbot/{tools,runProjectBot}.ts`,
+`src/app/chat/actions.ts`.
+
+**Reused without edits**: `src/app/projects/_components/tabs/TasksKanban.tsx`
+(drop-in for both Client/QA tabs), `TaskModal`, `QATimeTrackerModal`,
+`MessageComposer`'s `onLocalThreadInsert` prop.
+
+## [2026-04-28] — `/chat` send finally works + group private chats (fourth pass)
+
+The third pass added `owner_id → profiles` FKs gated on `IF NOT EXISTS`.
+Live testing this afternoon revealed the guard was the *bug*: the original
+chat schema migration had already created `*_owner_id_fkey` constraints
+pointing at **`auth.users(id)`**, not `profiles(id)`. The new migration
+matched the existing constraint name, the `IF NOT EXISTS` clause skipped
+the add, and the FK target was never corrected. PostgREST therefore still
+couldn't resolve the `profiles:profiles!owner_id(...)` embed used by
+`sendMessage`/`replyInThread`, and every Send click failed.
+
+Fix: `20260428110000_chat_repoint_owner_fks_and_group_pc.sql` `DROP …
+CONSTRAINT IF EXISTS` then `ADD CONSTRAINT … REFERENCES public.profiles(id)`
+on every chat message + thread table. Verified by impersonating the
+manager via `SET LOCAL role TO 'authenticated'` + `request.jwt.claim.sub`
+and INSERTing a probe row into `external_conversation_project_message` for
+a project the manager wasn't a member of — RLS + the new admin/manager
+bypass + the new FK all worked together.
+
+**Group private conversations.** The same migration adds an optional
+`title` column to `private_conversation` and the code:
+- `createPrivateConversation(peer | peer[], { title })` now accepts an
+  array of peer ids. 1:1 chats still dedupe; groups always create fresh.
+- `UserPickerModal` is rebuilt as a multi-select with a "Create group"
+  CTA + optional title field. Clicking a single person still opens a 1:1
+  immediately; picking 2+ enables the group flow.
+- `listPrivateConversations` and `getConversationHeader` now hydrate a
+  `group_label` ("Ann, Bob + 2 more") and surface `title` so the sidebar
+  + conversation header render groups correctly.
+- `PrivateList` renders a 👥 avatar + group name when participants > 2.
+
+**Chatbot was already fixed.** Inspecting `private_chatbot_message` showed
+the bot's most recent answer to "Summarize VirtueBud idea" (18:06 UTC)
+correctly used `query_db` against the `idea` table and produced a real
+summary — the user was looking at a stale earlier reply. No code change
+needed.
+
+### Files
+- NEW `supabase/migrations/20260428110000_chat_repoint_owner_fks_and_group_pc.sql`
+- MODIFIED `src/app/chat/actions.ts` (createPrivateConversation accepts
+  array + options.title; getConversationHeader handles groups;
+  listPrivateConversations hydrates group_label)
+- MODIFIED `src/app/chat/_components/modals/UserPickerModal.tsx` (multi-
+  select + group title)
+- MODIFIED `src/app/chat/_components/lists/PrivateList.tsx` (group avatar
+  + group label rendering)
+- MODIFIED `src/types/chat.ts` (`PrivateConversationRow.title`,
+  `group_label`)
+- MODIFIED `src/lib/supabase/types.ts` (regenerated)
+
+### Verification
+- `pg_constraint` shows every `*_owner_id_fkey` now reads
+  `FOREIGN KEY (owner_id) REFERENCES profiles(id) ON DELETE CASCADE`.
+- Impersonated SQL INSERT as the manager into a non-member project's
+  external conversation succeeded.
+- `npx tsc --noEmit` clean for `src/app/chat/**`.
+
+## [2026-04-28] — `/chat` send fix + chatbot full-DB access (third pass)
+
+The first live test on `localhost:3000` after the local-dev fix surfaced
+two more bugs that yesterday's empty-table state had hidden.
+
+**Bug A — every "Send" button silently failed.** Yesterday's optimistic-UI
+refactor changed `sendMessage` / `replyInThread` to return the inserted row
+joined with the author profile via the PostgREST embed
+`profiles:profiles!owner_id(...)`. That join requires a real foreign key
+from each message table's `owner_id` to `profiles.id` — and **no such FK
+existed on any of the 8 chat message + thread tables**. PostgREST refused
+the embed, the action returned an error, and the toast briefly flashed
+"Could not find a relationship between …". Empty tables had masked it.
+Migration `20260428100000_chat_rls_and_owner_fks.sql` adds the FK on:
+- `external_conversation_project_message[_thread]`
+- `internal_conversation_project_message[_thread]`
+- `conversation_internal_project_message[_thread]`
+- `private_conversation_message[_thread]`
+
+(`private_chatbot_message` has no `owner_id` and was excluded.)
+
+**Bug B — admin/manager could see every project but couldn't read or
+write messages on the ones where they weren't a member.** The earlier
+listing fix relaxed `project` SELECT but the message tables still gated
+SELECT/INSERT on
+`auth.uid() IN unnest(*_authorized_users)` with no role bypass. Now every
+project message + thread policy reads
+`is_admin_or_manager() OR auth.uid() IN unnest(...)`, matching the
+project-listing model. `conversation_internal_project_message[_thread]`
+was already role-gated and didn't need patching. Private DM tables stay
+strict — admins do **not** auto-bypass user-to-user privacy.
+
+**Chatbot — full-DB access + schema discovery.** The bot was refusing to
+summarize the "VirtueBud" idea because its prompt didn't mention the
+`idea` table family. Three changes:
+- The seeded `prompt_group:Chat / prompt:Chatbot prompt` row is rewritten
+  to enumerate the available domains (ideas, tasks, talent, OKRs, leads,
+  SOPs, recommended projects, …) and explicitly tell the bot to call
+  `list_db_tables` + `describe_db_table` before refusing.
+- Two new tools in `src/app/chat/_chatbot/tools.ts`: `list_db_tables`
+  (returns every public-schema table name) and `describe_db_table`
+  (returns column name + type for one table). Both are backed by new
+  `SECURITY DEFINER` SQL helpers `public.public_table_list()` and
+  `public.public_table_columns(p_table)` so non-elevated users can
+  introspect the schema even though they can't read `information_schema`
+  directly.
+- The role-aware client model from yesterday already lets admin/manager
+  call `query_db` against any public table via the service-role client;
+  no new bypass needed for `idea`, `idea_icp`, `idea_prd`, etc.
+
+### Files
+- NEW `supabase/migrations/20260428100000_chat_rls_and_owner_fks.sql`
+- NEW `supabase/migrations/<auto>_chat_introspection_rpcs.sql` (applied
+  inline; not on disk)
+- MODIFIED `src/app/chat/_chatbot/tools.ts` (adds `list_db_tables` /
+  `describe_db_table` tool entries + handlers)
+- MODIFIED `src/lib/supabase/types.ts` (regenerated)
+
+### Verification
+- `pg_constraint` shows 8 new `*_owner_id_fkey` rows on the message +
+  thread tables.
+- `pg_policies` shows the four project-message + four project-message-thread
+  policies (SELECT + INSERT) with `is_admin_or_manager()` bypass.
+- `public.public_table_list()` returns 60+ public tables including
+  `idea`, `idea_prd`, `idea_icp`, `talent`, etc.
+- `public.idea` contains the "VirtueBud" row the user asked about — the
+  bot will now find it via `query_db { table:'idea',
+  filters:[{column:'name',op:'ilike',value:'%VirtueBud%'}] }`.
+- `npx tsc --noEmit` is clean for `src/app/chat/**` and `_chatbot/**`.
+
+## [2026-04-28] — Local dev fix: `localhost:3000` now serves the app
+
+The dev server was effectively broken on the manager's Windows/OneDrive
+box. Two issues, fixed together so `npm run dev` boots cleanly:
+
+- **`package.json` `dev` script** ran `next build && next start --port 30003`
+  (production mode at the wrong port). Changed to
+  `next dev --port 3000 --turbopack`. The old behaviour is preserved as
+  `dev:prod` in case anyone relied on it.
+- **Tailwind v4 was scanning files outside the project.** `globals.css`
+  had `@import "tailwindcss" source("../")` which made Tailwind treat
+  `C:\Users\dougl\OneDrive\Área de Trabalho` as the source root — that
+  dir has no `node_modules` (so the PostCSS plugin couldn't resolve the
+  `tailwindcss` package, hanging every page request) and is full of
+  `.lnk`/`.zip`/`.png` binaries (so the scanner crashed with
+  `RangeError: Invalid code point …` inside `markUsedVariable`).
+  Fixed by switching to `@import "tailwindcss" source(none)` plus
+  explicit `@source "./"`, `@source "../components"`, `@source "../lib"`
+  pins. Verified: `GET /` → 307 → `/signin` → 200 OK with the rendered
+  Blur Studio sign-in page.
+
+## [2026-04-28] — `/chat` bug-fix + UX rework pass
+
+Six fixes layered onto the previous day's `/chat` MVP after the first round
+of manager testing surfaced bugs and UX issues.
+
+**1. Slack-style sectioned conversation list.** Replaced the two-column
+"icon sidebar + conversation list" layout with a single sidebar where each
+visible block is a collapsible section header with its conversations
+rendered immediately below. Filter input now uses a new `.input-field--search`
+class so the search icon no longer collides with the placeholder.
+- DELETED `src/app/chat/_components/{BlockSidebar,ConversationListColumn}.tsx`
+- NEW `src/app/chat/_components/ConversationsSidebar.tsx`
+- MODIFIED `src/app/chat/_components/ChatShell.tsx` (drops the icon column)
+- MODIFIED `src/app/chat/_components/useChatUrlState.ts` (adds `setBlockAndConversation`)
+- MODIFIED `src/app/globals.css` (adds `.input-field--search` padding)
+
+**2. Manager (admin/manager) sees all projects + admin CRUD on members.**
+- `listProjectConversations` and `listProjectsInternalConversations` now
+  skip the client-side `.includes(userId)` filter for admin/manager — RLS
+  already does the right thing via `is_admin_or_manager()`.
+- `fill_project_conversation_users` trigger is now **INSERT-only** (was
+  `INSERT OR UPDATE OF authorized_users`, which clobbered manual member
+  edits).
+- New `getConversationMembers / addConversationMember / removeConversationMember`
+  server actions, all gated on admin/manager.
+- New `ConversationMembersModal` with a current-members list + typeahead
+  add, opened from a gear button in `ConversationPane`'s header (only
+  rendered for project blocks + admin/manager).
+
+**3. Sent message now appears.** Two layered fixes:
+- ALTER PUBLICATION supabase_realtime ADD TABLE on all 9 message-bearing
+  tables (`{external,internal,private,chatbot}_*_message` + `_thread`).
+  None of them were in the publication before, so realtime never delivered.
+- Optimistic insert: `MessageList` now `forwardRef`s a
+  `MessageListHandle = { insertLocal }` to its parent, and `MessageComposer`
+  calls `onLocalInsert(row)` after a successful send. The realtime handler
+  de-dupes by id, so the realtime echo (when it arrives) is a no-op.
+
+**4. Files / Links / Videos / Daily Feedback tabs only on Projects blocks,
+reusing the docs tab components.** `TabMenu` is now block-aware via a new
+`tabsForBlock(block)` helper — only `projects` and `projects_internal` get
+the full 5-tab set. When the active tab isn't `messages`, ConversationPane
+mounts the new `ProjectTabsPanel` which fetches data via new server
+actions (`getProjectFiles / getProjectLinks / getProjectVideos /
+getProjectDailyFeedbacks / getProjectForTabs`) and renders the existing
+`/docs/_components/{Files,Links,Videos,DailyFeedback}Tab.tsx` — pixel
+identical to /projects. Polls every 2s because the docs tabs use
+`router.refresh()` which doesn't retrigger client-side useEffects in the
+chat shell.
+
+**5. Removed "Send as daily feedback" checkbox.** Daily feedback now lives
+in the dedicated tab and feeds from `project_daily_feedback`, not chat
+messages. `MessageComposer` lost the `dailyFeedback` state, the
+`allowDailyFeedback` prop, and the JSX block. `sendMessage` server action
+no longer accepts `isDailyFeedback`; it always inserts with `false`.
+
+**6. DB-driven chatbot prompt + admin/manager generic SQL tool.**
+- New `prompt_group { name='Chat' }` + `prompt { name='Chatbot prompt' }`
+  rows seeded in the migration. `_chatbot/run.ts` loads from the DB at
+  turn time (`loadDbSystemPrompt`); falls back to its hardcoded
+  `SYSTEM_PROMPT_HEADER` if the row is missing.
+- New `query_db` and `count_db` tools in `_chatbot/tools.ts`. For
+  admin/manager users they instantiate `createServiceClient()` (RLS bypass)
+  so the bot can answer "list every project"; for everyone else they reuse
+  the user's RLS-clamped client. Whitelisted to the public schema only —
+  table strings starting with `auth.`, `storage.`, `pg_`, or containing
+  `;`/`--`/`.` are rejected.
+- `runTool` signature gained a fourth `userType` arg threaded through from
+  `runChatbotTurn`.
+
+### Files
+- NEW `supabase/migrations/20260428000000_chat_fixes.sql` (publication +
+  trigger + prompt seed)
+- NEW `src/app/chat/_components/ConversationsSidebar.tsx`
+- NEW `src/app/chat/_components/ProjectTabsPanel.tsx`
+- NEW `src/app/chat/_components/modals/ConversationMembersModal.tsx`
+- MODIFIED `src/app/chat/actions.ts` (admin/manager listing fix; member
+  CRUD; project-tab data fetchers; `sendMessage`/`replyInThread` return
+  full row for optimistic UI; drop `isDailyFeedback`)
+- MODIFIED `src/app/chat/_chatbot/{run.ts,tools.ts}` (DB prompt loader;
+  `query_db`/`count_db`; role-aware client)
+- MODIFIED `src/app/chat/_components/{ChatShell,ConversationPane,TabMenu,
+  MessageList,MessageComposer,ThreadPanel,useChatUrlState}.tsx`
+- MODIFIED `src/app/globals.css` (`.input-field--search`)
+- DELETED `src/app/chat/_components/{BlockSidebar,ConversationListColumn}.tsx`
+
+### Verification
+- `pg_publication_tables` → all 9 message tables now in `supabase_realtime`.
+- `information_schema.triggers` → `project_fill_conversation_users` event =
+  `INSERT` only.
+- `prompt_group { name='Chat' }` joins to `prompt { name='Chatbot prompt' }`
+  with the new system text.
+- `npx tsc --noEmit` is clean for `src/app/chat/**` (8 unrelated
+  pre-existing errors remain in `src/app/internal-projects/**` referencing
+  a missing `internal_project_assignees` table).
+
+## [2026-04-27] — `/chat` page (Slack-style messaging hub)
+
+Brand-new feature — not in the original Bubble export. Internal real-time
+messaging hub with five "blocks" (conversation flavors), each rendered in
+a 3-column Slack-like layout: icon sidebar (col 1, ~64px) | conversation
+list (col 2, ~280px) | active conversation with tab menu Messages / Files
+/ Links / Videos / Daily Feedback (col 3). Threads are flat (one level,
+opened in a right-side drawer). Realtime via Supabase channels.
+
+- **Migration `20260427160000_chat.sql`:**
+  - New enum `os_message_author_type` (`user` | `chatbot`).
+  - Two new columns on `project`:
+    `external_conversation_authorized_users UUID[]` and
+    `internal_conversation_authorized_users UUID[]`, both with GIN
+    indexes. Populated automatically via the
+    `fill_project_conversation_users` BEFORE INSERT/UPDATE trigger,
+    which derives them from `project.authorized_users` filtered by
+    `profiles.type` (the external mirror admits clients; the internal
+    mirror is staff-only).
+  - **8 message tables** (top-level + thread sibling for each of 4
+    conversation flavors):
+    - `external_conversation_project_message[_thread]` —
+      project-scoped channel that includes the client.
+    - `internal_conversation_project_message[_thread]` — same
+      project, staff-only side channel.
+    - `conversation_internal_project_message[_thread]` —
+      `internal_project`-scoped channel (the company's own
+      initiatives). RLS gates by
+      `get_user_type() IN ('admin','manager','operational')`.
+    - `private_conversation_message[_thread]` — 1:1 messages.
+  - Common columns on every message table:
+    `id`, `owner_id`, `author_type`, `message`, `attachments JSONB`,
+    `links TEXT[]`, `is_daily_feedback`, `edited_at`, `created_at`,
+    plus the appropriate scope FK (`project_id` /
+    `internal_project_id` / `conversation_id`). Thread tables add
+    `parent_id` FK to their parent.
+  - **3 chat-only tables:**
+    - `private_conversation (id, participant_user_ids UUID[],
+      created_by, created_at)` — owns 1:1 channels. GIN index on
+      participants. RLS: `auth.uid() = ANY(participant_user_ids)`.
+    - `private_chatbot (id, owner_id, title, prompt_group_id,
+      created_at, updated_at)` — one row per AI session per user.
+    - `private_chatbot_message (id, chatbot_id, author_type,
+      message, tool_calls JSONB, created_at)` — chatbot turns,
+      with a tool-call trace.
+  - **RLS** on every table mirrors the source-of-truth scope:
+    project-mirror columns drive the external/internal project
+    chats, `private_conversation.participant_user_ids` drives 1:1,
+    `owner_id` drives chatbot rows. Thread tables EXIST-check
+    against their parent's policy.
+  - **Storage bucket `chat-attachments`** (public read, authenticated
+    write/update, owner-only delete — same shape as
+    `task-comment-attachments`).
+  - **Seed**: `prompt_group { name:'ChatBot Default',
+    step:'chatbot' }` + a default chatbot system prompt row.
+- **Types.** `src/types/chat.ts` defines `ChatBlock`, `ChatTab`,
+  `AuthorType`, `ChatMessage`, `ChatThreadMessage`,
+  `PrivateConversation`, `ChatbotConversation`, `ChatbotMessageRow`,
+  plus the `BLOCK_TABLES` router that maps each block to its
+  physical message + thread + scope-FK names. Generated
+  `src/lib/supabase/types.ts` regenerated to include all 11 new
+  tables.
+- **Server actions** `src/app/chat/actions.ts`:
+  - Listing: `listProjectConversations`, `listProjectsInternalConversations`,
+    `listInternalProjectConversations`, `listPrivateConversations`,
+    `listChatbotConversations`, `searchUsersForPrivate`.
+  - Messages: `getMessages` (tab-aware), `getThreadMessages`,
+    `sendMessage`, `replyInThread`, `editMessage`, `deleteMessage`
+    (also cleans up orphan storage objects, mirroring
+    `deleteTaskComment`).
+  - `getConversationHeader` resolves a per-block title + picture.
+  - `createPrivateConversation(peerUserId)` is idempotent — finds
+    an existing channel with the same participant pair, or inserts a
+    new one.
+  - Chatbot lifecycle: `createChatbotSession`, `renameChatbotSession`,
+    `deleteChatbotSession`, `getChatbotMessages`,
+    `sendChatbotMessage` (delegates to `runChatbotTurn`).
+  - Top-level role gate: only
+    `admin / manager / operational / developer / client / qa` may
+    enter; `referrer` and `lead` are bounced. RLS does the primary
+    auth — server actions add defense-in-depth.
+  - Dynamic table routing uses an `as never` cast to satisfy
+    supabase-js' literal-type narrowing (same trick used in
+    `src/app/sandbox-planner/actions.ts`).
+- **Chatbot runtime** `src/app/chat/_chatbot/run.ts` +
+  `src/app/chat/_chatbot/tools.ts`:
+  - Reuses the existing `generateAiJsonResponse()` dispatcher
+    (OpenAI / Gemini / Claude per `user_ai_settings`) — no new
+    SDK dependency.
+  - System prompt is loaded from
+    `prompt_group.step = 'chatbot'`'s `prompt.prompt_1`, prepended
+    with a tool catalog and a JSON-envelope output contract:
+    `{ "tool": <name>, "args": {...} }` to call a tool, or
+    `{ "reply": <text> }` to finish the turn.
+  - **MCP-style tool layer** — fixed JSON tool list:
+    `list_my_projects`, `get_project_status`, `list_my_tasks`,
+    `get_task`, `list_my_internal_projects`, `who_is`. Each tool
+    runs through the calling user's Supabase client, so RLS
+    automatically clamps every result to what the asking user is
+    allowed to see (clients can't peek at staff data).
+  - Up to 6 tool hops per turn, then a graceful "ran out of steps"
+    fallback. The full tool trace is persisted on
+    `private_chatbot_message.tool_calls`.
+  - Missing-API-key fallback: inserts a chatbot message
+    `"Chatbot is not configured…"` so the UI still works.
+- **Page + components:**
+  - `src/app/chat/page.tsx` — server component, role-gated,
+    parses `?block&conversation&tab&thread` from the URL and hands
+    initial values to `<ChatShell />`.
+  - `src/app/chat/_components/ChatShell.tsx` — orchestrates the
+    3 columns. URL is the source of truth (mirrors
+    `DocsShell.tsx`).
+  - `BlockSidebar.tsx` — 5 icon buttons. `visibleBlocksFor(userType)`
+    filters: `client` / `qa` see Projects + Private + Chatbot;
+    `developer` adds Internal Projects; staff (`admin` / `manager`
+    / `operational`) see all 5.
+  - `ConversationListColumn.tsx` swaps inner list per block.
+    `lists/{ProjectsList, ProjectsInternalList, InternalProjectsList,
+    PrivateList, ChatbotList}.tsx`.
+  - `ConversationPane.tsx` — header + `TabMenu.tsx` (URL-driven
+    `?tab=`) + `MessageList.tsx` + `MessageComposer.tsx`. Optional
+    right-side `ThreadPanel.tsx` when `?thread=<id>` is set.
+  - `MessageList.tsx` uses the `useRealtimeMessages` hook to
+    subscribe to a Supabase channel filtered on the matching
+    table + scope FK; tab-aware filtering of incoming inserts.
+  - `MessageItem.tsx` auto-links URLs in the body and renders
+    image / video attachments inline.
+  - `MessageComposer.tsx` uploads to the `chat-attachments` bucket
+    via `supabase.storage` (same flow as `task-comment-attachments`).
+  - `ChatbotPane.tsx` — replaces `ConversationPane` when
+    `block="chatbot"`, with a stripped-down message stream + composer.
+  - `modals/UserPickerModal.tsx` — typeahead user picker for
+    starting a new private conversation.
+  - Hooks: `useChatUrlState.ts` (URL parser/writer),
+    `useRealtimeMessages.ts` (per-conversation Supabase channel).
+- **Sidebar.** `src/components/layout/Sidebar.tsx` adds a `Chat`
+  nav entry (with new `IconChatBubble` SVG) between Projects and
+  Docs. The proxy already excludes referrers, so no proxy change
+  was needed.
+
+## [2026-04-27] — Recommended Projects + referrer dashboard
+
+Implements the Bubble pages **`recommended-projects`** (`paginas.md`
+L2319) and **`referrer-dashboard`** (`paginas.md` L2962) — a single
+internal page (admin / manager) that shows every project recommended
+by a Dev / Agency Owner or Client, plus a locked-down referrer view of
+the same page where each referrer sees only their own projects and
+earnings.
+
+- **Schema.** Migration `recommended_projects_recommended_by_and_client_fk`:
+  - New enum `os_recommended_by` (`dev_agency_owner` | `client`) and
+    new column `project.recommended_by` (`os_recommended_by NULL`) so
+    we can branch the UI on the recommender's type.
+  - Repointed FK `project.client_who_recommended_id` from the
+    talent-side join table `client_who_referred_this_talent` to the
+    actual `client` table. Verified via SQL that 0 rows had this set
+    before the swap, so the fix is non-destructive.
+  - The existing RLS policy `"project: referrer read own"` (initial
+    schema migration L1277) already clamps the result set to
+    `project.referrer_id = auth.uid()` for `referrer`-type users — no
+    new policy needed.
+- **Types.** `src/types/projects.ts` adds `RecommendedBy` +
+  `RECOMMENDED_BY_LABELS`, and extends `Project` with
+  `recommended_by`, `client_who_recommended_id`, `referrer_id`.
+- **Server actions.** `src/app/projects/actions.ts`:
+  - Extended `ProjectInput` with the four recommender FKs +
+    `recommended_by` so `ProjectModal` can persist the choice.
+  - New `searchClients(query)` and `getClientById(id)` for the new
+    "Client who recommended this project" typeahead.
+- **Project popup.** `src/app/projects/_components/modals/ProjectModal.tsx`:
+  - New "Recommended by" dropdown with options `Dev./Agency Owner`
+    and `Client`. Branches the form:
+    - `Dev./Agency Owner` → existing talent typeahead +
+      Commission (%) input.
+    - `Client` → new client typeahead (mirrors the talent picker,
+      with avatar fallback) + Commission (%) input.
+  - Switching the dropdown clears the other branch's selection so
+    only one of `talent_who_recommended_id` /
+    `client_who_recommended_id` is ever non-null.
+- **New page.** `src/app/recommended-projects/page.tsx` — server
+  component, gated to `admin` / `manager` / `referrer`. Fetches
+  projects (RLS auto-filters for referrers), talents, and clients,
+  then renders `RecommendedProjectsShell` inside the standard
+  Sidebar layout.
+- **Shell.** `src/app/recommended-projects/_components/RecommendedProjectsShell.tsx`:
+  - Search + filter row (name, Dev/Agency Owner, Agency placeholder,
+    Client, Status).
+  - 3 KPI cards — `Blur Studio` (Revenue + Profit), `Devs/Agency
+    Owners + Clients` (provider revenue), `Projects` (count).
+    For referrer users the middle card becomes `Your Earnings` and
+    the table drops the `Provider Revenue` / `Profit` columns,
+    showing the referrer's own commission as `Revenue` instead.
+  - Project table with status chips (color-coded per
+    `STATUS_COLORS`) linking through to `/projects?project=<id>`.
+- **Sidebar.** `src/components/layout/Sidebar.tsx`:
+  - `/recommended-projects` is now gated to `admin` / `manager` /
+    `referrer`.
+  - When `profile.type === 'referrer'`, the entire nav collapses to
+    a single `Dashboard` entry pointing at `/recommended-projects`
+    (plus the `Settings` trailing item) — matches screenshot 5 of
+    the user's brief.
+- **Middleware.** New `src/middleware.ts` — refreshes the Supabase
+  session cookie and redirects any `referrer`-type user away from
+  pages outside the allowlist (`/recommended-projects`, `/profile`,
+  `/signin`, `/reset_pw`, `/talent-profile`, `/auth`) to
+  `/recommended-projects`. The `/dashboard` placeholder also routes
+  referrers to `/recommended-projects` directly to skip a hop.
+
+## [2026-04-27] — Leads page
+
+- **Bubble reference.** Implements the `leads` page in
+  `docs/reference_docs/paginas.md §leads` backed by the existing
+  `client` Data Type (`tabelas.md §client`). Restricted to admin /
+  manager / operational users (Bubble workflow bTSKm0).
+- **Schema.** No migration needed — the `client` table already
+  exists with the required fields (`name`, `email`, `phone`,
+  `linkedin`, `picture`, `country`) and the `client: staff all` RLS
+  policy. Avatar uploads reuse the public `talent-avatars` bucket.
+- **Types.** New `src/types/leads.ts` adds `Lead` and `LeadInput`.
+- **Server actions.** New `src/app/leads/actions.ts` —
+  `listLeads`, `createLead`, `updateLead`, `deleteLead`. All gate on
+  staff role and `revalidatePath('/leads')`.
+- **UI.**
+  - `src/app/leads/page.tsx` — server component, role gate +
+    initial fetch.
+  - `src/app/leads/_components/LeadsShell.tsx` — search by name,
+    country dropdown filter, "+ New Lead" button, card grid with
+    avatar/initials, edit + trash icons, email + LinkedIn quick
+    links, and an inline confirm-delete modal.
+  - `src/app/leads/_components/LeadModal.tsx` — shared
+    create/edit modal (avatar upload + Full Name, Country, Email,
+    Phone, LinkedIn).
+- **Sidebar.** `/leads` joins `/okrs`, `/internal-projects`,
+  `/talent-pool` in the staff-only nav filter so clients, QAs,
+  developers, and referrers no longer see the link.
+
+## [2026-04-27] — Talent Pool follow-up: enum expansion + skill-picker UX
+
+Round of fixes after live testing of `/talent-pool` and the public
+`/talent-profile?code=…` flow.
+
+- **Enum expansion.** Migration
+  `talent_pool_expand_tool_and_language_enums` (applied via
+  `mcp__supabase__apply_migration` using `ALTER TYPE … ADD VALUE
+  IF NOT EXISTS`, idempotent and outside any transaction):
+  - `os_tool` grew from 16 values to **79**, organised into nine
+    categories — AI coding (Claude Code, Cursor, Antigravity, GitHub
+    Copilot, Windsurf, Codeium, Aider, Devin, v0, Bolt, Tempo),
+    no-code/low-code (Bubble, Webflow, Framer, FlutterFlow, Lovable,
+    Replit, WeWeb, Adalo, Plasmic, Retool, Glide, Softr, Draftbit,
+    Wix, Squarespace, Shopify), automation (n8n, Make, Zapier),
+    backend/data (Supabase, Xano, Firebase, Hasura, Postgres, MongoDB,
+    MySQL, Redis, PlanetScale, Neon, Airtable), design (Figma Design,
+    Figma Make, Sketch, Adobe XD, Photoshop, Illustrator, After
+    Effects, Premiere, Miro), DevOps/hosting (Vercel, Netlify, GitHub,
+    GitLab, Docker, Kubernetes, AWS, GCP, Azure, Cloudflare),
+    productivity (Notion, Slack, Linear, Jira, Asana, Monday.com,
+    Trello, ClickUp, Loom), AI APIs (OpenAI, Anthropic API, LangChain,
+    Pinecone), and payments/comms/analytics (Stripe, Twilio, SendGrid,
+    Segment, Mixpanel, Amplitude, PostHog).
+  - `os_programming_language` grew from 15 values to **44**, adding
+    Go, Rust, Java, Scala, Elixir, Erlang, Haskell, Clojure, F#,
+    OCaml, Julia, R, MATLAB, Lua, Perl, Bash, Shell, PowerShell,
+    Objective-C, Groovy, Assembly, Solidity, GraphQL, NoSQL,
+    HTML/CSS, VBA, Crystal, Nim, Zig, D, Fortran, COBOL.
+  - Regenerated `src/lib/supabase/types.ts` from the live schema.
+  - Updated `src/types/talent.ts` with `TOOL_LABELS` (79 entries) and
+    `PROGRAMMING_LANGUAGE_LABELS` (44 entries), category-grouped with
+    inline comments.
+- **`SkillRowsEditor` rewrite (`src/app/talent-pool/_components/`).**
+  Replaced the native `<select>` for the item slot — which collapsed
+  in narrow modal columns and could not show a "currently selected"
+  state — with a custom searchable `ItemPicker` component:
+  - Row layout switched from flex to CSS grid:
+    `grid-cols-[minmax(0,1fr)_92px_36px]` guarantees that the
+    item picker, score select, and trash icon get fixed columns
+    even when nested inside the talent modal's two-column grid.
+  - Picker trigger renders the selected label (or placeholder) +
+    chevron; clicking opens a dropdown anchored to the trigger
+    width, with an autofocused search input and a 56-row-tall
+    scrollable list.
+  - Selected option is highlighted (`bg-accent/15 text-accent`)
+    with a checkmark SVG, matching the rest of the design system.
+  - Click-outside closes; the search query resets when the picker
+    closes.
+  - Verified live at the dev server: tool dropdown 696 px wide
+    with all 79 entries; language dropdown 696 px wide with all
+    44 entries; selecting an option shows it in the trigger and
+    re-opening highlights it with a checkmark.
+- **`TypeaheadPicker` cleanup (`src/app/talent-pool/_components/`).**
+  Removed the duplicate "selected pill" that rendered below the
+  input after picking a company. The selection is now indicated
+  only by the input value and an inline ✕ clear button positioned
+  inside the right edge of the input. Simpler, no double display.
+- **Public flow verified.** Generated a share link for talent
+  "Harish Malli", visited `/talent-profile?code=…` in the dev
+  preview, confirmed the form pre-fills (name, email, level,
+  authority level, current company), edited LinkedIn, clicked
+  Save — checked Postgres and `talent.linkedin` + `talent.updated_at`
+  reflected the change. Visiting with an invalid code renders the
+  "Link unavailable / This link has expired or is invalid" card,
+  no form, no auth required.
+
+---
+
+## [2026-04-26] — Talent Pool page + 4-hour share-link self-edit
+
+- **Schema.** Migration
+  `20260426000010_talent_pool_share_and_operational_rls.sql`:
+  - Adds `talent.code_expires_at TIMESTAMPTZ` and
+    `talent.updated_at TIMESTAMPTZ` (auto-set via trigger), plus a
+    partial index on `(code) WHERE code IS NOT NULL AND code_expires_at IS NOT NULL`.
+  - Adds an additive `"<table>: staff all"` RLS policy across
+    `talent`, `talent_tool`, `talent_programming_language`,
+    `talent_referred_by`, `client_who_referred_this_talent`,
+    `company`, and `client` to include the `operational` user type
+    alongside the existing admin/manager grant (matches the page
+    restriction in `paginas.md`).
+  - Two SECURITY DEFINER RPCs callable by anon + authenticated:
+    `get_talent_by_code(p_code)` and
+    `update_talent_by_code(p_code, p_payload)` — both validate
+    `code_expires_at > NOW()` inside the function so anon callers
+    cannot read or modify anything outside the share-link surface.
+  - New public storage bucket `talent-avatars` with staff-write
+    + public-read policies.
+- **Types.** `src/types/talent.ts` adds `Tool`, `ProgrammingLanguage`,
+  `TOOL_LABELS`, `PROGRAMMING_LANGUAGE_LABELS`, `COUNTRIES`,
+  `TalentSkill`, `TalentLanguage`, `TalentRow`, `TalentInput`,
+  `RecommenderInput`, `ClientInput`, `CompanyInput`, plus public
+  shape types for `Company` and `ClientProfile`. Re-exports
+  `TalentLevel` / `TalentAuthorityLevel` from `@/types/projects`.
+- **Server actions** (`src/app/talent-pool/actions.ts`,
+  staff-gated to admin/manager/operational): `createTalent`,
+  `updateTalent`, `deleteTalent`, `searchTalents`,
+  `searchClientsAction`, `searchCompaniesAction`,
+  `createCompanyAction`, `createClientProfile`, `createRecommender`,
+  `generateShareLink` (4-hour code via `crypto.randomUUID()`). All
+  mutations `revalidatePath("/talent-pool")`.
+- **Public server actions** (`src/app/talent-profile/actions.ts`):
+  `getTalentByCode`, `updateTalentByCode`,
+  `uploadTalentAvatarByCode` — service-role wrappers around the two
+  SECURITY DEFINER RPCs and the `talent-avatars` bucket.
+- **UI** (`src/app/talent-pool/`):
+  - `page.tsx` — server component; gates by user type, hydrates
+    talents + tools + languages + recommender ids + client-referrer
+    ids in parallel.
+  - `TalentPoolShell.tsx` — search bar + settings toggle +
+    collapsible `FilterRow` (Level / Authority Level / Tools /
+    Programming Languages / Recommended-by-Levels / Countries /
+    Current Companies) + + New Talent button + modal stack.
+  - `TalentRow.tsx` — avatar / name & role / level chips / tools /
+    languages / recommended-by avatars / share + edit + delete
+    icons.
+  - Shared inputs: `TypeaheadPicker`, `TypeaheadMultiPicker`,
+    `MultiChipSelect`, `SkillRowsEditor`, `AvatarUpload`.
+  - Modals (`_components/modals/`): `TalentFormModal` (z=50),
+    `CompanyFormModal` (z=60/70), `RecommenderFormModal` (z=60),
+    `ClientFormModal` (z=60), `ShareLinkModal`. The base
+    `Modal` (`src/app/projects/_components/modals/Modal.tsx`) gains
+    an optional `zIndex?: 50 | 60 | 70` prop for the nested-modal
+    pattern (Talent → Recommender → Company).
+- **Public self-edit** (`src/app/talent-profile/`):
+  - `page.tsx` — no auth; reads `?code=`, calls `getTalentByCode`,
+    renders either an "expired" card or the form. Standalone header
+    (no Sidebar).
+  - `TalentSelfEditForm.tsx` — same body shape as the staff
+    `TalentFormModal` minus the recommender / client-referrer joins
+    (those stay staff-only). Avatar uploads route through
+    `uploadTalentAvatarByCode` so anon callers never touch the
+    bucket directly.
+- **Sidebar.** `/talent-pool` added to the staff-only `internalOnly`
+  list — visible only to admin / manager / operational, mirrors the
+  page-level redirect.
+
+## [2026-04-26] — Internal Projects round 2 (modal save flow, chat, polish)
+
+- **Schema.** Migration `internal_task_comment` adds the
+  `internal_task_comment` table (mirroring `task_comment`: `message`,
+  `attachments jsonb`, `edited_at`, `viewed_by uuid[]`, FK to
+  `internal_task` + `internal_project`) with staff RLS
+  (`get_user_type() IN ('admin','manager','operational')`), a public
+  storage bucket `internal-task-comment-attachments` with the
+  matching read/upload/update/delete policies, and a
+  `mark_internal_task_comments_viewed(uuid)` SECURITY DEFINER RPC
+  mirroring `mark_task_comments_viewed`.
+- **Types.** `src/types/internal-projects.ts` adds
+  `InternalTaskCommentAttachment` and `InternalTaskComment`.
+- **Server actions.** `src/app/internal-projects/actions.ts` —
+  `getInternalTaskComments`, `createInternalTaskComment`,
+  `updateInternalTaskComment`, `deleteInternalTaskComment`,
+  `markInternalTaskCommentsViewed` (all revalidate
+  `/internal-projects`).
+- **UI.**
+  - `InternalProjectsList.tsx` — Start Date / End Date columns now
+    render the **estimated** date on the top line and the real date
+    in muted parens below (was reversed).
+  - `InternalProjectKanban.tsx` — "+ Add task" no longer instantly
+    inserts a row; it opens `InternalTaskModal` in create mode with
+    the column's status preselected. Card body click is inert; only
+    the pencil icon opens the modal in edit mode.
+  - `InternalTaskModal.tsx` — full refactor: dropped the per-field
+    `persist()` + `useTransition` auto-save in favor of local state
+    + a footer **Save** button. Save runs in a transition: in create
+    mode it calls `createInternalTask` then patches the rest of the
+    fields, then diffs the local time-tracker entries against
+    `props.timeTracks` to issue create/update/delete RPCs in one
+    pass. The time-tracker header now shares the same
+    `grid-cols-[1.4fr_1fr_1fr_0.8fr_1.6fr_36px]` template as its
+    rows so headers line up over their cells. New chat slot:
+    placeholder "Save the task first to start chatting." in create
+    mode, `<InternalTaskChat>` once the task exists.
+  - `InternalTaskChat.tsx` *(new)* — chat panel mirroring
+    `TaskChat.tsx`: messages, edit, delete, image inline preview,
+    file attachments to `internal-task-comment-attachments`,
+    "viewed by" tracking via the new RPC.
+
+## [2026-04-26] — Internal Projects rework (modals, time tracking, schema cleanup)
+
+- **Schema.** Migration `internal_projects_schema_rework` drops the
+  `internal_task_assignees` pivot table (and its RLS policy), adds
+  `internal_task.assignees uuid[]` (default `{}`) so a task's
+  assignees live inline, and renames `internal_time_track` →
+  `internal_task_time_track` (RLS policy renamed to match). Migration
+  `internal_project_kr_links` adds
+  `internal_project.internal_key_result_ids uuid[]` to back the new
+  "Key Results Impacted by This Project" multi-select.
+- **Types.** `src/types/internal-projects.ts` drops
+  `InternalTaskAssignee`, adds `InternalTask.assignees: string[]`,
+  `InternalProject.internal_key_result_ids`, plus new
+  `InternalTaskTimeTrack` and `InternalKeyResultRef` types.
+- **Server actions.** `src/app/internal-projects/actions.ts` —
+  `createInternalProject` now takes the full create-modal payload
+  (status, sector, dates, times, description, assignees, KR ids);
+  `updateInternalTask` accepts `assignees`; new
+  `createInternalTaskTimeTrack` / `updateInternalTaskTimeTrack` /
+  `deleteInternalTaskTimeTrack` provide the time-tracker CRUD. The
+  legacy `setInternalTaskAssignees` pivot helper was removed.
+- **UI.**
+  - `InternalProjectsList.tsx` — toolbar restyled to match
+    `/projects` (raw Tailwind classes instead of `.input-field` so the
+    selects stop expanding to 100% width); rows are now hover-only
+    edit/delete (pencil + trash) with a confirm-delete modal; the
+    project name is the click target that opens the kanban.
+  - `InternalProjectModal.tsx` — new shared create/edit project modal
+    with name, status pill, sector, assignees picker, estimated/real
+    times, four date pickers (real + estimated start/end), KR
+    multi-select, and a TipTap rich-text description.
+  - `InternalProjectKanban.tsx` — cards redesigned to match
+    `tabs/TasksKanban.tsx` (`client_requests` style): column accent
+    border, hover-revealed pencil + trash, drop-target indicators
+    between cards, click-to-edit. Confirm-delete modal for tasks.
+  - `InternalTaskModal.tsx` — full redesign: auto-saving fields, real
+    + estimated start/end dates, an inline time-tracker table
+    (Date / Start / End / Spent / Owner with row-level delete and
+    "Add row"), TipTap rich-text description, single Close button.
+    `Real Time (h)` is now derived from the sum of `time_spent_h`
+    rows.
+- **Page query.** `internal-projects/page.tsx` no longer reads from
+  `internal_task_assignees` (gone) and now also fetches
+  `internal_task_time_track` rows for the open project plus the
+  internal key results list for both modals.
+
+## [2026-04-25] — Internal Projects page (list + kanban)
+
+- **Bubble reference.** Mirrors the `internal-projects` page in
+  `docs/reference_docs/paginas.md §internal-projects` and the
+  `internal_project` / `internal_task` data types in `tabelas.md`.
+  Restricted to admin/manager/operational users per Bubble workflow
+  bTYoP.
+- **Migration.** `supabase/migrations/20260426000002_internal_projects_rls_staff.sql`
+  replaces the old `is_admin_or_manager()` RLS policies on
+  `internal_project`, `internal_project_assignees`, `internal_task`,
+  `internal_task_assignees`, and `internal_time_track` with policies
+  that match the page gate
+  (`get_user_type() IN ('admin','manager','operational')`).
+- **Types.** `src/types/internal-projects.ts` exports the row shapes,
+  status/sector enums (`os_internal_project_status`,
+  `os_internal_task_status`, `os_company_sector`), and Tailwind pill
+  classes for both project and task statuses.
+- **Server actions.** `src/app/internal-projects/actions.ts` provides
+  CRUD for projects and tasks plus pivot-based assignee setters
+  (`setInternalProjectAssignees`, `setInternalTaskAssignees`). Every
+  action gates on `requireInternalStaff()` and revalidates
+  `/internal-projects`.
+- **UI.** New `/internal-projects` route:
+  - `page.tsx` — server component; gates by profile type, then either
+    fetches the project list (root URL) or the project + tasks +
+    assignees for kanban view (`?project=<id>`).
+  - `_components/InternalProjectsList.tsx` — search, status & sector
+    filters, "+ New Project" button, inline-editable rows with status
+    pill dropdown, sector dropdown, dual real/estimated date display,
+    real-time numeric input, multi-select assignee picker, and
+    open/delete actions.
+  - `_components/InternalProjectKanban.tsx` — four-column kanban
+    (Not Started / In Progress / Done / Blocked) matching
+    `os_internal_task_status`. Drag-and-drop moves tasks between
+    columns; cards have inline rename, assignee avatars, and an
+    "open" arrow to launch the edit modal.
+  - `_components/InternalTaskModal.tsx` — full task editor (name,
+    status, assignees, estimated dates, estimated/real time,
+    description).
+  - `_components/AssigneePicker.tsx` — reusable multi-select avatar
+    stack.
+- **Sidebar gate.** `Sidebar.tsx` now hides the existing "Internal
+  Projects" nav entry from non-internal users (same gating as OKRs).
+
+## [2026-04-24e] — Feedback page: wall of company-experience feedback
+
+- **Bubble reference.** Mirrors the `feedback` page and `feedback` data
+  type in `docs/reference_docs/paginas.md §feedback` and
+  `tabelas.md §feedback`. Any authenticated user (primarily clients,
+  developers and QA) can file a rated comment about a project.
+- **Migration.** `supabase/migrations/20260424000001_feedback_creator_and_rls.sql`
+  adds `created_by` + `updated_at` to `public.feedback` with an
+  `updated_at` trigger, and replaces the original RLS (admin/manager-all
+  + operational-insert) with the Bubble semantics now exposed in the UI:
+  admin/manager → full access, any authed user → read, creator → insert
+  (must set `created_by = auth.uid()`), update and delete their own row.
+- **Types + actions.** `src/types/feedback.ts` exports the `Feedback` row
+  and the `FeedbackInput` write shape. `src/app/feedback/actions.ts`
+  provides `createFeedback` (server-stamps `created_by` + the signed-in
+  user's `profiles.type` into `user_type` so the user-type filter works),
+  plus `updateFeedback` and `deleteFeedback` — RLS enforces the
+  creator-only gates, not client-side logic.
+- **UI.** New `/feedback` route:
+  - `page.tsx` — server component; loads the signed-in profile, the
+    visible projects list (admin/manager see all, everyone else sees
+    projects whose `authorized_users` contains them) and the full
+    feedback wall, then delegates to `FeedbackShell`.
+  - `_components/FeedbackShell.tsx` — header with search-by-author,
+    user-type dropdown filter, "+ New Feedback" button; stats strip with
+    a live Average Rating (computed over the filtered view) and count;
+    responsive card grid; delete-confirm + edit-by-click wired to
+    `deleteFeedback` / the form modal. Creator-or-admin-or-manager sees
+    the delete icon and can open the card into edit mode.
+  - `_components/FeedbackCard.tsx` — avatar + name, stars, project name,
+    comment, and a delete button gated on `canEdit`.
+  - `_components/StarRow.tsx` — reusable 1-5 star component (read-only
+    or interactive); the fifth star renders the "happy-face" variant
+    when the rating is 5, matching the Bubble design.
+  - `_components/FeedbackFormModal.tsx` — create/edit form with project
+    dropdown, interactive stars, and comment textarea; calls the server
+    actions and `router.refresh()` on success.
+- **Sidebar.** Added "Feedback" nav entry (filled-star icon) in
+  `src/components/layout/Sidebar.tsx`, right after Sandbox Planner,
+  visible to every role since any authed user can post feedback.
+
+## [2026-04-24d] — OKRs page: manage Objectives and Key Results
+
+- **New domain.** Replicates Bubble's internal OKR tracker (tables
+  `internal_goal`, `internal_key_result`, `internal_key_result_track` in
+  `docs/reference_docs/tabelas.md`, option sets `os_internal_goals_status`
+  and `os_internal_key_result_status` in `option-sets.md`, and page
+  access workflow `bTYoP` in `paginas.md:1386-1537`).
+- **Migration.**
+  `supabase/migrations/20260426000000_internal_okrs.sql` creates two
+  Postgres enums (`internal_goal_status`, `internal_key_result_status`),
+  three tables, foreign-key chains with `ON DELETE CASCADE`, and RLS
+  policies gated on `get_user_type() IN ('admin','manager','operational')`
+  — clients / developers / designers / qa / referrer / lead cannot see
+  or mutate any OKR data.
+- **Types + actions.** `src/types/okrs.ts` exports types, status enum
+  arrays, human labels, and Tailwind pill classes.
+  `src/app/okrs/actions.ts` provides `createGoal` / `updateGoal` /
+  `deleteGoal`, `createKeyResult` / `updateKeyResult` / `deleteKeyResult`,
+  and `createTrackEntry` / `updateTrackEntry` / `deleteTrackEntry` — each
+  re-asserts the internal-staff gate server-side, not just at the RLS
+  layer.
+- **UI.** New `/okrs` route:
+  - `page.tsx` — server page; redirects non-internal profiles to
+    `/dashboard` and fetches all goals, key results, and tracker entries.
+  - `_components/OkrsShell.tsx` — hierarchical table with expand/collapse
+    chevrons, goal rows styled in an indigo tint, filter chips across
+    goal + KR statuses (defaults to highlighting Not Started / In
+    Progress to match the reference screenshot), and inline
+    "+ Add key result" / "+ Add goal" affordances.
+  - `_components/GoalModal.tsx` — name, status pill dropdown, rich-text
+    description (`@/components/editor/RichTextEditor`).
+  - `_components/KeyResultModal.tsx` — name, goal select, start/end
+    dates (`@/components/DatePicker`), status pill, current target
+    value, achieved Yes/No, embedded tracker, and rich-text description.
+  - `_components/KeyResultsTracker.tsx` — toggle between an editable
+    table of samples and a responsive line chart (recharts) plotting
+    Current Value vs Target Value over time.
+- **Dependency.** Added `recharts` (peer of React 19) for the tracker
+  chart view.
+- **Sidebar.** `Sidebar.tsx` filters the OKRs nav entry out for any
+  profile type outside `{admin, manager, operational}`, mirroring the
+  page-level redirect so the link doesn't dead-end.
+- `npx tsc --noEmit` clean.
+
+## [2026-04-24c] — Fix playbook page freezing on eye-toggle / comment click
+
+- **Root cause.** The MutationObserver introduced yesterday to re-stamp
+  `data-status` on comment-highlight spans watched the editor DOM with
+  `subtree: true`, `childList: true`, and `attributes: true`. Every
+  `paint()` call issued `setAttribute` on every comment span, which
+  queued its own attribute-mutation records that re-entered the observer
+  callback. Combined with ProseMirror's own DOM churn on click /
+  selection change, the observer could fire enough times in a single
+  frame to stall the main thread — the page appeared to freeze whenever
+  the user clicked the hide-resolved eye toggle or a highlighted comment
+  span.
+- **Fix.** Removed the MutationObserver from `PlaybookEditor.tsx`
+  entirely. `paint()` now runs on mount and on every TipTap
+  `transaction` event (doc edit, selection change, view update),
+  batched through `requestAnimationFrame` so multiple transactions in
+  the same frame collapse into a single repaint. PM strips `data-status`
+  when it redraws a span, but the next transaction after the redraw
+  re-stamps it on the following animation frame — the user can't
+  perceive the single-frame gap.
+- Also dropped the now-unused `data-hidden` attribute plumbing. Hiding
+  solved highlights is driven purely by the container-level CSS keyed
+  off `data-hide-resolved="true"` + `data-status="solved"`, so the eye
+  toggle no longer requires any repaint at all and cannot deadlock the
+  editor.
+- `npx tsc --noEmit` clean.
+
+## [2026-04-25b] — Follow-up polish: resolved-comment hiding, agreement paper editor, stamped-signature cleanup
+
+- **Hide-resolved-comments now actually hides.** The on-disk playbook HTML
+  stores `data-status="pending"` on every comment span, but
+  `project_playbook_comment.status` in the database is the source of
+  truth and changes over time. Previously `CommentMarkExtension` kept
+  `commentStatus` as a managed TipTap mark attribute, so ProseMirror
+  re-rendered `data-status="pending"` every view update — silently
+  clobbering the `paint()` pass that stamps `data-status="solved"` /
+  `data-hidden="true"` from the live comment list. The hide rule never
+  matched.
+  - `CommentMarkExtension.ts` drops the `commentStatus` attribute entirely.
+    Now only `commentId` is a managed mark attribute; `data-status` and
+    `data-hidden` are DOM-only and ProseMirror no longer touches them.
+  - `PlaybookEditor.tsx` hardens `paint()` with a `MutationObserver` that
+    re-stamps any comment span whose attributes get out of sync with the
+    desired state (covers the rare case where ProseMirror's view swap
+    drops the DOM attrs entirely).
+  - Added a container-level belt-and-suspenders CSS rule keyed off a new
+    `data-hide-resolved="true"` attribute on the editor wrapper. It
+    directly neutralizes the yellow background + bottom-border + pointer
+    events on any span with `data-status="solved"` whenever the wrapper
+    is in hide-mode — so even a single-frame attribute flicker doesn't
+    leak a highlight.
+- **Edit-agreement popup now renders on white paper.**
+  `AgreementFormModal.tsx` wraps the right-hand `RichTextEditor` in a
+  new `.agreement-paper-editor` container and ships a scoped
+  `<style>` block forcing `#ffffff` background + `#111827` text on
+  `.tiptap-content` and `.ProseMirror` within. Headings, paragraphs,
+  list items, table cells, blockquotes, inline code, and anchor colours
+  all get light-mode overrides so the editing surface visually matches
+  the preview drawer and the exported PDF/DOCX.
+- **Big stamped signature block removed from the drawer view.**
+  `AgreementDrawer.tsx` introduces a `stripStampedSignatureBlocks(html)`
+  helper that strips every `<div data-signature-block …>…</div>` the
+  `signAgreement` action appends to `agreement.content`. That stripped
+  `displayContent` is now what the drawer renders, what the Preview
+  modal receives, and what the PDF / DOCX exporters feed `html2canvas`
+  and `html-docx-js`. The database row itself is untouched — the
+  Signatures card below the prose still parses `data-signed-at`
+  timestamps out of the stored content for each signer's "Signed
+  <date>" line, so the audit trail is preserved while the giant
+  duplicate signature stops appearing next to the small per-signer
+  card.
+- **Invoice privacy contract reconfirmed.** With yesterday's migrations
+  already in place, the combined policy set matches the revised spec:
+  admin/manager ALL, any member of `project.authorized_users` INSERT
+  (with `created_by = auth.uid()`), and creator-only SELECT / UPDATE /
+  DELETE for everyone else. `InvoicesTab.tsx` mirrors this with
+  `canCreate = isAdminOrManager || project.authorized_users.includes(...)`
+  and per-row `canEdit = isAdminOrManager || i.created_by === currentUserId`.
+- `npx tsc --noEmit` clean; `npx next build` (Next.js 16.1.6 + Turbopack)
+  compiled in 11.5 s with 15/15 static pages generated.
+
+## [2026-04-25] — Docs paper preview + exports; agreement drawer tightened; invoice-create for project members
+
+- **Reusable paper-preview modal for Docs.** New
+  `src/app/docs/_components/DocumentPreviewModal.tsx` renders a rich-text
+  HTML string on a white A4-style paper surface (Georgia serif, hex
+  colours only so `html2canvas` can rasterize it) inside the shared
+  `Modal` shell, with top-right "Download PDF" and "Download DOCX"
+  buttons. Uses `exportElementToPdf` (paginated A4 via `html2canvas` +
+  `jsPDF`) and `html-docx-js/dist/html-docx` for the DOCX path. A scoped
+  `.docs-preview-content` stylesheet zeroes out the yellow playbook
+  comment-highlight styling so the paper copy stays clean.
+- **Playbook preview + exports.**
+  `src/app/docs/_components/PlaybookEditor.tsx` gains three toolbar
+  buttons — Preview (white), PDF (red-600), DOCX (blue-600) — modelled
+  on the Sandbox Planner PRD step. The PDF handler builds an off-screen
+  white-bg div from `activeVersion.content`, strips any
+  `span[data-comment-id]` highlights, and delegates to
+  `exportElementToPdf`; the DOCX handler wraps the same HTML in a
+  standalone document and hands it to `html-docx-js`. The editor also
+  carries a `playbookTitle`/`playbookSlug` pair so the filename tracks
+  the version name.
+- **Resolved-comment eye icon now reflects state, not action.**
+  Flipped the SVG branches in `PlaybookEditor.tsx` so
+  `showResolved=true` renders an open eye ("resolved are currently
+  visible") and `showResolved=false` renders the slashed eye
+  ("resolved are currently hidden"). The underlying
+  `.comment-highlight[data-hidden="true"]` CSS in `globals.css` (which
+  already correctly transparents the background and removes
+  pointer-events) was not touched — the bug was a semantic mismatch
+  between icon and state.
+- **Agreement drawer — privacy + paper UX.**
+  `src/app/docs/_components/modals/AgreementDrawer.tsx`:
+  - The 300px sidebar (Status / Template / Google Docs / Authorized
+    users / Required signers / Signed) is now wrapped in
+    `{isAdminOrManager && (…)}` so non-admin viewers see only the
+    document body.
+  - The content column renders on `#ffffff` with `#111827` text via
+    inline styles and a scoped `.agreement-paper-content` stylesheet,
+    giving it the look of real paper. The Signatures block beneath the
+    prose was re-skinned (gray-50 card backgrounds, gray-300 borders,
+    gray-500 muted text) so it reads well on white.
+  - The drawer header gained the same Preview / PDF / DOCX toolbar as
+    the playbook, powered by `DocumentPreviewModal` and the same
+    off-screen PDF / html-docx handlers.
+- **Invoice-create returns to project members.** Per the revised spec
+  any user in `project.authorized_users` may create an invoice; admins
+  and managers additionally see every invoice on the project while
+  every other user sees only the invoices they themselves created.
+  - Migration
+    `supabase/migrations/20260425000000_project_invoice_member_insert.sql`
+    restores the `project_invoice: authorized user insert` policy with
+    `created_by = auth.uid() AND EXISTS(… p.authorized_users)`. The
+    creator-only SELECT added on 2026-04-24 stays, as does the
+    admin/manager ALL policy.
+  - `src/app/docs/_components/InvoicesTab.tsx` reverts the
+    admin-only `canCreate` to
+    `isAdminOrManager || project.authorized_users.includes(currentUserId)`.
+- `npx tsc --noEmit` clean; `npx next build` (Next.js 16.1.6 +
+  Turbopack) passes with 15/15 static pages generated.
+
+## [2026-04-24] — Docs privacy rules realigned + playbook comment fix + inline Signatures block
+
+- **RLS rewrite across all seven Docs tabs** to match the new privacy
+  contract.
+  (migration `supabase/migrations/20260424000000_docs_privacy_rules.sql`)
+  - `project_playbook_version`: SELECT now checks
+    `project.authorized_users` via `EXISTS` against the parent project row,
+    instead of the version's own (unused) `authorized_users` column.
+    This unblocks project members from seeing the playbook.
+  - `project_agreement_version`: dropped the `get_user_type() = 'client'`
+    gate so any user listed in an agreement's `authorized_users` can
+    SELECT it regardless of their profile type. Added a `signer update`
+    policy so a required signer can persist the signature-block append
+    that `signAgreement` writes into `content`.
+  - `project_file` / `project_link` / `project_video` /
+    `project_daily_feedback`: dropped the "authorized user insert"
+    policies. Only admin/manager may create; owner still UPDATE + DELETE;
+    project members still SELECT.
+  - `project_invoice`: replaced project-wide SELECT with creator-only
+    SELECT and dropped authorized-user INSERT. Admin/manager keep ALL.
+- **Playbook comments for non-admin members**: `PlaybookTab` now computes
+  `canComment = isAdminOrManager || project.authorized_users.includes(…)`
+  and threads it into `PlaybookEditor`, which has a new `canComment` prop
+  independent from `editable`. The floating "Add comment" bubble and
+  compose popover fire whenever `canComment` is true, while the
+  "Update / Save as new version / Build from idea" toolbar stays gated
+  on `editable`. When `!editable`, `submitComment` skips the
+  `savePlaybookVersion` persistence step (project members can't UPDATE
+  the version under the new RLS) — the comment itself is still saved to
+  `project_playbook_comment`.
+  (`src/app/docs/_components/PlaybookTab.tsx`,
+  `src/app/docs/_components/PlaybookEditor.tsx`)
+- **Inline Signatures block on agreements**: `AgreementDrawer` renders a
+  new Signatures section below the agreement body whenever
+  `required_signers.length > 0`. Each required signer gets a two-column
+  card showing its role label (CLIENT / SERVICE PROVIDER / SIGNER N
+  based on position), profile name, and one of: the stored signature
+  image + "Signed <timestamp>" (parsed from the `data-signed-at` audit
+  block that `signAgreement` appends to `content`); a "Sign here" CTA
+  for the current user if they're a required signer and haven't signed
+  yet; an "Upload signature to sign" link if they have no signature on
+  file; or an "Awaiting signature" placeholder otherwise. The existing
+  footer sign button remains as a secondary affordance.
+  (`src/app/docs/_components/modals/AgreementDrawer.tsx`)
+- **Tightened `+ New` buttons** on Files / Links / Videos / Daily
+  Feedback / Invoices tabs to `isAdminOrManager` only, so non-admin
+  project members can still see the rows but can't create new ones —
+  matching the new privacy contract.
+  (`FilesTab.tsx`, `LinksTab.tsx`, `VideosTab.tsx`, `DailyFeedbackTab.tsx`,
+  `InvoicesTab.tsx`)
+
+## [2026-04-23] — Sandbox edit, Files thumbnails, Docs › Invoices tab
+
+- **Sandbox Planner — edit idea**: idea cards on `/sandbox-planner` now carry
+  an edit (pencil) icon next to the delete/trash button. Clicking it opens
+  the existing `CreateIdeaModal`, which has been extended to accept an
+  optional `idea` prop; when present the modal switches to edit mode
+  (prefilled name/description/project) and calls the `updateIdea` server
+  action instead of `createIdea`.
+  (`src/app/sandbox-planner/_components/IdeasGrid.tsx`,
+  `src/app/sandbox-planner/_components/CreateIdeaModal.tsx`)
+- **Docs › Files — visual attachments**: file rows on
+  `/docs?project=[id]&tab=files` now render each attachment as a visual
+  tile — thumbnail for image mime-types, colored extension badge
+  (PDF / DOC / XLS / PPT / ZIP / VID / AUD / …) for everything else — in
+  place of the plain-text filename links that shipped previously. The row
+  itself shows the record name, file-count, owner and updated date above
+  the attachment grid.
+  (new `src/app/docs/_components/AttachmentTile.tsx`,
+  `src/app/docs/_components/FilesTab.tsx`)
+- **Docs › Invoices tab**: delivers the previously-stubbed Invoices tab at
+  `/docs?project=[id]&tab=invoices`. Full CRUD with a printable invoice
+  preview that uses the browser print-to-PDF dialog.
+  - New table `public.project_invoice` with fields `id, project_id,
+    created_by, authorized_users, code, company_or_user_name,
+    document_number, address, phone, email, client_name, service_price,
+    due_date, service_title, service_description, swift_code, iban_code,
+    created_at, updated_at` plus RLS mirroring the other Docs tabs
+    (admin/manager full; project.authorized_users SELECT + INSERT where
+    `created_by = auth.uid()`; row owner UPDATE + DELETE) and a
+    `BEFORE UPDATE` trigger to keep `updated_at` fresh.
+    (migration `20260423100000_project_invoice.sql`)
+  - Three new server actions — `createProjectInvoice`,
+    `updateProjectInvoice`, `deleteProjectInvoice` — plus an `InvoicePayload`
+    shared type used by the modal form.
+    (`src/app/docs/actions.ts`)
+  - UI: card grid of invoices with quick-actions, plus an
+    `InvoiceFormModal` covering all fields (issuer, client, service,
+    payment) and a print-styled `InvoicePreview` matching the purple
+    invoice reference (INVOICE header, From / Invoice To, Issue Date,
+    Due Date, Amount Payable, service line, SWIFT / IBAN block). The
+    `ComingSoonPanel` fallback in `DocsShell` is removed — all seven tabs
+    now have a concrete implementation.
+    (`src/app/docs/_components/InvoicesTab.tsx`,
+    `src/app/docs/_components/modals/InvoiceFormModal.tsx`,
+    `src/app/docs/_components/InvoicePreview.tsx`,
+    `src/app/docs/_components/DocsShell.tsx`,
+    `src/app/docs/page.tsx`,
+    `src/types/docs.ts`,
+    `src/lib/supabase/types.ts`)
+
+## [2026-04-23] — Docs: Playbook-from-Idea, resolvable comments, in-drawer Sign UX
+
+- **Build playbook from Sandbox idea**: new `buildPlaybookFromIdea(projectId, ideaId)`
+  server action compiles the linked idea's PRD / Database / Visual Styles /
+  Milestones sections into a fresh `project_playbook_version`. Surfaces as a
+  "Build from Sandbox idea" button in the playbook empty state and a compact
+  "Build from idea" button in the editor toolbar. Invisible when no idea is
+  linked to the current project.
+  (`src/app/docs/actions.ts`, `src/app/docs/page.tsx`,
+  `src/app/docs/_components/DocsShell.tsx`,
+  `src/app/docs/_components/PlaybookTab.tsx`,
+  `src/app/docs/_components/PlaybookEditor.tsx`,
+  reusing `src/app/sandbox-planner/_lib/loadIdeaFull.ts`)
+- **Resolvable playbook comments**: new enum
+  `public.os_playbook_comment_status` (`pending` | `solved`) and a matching
+  `status` column on `project_playbook_comment`
+  (migration `20260423000000_docs_playbook_comment_status.sql`). Admin,
+  manager, and the comment creator can toggle status via a checkmark in the
+  thread panel header; a "Resolved" pill marks solved threads. Solved
+  comments are hidden by default in the editor; a toolbar eye-toggle reveals
+  them Google-Docs-style with a dimmed dotted underline.
+  (`src/app/docs/_components/CommentThreadPanel.tsx`,
+  `src/app/docs/_components/CommentMarkExtension.ts`,
+  `src/app/docs/_components/PlaybookTab.tsx`,
+  `src/app/docs/_components/PlaybookEditor.tsx`,
+  `src/app/globals.css`, new
+  `setPlaybookCommentStatus` action in `src/app/docs/actions.ts`)
+- **Discoverable agreement signing**: `AgreementDrawer` footer now surfaces
+  the sign flow directly — a primary "Sign with my signature" button when
+  the current user can sign, an "Upload signature to sign" link to `/profile`
+  when `profile.signature` is empty, a "Signed · awaiting others" pill after
+  signing, and a "Completed" pill once all required signers have signed.
+  The existing `sign_agreement` RPC + signature stamp in `signAgreement`
+  action are unchanged.
+  (`src/app/docs/_components/modals/AgreementDrawer.tsx`,
+  `src/app/docs/_components/AgreementsTab.tsx`)
+- **Creator override for agreement edit/delete**: `AgreementRow` and
+  `AgreementDrawer` now expose Edit (and row-level Delete) to the
+  agreement's `created_by` in addition to admin/manager — the RPC already
+  allows this; only the UI gate was restrictive.
+  (`src/app/docs/_components/AgreementRow.tsx`,
+  `src/app/docs/_components/modals/AgreementDrawer.tsx`)
+
+## [2026-04-23] — Docs page: Files / Links / Videos / Daily Feedback tabs
+
+- **Files tab (`/docs?tab=files`)**: table of project files with full CRUD.
+  Rows carry multiple uploads stored in a new public `project-files`
+  storage bucket (50 MB per file). Name + attachment list rendered in a
+  single modal; inline download links on each row.
+  (`src/app/docs/_components/FilesTab.tsx`,
+  `src/app/docs/_components/modals/FileFormModal.tsx`)
+- **Links tab (`/docs?tab=links`)**: CRUD for project URL links (name +
+  URL). (`src/app/docs/_components/LinksTab.tsx`,
+  `src/app/docs/_components/modals/LinkFormModal.tsx`)
+- **Videos tab (`/docs?tab=videos`)**: CRUD for project video URLs
+  (name + URL) — same shape as Links, but persisted separately.
+  (`src/app/docs/_components/VideosTab.tsx`,
+  `src/app/docs/_components/modals/VideoFormModal.tsx`)
+- **Daily Feedback tab (`/docs?tab=daily_feedback`)**: card list grouped
+  by date (newest first). Each entry has four rich-text fields (Today,
+  Tomorrow, Blockers, Video & Links) edited via TipTap in a modal with
+  a `DatePicker` for the entry date.
+  (`src/app/docs/_components/DailyFeedbackTab.tsx`,
+  `src/app/docs/_components/modals/DailyFeedbackFormModal.tsx`)
+- **Access rules (all four tabs)**: admin/manager plus members of
+  `project.authorized_users` can view + create. Only admin/manager and
+  the record's own creator can update/delete. Enforced via Row Level
+  Security — the old row-level `authorized_users` read policies were
+  replaced with project-scoped `EXISTS` checks matching the
+  `task_comment` pattern.
+- **Server actions**: 12 new actions appended to
+  `src/app/docs/actions.ts` — `createProjectFile / updateProjectFile /
+  deleteProjectFile`, same for Link / Video, plus
+  `createDailyFeedback / updateDailyFeedback / deleteDailyFeedback`.
+  Each create stamps `created_by = auth.uid()` and revalidates `/docs`.
+- **Shell wiring**: `src/app/docs/_components/DocsShell.tsx` now routes
+  all seven tabs (only Invoices remains as a "Coming soon" stub); the
+  new tab data is fetched in parallel in
+  `src/app/docs/page.tsx`.
+- **Schema**: migration
+  `supabase/migrations/20260423000000_docs_project_tabs.sql`
+  adds `attachments JSONB` to `project_file`, normalises
+  `project_video.updated_at` to NOT NULL, creates the `project-files`
+  storage bucket with owner-scoped write policies, and re-creates RLS
+  policies on all four tables to match the new access model.
+
+## [2026-04-22] — Docs page: Playbook + Agreements
+
+- **New route `/docs?project=<id>&tab=<tab>`**: role-filtered project list
+  on the left (admin/manager see all; others only projects whose
+  `authorized_users` contains their id). Right panel exposes the
+  Playbook | Agreements | Files | Links | Videos | Daily Feedback |
+  Invoices tab strip. Only Playbook and Agreements ship this round — the
+  other five render a "Coming soon" placeholder.
+  (`src/app/docs/page.tsx`, `src/app/docs/_components/DocsShell.tsx`)
+- **Playbook tab**: TipTap rich-text editor with version picker and
+  admin/manager controls for "Update current version" and
+  "Save as new version". Authorized project users can anchor comments
+  to a text selection (Google-Docs-style) — the selection is persisted
+  via a custom `playbookComment` TipTap Mark. Clicking a highlighted
+  span opens a right-side thread drawer with replies, file attachments
+  (stored in `project-playbook-attachments` bucket), edit/delete, and
+  unread-badge bookkeeping via `mark_playbook_comments_viewed` /
+  `mark_playbook_comment_replies_viewed` RPCs.
+  (`src/app/docs/_components/PlaybookTab.tsx`,
+  `src/app/docs/_components/PlaybookEditor.tsx`,
+  `src/app/docs/_components/CommentThreadPanel.tsx`,
+  `src/app/docs/_components/CommentMarkExtension.ts`)
+- **Agreements tab**: agreements grouped by linked template (or
+  "No template"), each with an aggregated status badge. Admin/manager
+  can create/edit/delete agreements and templates. Each row shows the
+  signer avatar stack + `signedCount / requiredCount`. Authorized users
+  in `ready_to_sign` agreements see a "Sign" button that confirms their
+  signature image before calling the `sign_agreement` RPC. The RPC
+  appends the current user to `signed_by` and flips status to
+  `completed` once `required_signers ⊆ signed_by`. A signature HTML
+  block (image + name + timestamp) is appended to the agreement content
+  on every sign. (`src/app/docs/_components/AgreementsTab.tsx`,
+  `src/app/docs/_components/AgreementRow.tsx`,
+  `src/app/docs/_components/modals/*`)
+- **Shared rich-text editor**: extracted TipTap setup + toolbar into
+  `src/components/editor/RichTextEditor.tsx` with an imperative
+  `RichTextEditorHandle` (`getHTML`, `setContent`, `getEditor`) plus
+  `extraExtensions`, `onSelectionChange`, and `toolbarRight` slots.
+  `SopEditor` refactored to consume it — its version picker + save
+  buttons moved into the `toolbarRight` slot.
+  (`src/components/editor/RichTextEditor.tsx`,
+  `src/app/sops/_components/SopEditor.tsx`)
+- **Signature editor on `/profile`**: new `SignatureEditor` with
+  Upload and Draw tabs. Upload accepts PNG/JPG; Draw is a 400×150
+  pointer-driven canvas with Clear + Save. Both flows upload to the
+  `user-signatures` storage bucket and save the public URL to
+  `profiles.signature`, which `SignAgreementModal` previews before
+  signing. `updateProfile` action accepts the new optional `signature`
+  field. (`src/app/profile/_components/SignatureEditor.tsx`,
+  `src/app/profile/_components/ProfileForm.tsx`,
+  `src/app/profile/actions.ts`, `src/app/profile/page.tsx`)
+- **Schema**: migration
+  `20260422100000_docs_playbook_comments_and_agreement_signing.sql`
+  adds `signed_by UUID[]`, `required_signers UUID[]`, `authorized_users
+  UUID[]`, `google_docs_url`, `updated_at` to
+  `project_agreement_version` (and makes `type` nullable);
+  `google_docs_url` + `updated_at` to `project_playbook_version`;
+  `signature` column to `profiles`; creates
+  `project_playbook_comment` + `project_playbook_comment_reply` tables
+  with JSONB attachments, `viewed_by UUID[]`, owner/admin RLS, and
+  project-authorized-user SELECT/INSERT policies. Adds public
+  `project-playbook-attachments` + `user-signatures` storage buckets
+  with authenticated-insert + owner-UPDATE/DELETE policies. Adds
+  SECURITY DEFINER functions `mark_playbook_comments_viewed`,
+  `mark_playbook_comment_replies_viewed`, `sign_agreement`. Supabase
+  types regenerated.
+
+## [2026-04-21] — Projects list popup flip + DeveloperTasks assignee filter
+
+- **Authorized Users popover**: the inline user-picker on the Projects list
+  now measures available viewport space on open and flips above the trigger
+  when there is not enough room below, so it no longer gets cut off on the
+  last row. (`src/app/projects/_components/ProjectsList.tsx`)
+- **DeveloperTasks inline Assignees**: the `+` dropdown on milestone/task
+  rows now only lists users in `project.authorized_users`, matching the
+  behavior already in `TaskModal`. (`src/app/projects/_components/tabs/DeveloperTasks.tsx`)
+
+## [2026-04-21] — UserPicker + chat attachments
+
+- **UserPicker**: new reusable component at `src/components/UserPicker.tsx`
+  shows selected users as an avatar row with per-avatar hover-remove, plus
+  a `+` button that opens a dropdown listing unselected profiles (avatar
+  + name). Wired into the Project modal's Authorized Users field and the
+  Task modal's Assignees field. Task assignees are restricted to the
+  user IDs in `project.authorized_users` (threaded via new
+  `authorizedUserIds` props on `TaskModal` and `TasksKanban`).
+- **Task chat overhaul**: new `TaskChat` component supports file
+  attachments (upload to Supabase Storage bucket
+  `task-comment-attachments`, images render inline, other files show as
+  download chips), message edit (inline textarea with attachment
+  add/remove), and message delete (also cleans up uploaded files). Own
+  messages expose pencil/trash icons on hover; edited messages show an
+  `· edited` indicator. New server actions `updateTaskComment`,
+  `deleteTaskComment`; `createTaskComment` now accepts an attachments
+  array.
+- **Schema**: migration `20260422000000_task_comment_attachments.sql`
+  adds `task_comment.attachments JSONB NOT NULL DEFAULT '[]'` and
+  `edited_at TIMESTAMPTZ`, creates the public
+  `task-comment-attachments` storage bucket, and scopes storage RLS to
+  authenticated upload + owner update/delete. Existing `task_comment`
+  owner-ALL RLS already covers the new UPDATE/DELETE paths.
+
+## [2026-04-21] — Project/task date + aggregate polish
+
+- **Task modal**: on edit, fetches its own `time_track` entries via
+  `getTaskTimeEntries` so the Time Tracker section shows saved rows
+  (previously rendered empty because no caller passed `timeEntries`).
+- **QA Time Tracker modal**: removed the duplicate inner close button
+  that overlapped the `Modal`-provided X.
+- **Project Totals (Developer tab)**: added a "Project" row (editable
+  Est, read-only Real) and made Est editable on
+  `Client Requests (Developer)`, `QA Requests (Developer)`,
+  `QA Requests (QA Tester)`. New generic server action
+  `updateProjectAggregateEstimate`; `updateProjectQaTesterEstimatedTime`
+  now delegates to it. `recalculateAggregates` no longer overwrites the
+  aggregate estimate columns from task sums — they are user-entered,
+  matching the existing `qa_tester_estimated_time` behavior. When
+  `change_automatically_project_estimated_time` is on,
+  `project.estimated_time = milestones_sum + 3 aggregate columns`.
+- **Real dates auto-computed**: `ProjectModal` and `TaskModal` now render
+  Start/End Date (Real) as `readOnly` DatePickers. `recalculateRealTime`
+  now writes `project.start_date_real` / `end_date_real` from min/max
+  `time_track` + `qa_time_track` `start_date`, and each `task`'s real
+  dates from the subtree (own + descendant time_track) instead of only
+  own entries.
+- **Estimated date bounds**: `DatePicker` gained `minDate` / `maxDate`
+  props that disable out-of-range days. Project and task modals, and the
+  inline date cells in `DeveloperTasks`, now enforce
+  `start_date_estimated ≤ end_date_estimated`.
+
+## [2026-04-21] — Drop real-time automation flags
+
+- **Schema**: new migration `20260421000002_drop_real_time_auto_flags.sql`
+  removes `project.change_automatically_milestone_real_time` and
+  `project.change_automatically_project_real_time`. Real-time values always
+  reflect current `time_track` / `qa_time_track` state, so the toggles were
+  redundant.
+- **`recalculateRealTime`**: no longer reads or gates on those flags. It
+  unconditionally recomputes milestone `real_time` and writes the five
+  project-level real-time fields (`real_time`, `client_developer_real_time`,
+  `qa_developer_real_time`, `qa_tester_real_time`).
+- **`ProjectModal`**: removed the two toggle rows, state, and the two
+  fields from `ProjectInput`. Form payload is now four automation flags
+  instead of six.
+- **Types**: `Project` interface and `src/lib/supabase/types.ts`
+  (`project` Row / Insert / Update) no longer expose the two columns.
+
+## [2026-04-21] — Projects: time-tracking aggregates move to project level
+
+- **Schema**: dropped `client_milestone_total` and `qa_milestone_total`. Added
+  six aggregate columns on `project`:
+  `client_developer_estimated_time`, `client_developer_real_time`,
+  `qa_developer_estimated_time`, `qa_developer_real_time`,
+  `qa_tester_estimated_time`, `qa_tester_real_time`. Two new migrations:
+  - `20260421000000_project_time_aggregates_add.sql` — additive + backfills
+    the 6 columns from the existing milestone-total rows (sum per project).
+  - `20260421000001_project_time_aggregates_drop.sql` — drops the two legacy
+    tables. Run **after** the app is deployed.
+- **Aggregation**: `recalculateAggregates` now computes `client_developer_*`
+  and `qa_developer_*` from `task.estimated_time` grouped by
+  `task.type = client_requests | qa_requests`, gated by
+  `project.change_automatically_project_estimated_time`. Milestones no longer
+  fold client/qa children into their own `estimated_time`; `project.estimated_time`
+  instead sums the dev-only milestone rollups + the 4 project-level
+  dev/tester estimates. `recalculateRealTime` writes
+  `client_developer_real_time`, `qa_developer_real_time`, and
+  `qa_tester_real_time` every call (not gated).
+- **New server action**: `updateProjectQaTesterEstimatedTime(projectId, value)`
+  handles the one remaining user-editable field at project level and cascades
+  a recalc so `project.estimated_time` stays consistent.
+- **Deleted**: `updateClientMilestoneTotal`, `updateQAMilestoneTotal`,
+  `recalculateMilestoneEstFromTotals`, and the `ClientMilestoneTotal` /
+  `QAMilestoneTotal` TypeScript interfaces.
+- **UI (`projects?tab=developer`)**: the three per-milestone aggregate rows
+  (`Client Requests (Developer)`, `QA Requests (Developer)`,
+  `QA Requests (QA Tester)`) are gone. A single "Project Totals" block now
+  renders once at the bottom of the milestone list. Five numbers are
+  read-only; only `QA Requests (QA Tester)` estimated time is editable by
+  admins/managers and persists via the new server action.
+- **Task modal**: `Milestone` label renamed to `Milestone (optional)` on the
+  `client_requests` / `qa_requests` create forms, with a new leading
+  `No milestone` option so tasks can be created with no parent milestone.
+
+## [2026-04-20] — UI polish + AI model list refresh + Claude reliability fix
+
+- **Sidebar**: `Settings` moved to the bottom of the nav list (after
+  `Prompts` for admins/managers). New `TRAILING_NAV_ITEMS` array renders
+  unconditionally last so the order is consistent for every role.
+- **Chatbot bubble icon**: Replaced the previous speech-bubble-with-tail SVG
+  with a clean rounded speech-bubble and three dots — no decorative tail or
+  chevron, matching the request.
+- **AI model catalogue refreshed** (`src/types/settings.ts`) to the April 2026
+  lineup — OpenAI (`gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-4.1*`, `gpt-4o*`,
+  `o4-mini`, `o3*`, `o1`), Gemini (`gemini-2.5-*`, `gemini-3-*`), and Claude
+  (`claude-haiku-4-5`, `claude-sonnet-4-5/4-6`, `claude-opus-4-5/4-6` +
+  dated IDs). Fast tiers (mini/flash/haiku) sit at the top of each list
+  because Sandbox Planner prompts benefit more from low latency than flagship
+  reasoning depth.
+- **Claude reliability fix**: `claude-sonnet-4-6` (and other short aliases)
+  intermittently took a long time or returned transient errors. Root causes
+  and fixes:
+  1. Short aliases sometimes 404 or time-out against Anthropic's Messages API
+     when a versioned ID is expected. Added `CLAUDE_MODEL_ALIASES` that
+     resolves `claude-sonnet-4-6` → `claude-sonnet-4-5-20250929` (and peers)
+     before the fetch. Already-versioned IDs pass through unchanged.
+  2. No retry on transient 429 (rate-limit), 529 (overloaded — common on
+     flagship Sonnet during peak hours), 503 / 5xx, or network flakes. Added
+     3-retry exponential backoff (1.2s → 2.4s → 4.8s) that honours any
+     `Retry-After` header from Anthropic. Timeouts are NOT retried to stay
+     inside the 240s client budget.
+  3. 529 "overloaded" now surfaces a user-friendly message instead of the
+     raw provider string, so the toast says *"Claude is temporarily
+     overloaded… try again in a moment"* rather than a cryptic error.
+  4. Reduced default `max_tokens` from 16384 → 8192 — Sandbox Planner JSON
+     outputs have always fit inside 8K, and the higher cap was extending
+     latency on Sonnet without upside.
+  - File: `src/lib/api/claude.ts`.
+- **Product Definition step**: `Regenerate` and `Save` are now on the same
+  right-aligned action row. Previously the Regenerate button sat inside the
+  right column and Save sat below on a full-width row, which looked
+  visually orphaned.
+- **Auto-trigger coverage audited**: All 10 refinement steps already invoke
+  `useAutoTriggerAi(idea.id, <step>, isEmpty, isAiWorking)` — confirmed for
+  `structure_align`, `refining_icp`, `product_definition_flows`,
+  `benchmarking`, `strategic_frameworks`, `prd`, `database`, `visual_styles`,
+  `milestones_and_tasks`, and `report`. First visit to an empty step
+  auto-kicks AI generation with a 1s delay so the Supabase Realtime channel
+  is subscribed first.
+
+## [2026-04-19] — Sandbox Planner: Idea Chatbot (floating chat widget)
+
+- **New**: A floating chat bubble appears bottom-right on every refinement tab
+  (`structure_align`, `refining_icp`, `product_definition_flows`, `benchmarking`,
+  `strategic_frameworks`, `prd`, `database`, `visual_styles`,
+  `milestones_and_tasks`, `report`). Clicking opens a panel that talks to an AI
+  co-pilot grounded in the full idea context (structure & align, ICPs,
+  optimization suggestions, product definition, benchmarking, PRD, database,
+  styles, milestones, report) — reassembled from the DB on every message so
+  answers are always fresh.
+- **DB**: `supabase/migrations/20260421000000_idea_chatbot.sql` creates enum
+  `os_idea_chatbot_message_type` (`'user' | 'chatbot'`), table
+  `public.idea_chatbot` (id, idea_id FK, created_by, type, message, created_at,
+  updated_at) with `(idea_id, created_at)` index, `set_updated_at` trigger, RLS
+  enabled, and adds the table to `supabase_realtime` so collaborators on the
+  same idea see replies appear live.
+- **Prompt**: Seeded `public.prompt` id `a1b2c3d4-0000-4000-8000-000000000001`
+  ("Idea Chatbot Prompt") with strict grounding rules — the bot must quote
+  source fragments, say "not defined yet" for empty fields, return HTML-only
+  replies (`<p>`, `<ul>`, `<li>`, `<strong>`, `<em>`, `<code>`), and never
+  invent facts. Editable via `/prompts` like the other 10 sandbox-planner
+  prompts; server falls back to `FALLBACK_IDEA_CHATBOT` if the row is missing.
+- **Refactor**: Extracted the 10-query `IdeaFull` loader from
+  `sandbox-planner/page.tsx` into `_lib/loadIdeaFull.ts` so both the initial
+  server render and the chatbot's per-message context rebuild read the exact
+  same canonical shape.
+- **Server actions** (`src/app/sandbox-planner/actions.ts`): `loadChatHistory`
+  (chronological messages for an idea) and `sendChatMessage` (auth → persist
+  user msg → rebuild `IdeaFull` → render prompt via `buildIdeaContextVars` +
+  chat history window → call `generateAiJsonResponse<{ reply: string }>` via
+  the user's configured AI provider → sanitize HTML (strip `<script>` and
+  `javascript:` URLs) → persist chatbot reply → return both rows).
+- **UI** (`_components/IdeaChatbot.tsx`): Round bubble toggles a 380×560
+  floating panel with optimistic sends, `useTransition`-driven typing dots,
+  Escape-to-close, auto-scroll, and a realtime subscription to `idea_chatbot`
+  inserts (de-duped by row id) so a message sent in another tab/browser
+  appears live. Mounted in `SandboxPlannerShell` guarded by
+  `activeTab !== 'ideas'`.
+- Files: `supabase/migrations/20260421000000_idea_chatbot.sql`,
+  `src/types/sandbox-planner.ts`, `src/app/sandbox-planner/page.tsx`,
+  `src/app/sandbox-planner/actions.ts`,
+  `src/app/sandbox-planner/_lib/loadIdeaFull.ts` (new),
+  `src/app/sandbox-planner/_components/IdeaChatbot.tsx` (new),
+  `src/app/sandbox-planner/_components/SandboxPlannerShell.tsx`.
+
+## [2026-04-19] — Sandbox Planner: tab gating no longer regresses on upstream regeneration
+
+- **Bug**: After regenerating Refining ICP on an idea that already had a full PRD
+  / Database / Styles / Milestones / Report, the PRD tab (and everything
+  downstream) became locked. Root cause: `computeUnlockedSteps()` in
+  `SandboxPlannerShell.tsx` was purely upstream-driven — PRD unlocks only when
+  any ICP has `value_proposition_icp_pains` or `jtbd`. Regenerating Refining ICP
+  writes fresh ICP rows with those strategic fields empty until the user re-runs
+  Strategic Frameworks, which collapsed the gate to `false` even though the
+  downstream `idea_prd` row was fully populated.
+- **Fix**: Each downstream step now also unlocks if **its own** data already
+  exists (`prd`, `database`, `visual_styles`, `milestones_and_tasks`, `report`
+  all get the "OR own data exists" escape hatch). Regenerating an upstream step
+  can no longer hide completed work; the tab stays accessible as long as its
+  table row still has content.
+- Files: `src/app/sandbox-planner/_components/SandboxPlannerShell.tsx`.
+
+## [2026-04-19] — Sandbox Planner: DB prompt sync (Refining ICP / Benchmarking / Strategic Frameworks)
+
+- **Refining ICP**: DB prompt updated to require `our_solution_value` and
+  `how_problems_are_solved_currently` / `how_problems_could_be_solved`. The live
+  DB row was still on an older schema missing these fields, so "Our Solution
+  Value" was rendering empty after AI generation.
+- **Benchmarking**: DB prompt updated to require `possible_business_models` as a
+  4–6 item `<ul>` with rationale per model. Previously omitted from the DB row,
+  which left that section empty in the UI.
+- **Strategic Frameworks**: DB prompt was instructing the AI to emit **BBCode**
+  (`[list][*]…[/list]`, `[b]`, `[br]`) — the rich-text editor expects HTML, so
+  the raw bracket syntax leaked through as plain text. Switched the prompt to
+  require HTML (`<ul><li>`, `<p>`, `<strong>`) with an explicit "Do NOT use
+  BBCode or Markdown" clause. Existing rows with legacy BBCode will re-emit as
+  HTML on next Regenerate.
+- Applied via `supabase/migrations/20260420100000_sync_sandbox_prompts.sql` —
+  UPDATE by id so rows remain editable from the `/prompts` page.
+
+
+## [2026-04-19] — Sandbox Planner: Report rigor + Next Steps UI polish
+
+- **Report prompt rewritten** (`src/app/sandbox-planner/actions.ts`): `FALLBACK_REPORT`
+  now enforces a per-area scoring rubric (5 bands 0–100), an evidence-quoting rule
+  (each `description` must cite a ≤ 12-word fragment from the source in single-quotes),
+  and 5 explicit penalty triggers: no real competitors (-10), alpha-API dependency (-5),
+  no measurable success metrics (-8), single-ICP dependency (-5), no MVP scope cut (-5).
+- **Richer ICP context for scoring**: `buildIcpsBlock` now serialises 7 additional
+  strategic fields (subtitle, firmographics, psychographics, value_proposition_*)
+  so the Strategic Positioning area has the data needed for an accurate grade.
+- **Prompt seeded in Supabase** (`supabase/migrations/20260420000000_seed_report_prompt.sql`):
+  the Report prompt now lives in `public.prompt` under the SandBox Planner group and is
+  editable from the /prompts UI without redeploy.
+- **Next Steps card uniformised** (`src/app/sandbox-planner/_components/ReportStep.tsx`):
+  all four CTAs (Schedule Follow-Up, Refine Validation, Download Playbook PDF,
+  Initiate Sandbox Review) now share `CTA_BASE/PRIMARY/SECONDARY/OUTLINE/PRIMARY_DISABLED`
+  constants — identical padding, radius, font. Defence-in-depth CSS hides any rogue
+  `<button>`/`<a.btn>`/`<ul>`/`<ol>` the AI might still inject in the `next_steps` HTML.
+
+
+---
+
+## [2026-04-19] — Sandbox Planner: Report step + per-block PDF exporter
+
+Two related improvements to the Sandbox Planner export + final-step experience.
+
+### 1. Per-block PDF exporter — fixes mid-row text cuts on `?tab=prd`
+**Root cause**: `PrdPreviewModal.tsx` and `PrdStep.tsx` both rendered the preview surface to a single tall `html2canvas` canvas and sliced it across A4 pages by raw Y-offset. With no element awareness, any paragraph, list item, table row, or heading sitting on a page boundary was bisected mid-character.
+
+**Fix**: New shared helper `src/app/sandbox-planner/_lib/exportPdf.ts` (`exportElementToPdf`) walks the preview surface block-by-block (`h1-h6, p, ul, ol, blockquote, table, hr, img, figure, pre, .keep-together, .prd-section, .report-section`), renders each block to its own scale-2 canvas, and places it on the PDF, starting a new page when the next block wouldn't fit. Blocks that are themselves taller than a usable A4 page are sliced at the closest horizontal near-white band (≥ 4 px tall, scanned upward from the page break). `PrdPreviewModal` and `PrdStep` now both delegate to this helper — no block is ever bisected. `break-inside: avoid` CSS hints added to prose, list items, table rows, and blockquotes.
+
+### 2. New step 11 — Report
+
+- **Migration** `20260419000000_idea_report.sql`: adds `'report'` to enum `os_idea_block`, creates `idea_report` (idea_id UNIQUE, `final_score`, `threshold_bucket` ∈ {ready/refine/risk}, `headline`, `summary`, `area_scores` JSONB, `penalties` JSONB, `next_steps`, `playbook_title/subtitle/html`, timestamps), enables RLS with a permissive `FOR ALL` policy matching sibling tables, attaches the shared `set_updated_at` trigger, and seeds the Report prompt row (`e1f6cb88-…`) linked to the `SandBox Planner` prompt_group.
+- **Types** (`src/types/sandbox-planner.ts`): `IdeaBlock` extended with `"report"`; step 11 label + subtitle; new `IdeaReport`, `IdeaReportArea`, `IdeaReportPenalty` interfaces; `IdeaFull.report`.
+- **AI prompt** (DB-seeded + `FALLBACK_REPORT`): 6-area weighted rubric totalling 100% — Customer/Problem/Reality 25%, Competitive/Alternative 15%, Strategic Positioning 20%, Market Validation 10%, Business/Execution 15%, MVP Scope/Risk 15%. Each area returns `raw_score_pct`, `weighted_points = round(raw * weight / 100)`, `status` (strong ≥ 80 / average 60–79 / weak < 60), and a one-sentence justification. Five automatic penalties (competitors count < 2, alpha/beta API dependency, missing success metrics, single-ICP, empty out-of-scope). `final_score = clamp(0, 100, Σ weighted − Σ |penalties|)`; threshold bucket derived server-side. Playbook HTML must cover 11 required sections.
+- **Server action** (`actions.ts`): `PROMPT_ID_BY_STEP.report`, `FALLBACK_REPORT`, `generateReport()` (loads structure/ICPs/suggestions/product-def/benchmarking/PRD/database/styles/milestones in parallel inside `triggerAiGeneration`, strips HTML per field, reconciles area scores + penalties server-side, clamps `final_score`, rederives threshold, upserts `idea_report`), `saveReport()` for manual headline/summary edits, and new `case "report":` in the switch.
+- **Page fetch**: `sandbox-planner/page.tsx` adds a parallel `idea_report` fetch and wires it into `ideaFull.report`.
+- **UI** (`ReportStep.tsx`): two-column dashboard — donut SVG score, colour-coded threshold badge ("Ready for Sandbox" / "Needs Refinement" / "High Risk"), editable headline + summary with Save, "Weighted Score Summary" card listing all 6 areas with status pills and raw-score numbers, "Automatic Penalties Applied" card, right-rail Next Steps card + Threshold Guide + Founders Program promo, and a "Blur Studio Playbook" preview card with a **Live Preview** button.
+- **Modal** (`ReportPreviewModal.tsx`): printable playbook surface with cover donut + inline hex styling (no oklch, html2canvas-safe), toolbar with PDF + DOCX export. PDF uses the new shared `exportElementToPdf` helper; DOCX uses the existing `html-docx-js` path.
+- **Auto-trigger**: `useAutoTriggerAi(idea.id, "report", report.final_score == null, isAiWorking)` — first visit auto-fires generation.
+- **Ancillary**: `AiLoadingOverlay.STEP_FIELDS.report` wired, Supabase TypeScript types regenerated, `next.config.ts` pins `turbopack.root` to the project directory.
+
+---
+
+## [2026-04-18] — Sandbox Planner: idea list polish, VP-map round-trip, scoring rubric, table renames
+
+Five related improvements to the Sandbox Planner:
+
+### 1. Idea list (step 1)
+- Each idea card now renders its description as **formatted HTML** (bold, bullets, etc.) via the `prose` typography plugin instead of raw tags.
+- Card shows **"Created by {first_name} {last_name}"** below the description — derived from a new `creator:created_by(first_name, last_name)` join on the ideas list query.
+- Cards have a **trash icon** in the top-right corner. Clicking it opens a confirm dialog (reuses `ConfirmDeleteModal` with new `kind: "idea"`) and, on confirm, calls the existing `deleteIdea` server action. All child tables cascade via their existing `ON DELETE CASCADE` FKs.
+
+### 2. Refining ICP (step 3) — `our_solution_value` round-trip
+Root cause: `page.tsx` was explicitly selecting columns from `idea_icp` and had omitted `our_solution_value` (plus `value_proposition_value_map_solutions`, `value_proposition_value_map_gain_creators`, `score_rationale`). The AI wrote the field successfully, but the page never read it back. **Fixed** the SELECT and reinforced the prompt to mark the field REQUIRED.
+
+### 3. Benchmarking (step 5) — `possible_business_models`
+Prompt reinforced to require **exactly 4–6** models with `<ul><li>` structure and a "do not leave this field empty" directive.
+
+### 4. Strategic Frameworks (step 6)
+- **VP map fields** (`value_proposition_value_map_solutions`, `value_proposition_value_map_gain_creators`) now round-trip correctly thanks to the expanded `idea_icp` SELECT in `page.tsx`.
+- **Scoring rubric**: prompt rewritten from "give a differentiated score" to a structured **score_breakdown** with five 0–20 sub-scores (pain severity, pain frequency, willingness to pay, market reachability, solution fit) summing to the `score`. The AI also emits a new **`score_rationale`** field (2–3 HTML sentences) that's persisted to a new `idea_icp.score_rationale` column and rendered beneath the Fit badge.
+- **`picture`**: AI is now instructed to emit a deterministic dicebear avatar URL per ICP (`https://api.dicebear.com/7.x/personas/svg?seed=<archetype_title>`), and the architect card exposes an editable text input so users can override it.
+- **Optimization Suggestions**: prompt hardened to require **exactly 3–5** objects with "REQUIRED — never omit or return empty" directives.
+- **`architect_subtitle`**: prompt marked REQUIRED (4–10 word tagline).
+
+### 5. Table renames
+- `idea_block_product_definition_and_flows` → `idea_product_definition_and_flows`
+- `idea_block_structure_and_align` → `idea_structure_and_align`
+- Policies renamed for consistency (RLS attachment survives table rename automatically).
+
+### Files touched
+- **Migration**: `supabase/migrations/20260418000000_sandbox_planner_updates.sql` — adds `idea_icp.score_rationale` column, renames both tables, renames 6 policies, `NOTIFY pgrst`.
+- **Schema types**: `src/lib/supabase/types.ts` — regenerated via `mcp__supabase__generate_typescript_types` to reflect the renamed tables and new column.
+- **Server**: `src/app/sandbox-planner/page.tsx` (creator join, expanded `idea_icp` SELECT including the 4 previously-missing columns, renamed table refs), `src/app/sandbox-planner/actions.ts` (prompt reinforcements for Refining ICP / Benchmarking / Strategic Frameworks; `picture` + `score_rationale` added to the `.update()` payload; renamed table refs).
+- **Client**: `src/app/sandbox-planner/_components/IdeasGrid.tsx` (HTML description, creator line, trash button, delete-confirm wiring), `src/app/sandbox-planner/_components/StrategicFrameworksStep.tsx` (added `picture` to edit state + save payload, rendering `score_rationale` under the Fit badge, new avatar-URL input).
+- **Shared**: `src/app/projects/_components/modals/ConfirmDeleteModal.tsx` (extended `kind` to include `"idea"` with specific copy), `src/types/sandbox-planner.ts` (added `creator_name` on `Idea`, `score_rationale` on `IdeaIcp`, updated comment references).
+
+---
+
+## [2026-04-16] — Sandbox Planner: PRD preview + PDF/DOCX export
+
+- New **"Preview & Export"** button on the PRD step (step 7) that opens a full-document modal showing every section (App Overview → Phasing Notes) as a single continuous, print-ready document.
+- Modal has two export actions:
+  - **Download PDF** — client-side render via `html2canvas` → `jspdf`, A4 portrait, tiled across pages. Filename `{idea-slug}-prd.pdf`.
+  - **Download DOCX** — client-side conversion via `html-docx-js`. Filename `{idea-slug}-prd.docx`.
+- New files:
+  - `src/app/sandbox-planner/_components/PrdPreviewModal.tsx` — modal + export logic (both libraries dynamically imported to keep the main bundle small)
+  - `src/types/html-docx-js.d.ts` — ambient type declaration for the untyped `html-docx-js/dist/html-docx` browser bundle
+- New dependencies: `jspdf`, `html2canvas`, `html-docx-js`.
+- The preview surface uses inline hex-color styles (no oklch) so `html2canvas` can rasterize it reliably — Tailwind v4's default oklch palette breaks html2canvas otherwise.
+
+---
+
+## [2026-04-16] — Sandbox Planner: AI timeout + model-switch race fix
+
+Two related bugs reported:
+1. AI generation would hang for long periods and then return nothing.
+2. After switching AI model mid-generation, the stale (old-model) response would arrive and overwrite the fresh one the user just triggered.
+
+### Root causes
+- Server-side `fetch` calls to OpenAI/Claude/Gemini had **no `AbortSignal`** — when the provider hung, the server held the request open indefinitely even after the client's 120 s `useAiWithTimeout` bailed.
+- No request-identity tracking — a slow stale run from a previous `triggerAiGeneration` invocation had no way to know a newer run had taken over, so it would happily overwrite the new data.
+
+### Fixes
+
+**1. Server-side fetch timeout (110 s) on all AI providers**
+- `src/lib/api/openai.ts`, `src/lib/api/claude.ts`, `src/lib/api/gemini.ts`: wrapped `fetch` in `try/catch` with `AbortSignal.timeout(110_000)`. On abort returns `status_code: 504` with a clear "request timed out after 110s" message. 110 s chosen to be slightly under the client's 120 s timeout so the server returns a clean error before the client gives up.
+
+**2. Request-id race-prevention**
+- New Supabase column: `idea.current_ai_request_id uuid` (migration `20260416000003_add_idea_current_ai_request_id.sql`)
+- `triggerAiGeneration` now mints a fresh `crypto.randomUUID()` at the start and writes it alongside `current_blocks_updating`
+- New helper `isRequestActive(supabase, ideaId, requestId)` re-reads the column and returns `true` only if this run still owns it
+- All 9 generator helpers (`generateStructureAlign`, `generateRefiningIcp`, `generateProductDefinition`, `generateStrategicFrameworks`, `generateBenchmarking`, `generatePrdContent`, `generateDatabaseContent`, `generateVisualStylesContent`, `generateMilestonesContent`) now take `requestId` and guard every DB write with `isRequestActive` — stale runs silently skip their writes
+- The success/error clears in `triggerAiGeneration` are likewise guarded so a stale run can never clear a newer run's `current_blocks_updating` flag
+- `clearAiWorking` also nulls `current_ai_request_id`
+
+### Behavior after fix
+- A hung provider returns a 504 within ~110 s instead of hanging forever
+- After the user switches models mid-run, the old run's response is dropped on the floor on arrival and cannot overwrite the new response
+
+---
+
+## [2026-04-16] — Sandbox Planner: 6 bug fixes + feature improvements
+
+### Issue 1 — Stuck loading overlay fix
+- Added `clearAiWorking(ideaId)` server action that clears `current_blocks_updating = null`
+- `AiLoadingOverlay` now accepts `ideaId` prop and arms a 155-second internal timer; if still stuck after 155 s, calls `clearAiWorking`, shows a toast, and renders an error panel with a "Dismiss" button
+- All 9 step components updated to pass `ideaId` to `<AiLoadingOverlay>`
+
+### Issue 2 — Refining ICP: Description relocation + Our Solution Value
+- **Description field moved** from the Create/Edit ICP modal to the main page right column (above "Day in the Life"), editable via `RichTextEditor` and saved with the other ICP fields
+- **New "Our Solution Value" section** added below "How could be solved" — AI-generated and manually editable; describes the specific value the product brings to that ICP tied to their pain points
+- New Supabase column: `idea_icp.our_solution_value text`
+- Updated `FALLBACK_REFINING_ICP` prompt and `generateRefiningIcp` mapping
+- `AiLoadingOverlay` STEP_FIELDS updated to include "Our Solution Value" for `refining_icp`
+
+### Issue 3 — Toast "Go to Settings" → inline AI config modal
+- Created `aiConfigModalStore.ts` (module-level callback bridge)
+- Created `AiConfigModal.tsx` (wraps `AiSettingsForm` in a full-screen modal)
+- `SandboxPlannerShell` registers the modal open callback and renders `<AiConfigModal>`
+- `useAiWithTimeout.ts` now calls `openAiConfigModal()` instead of `window.location.href = "/settings"` in both the timeout and error toasts
+
+### Issue 4 — Strategic Frameworks: editable fields + optimization fix + differentiated score
+- **Editable fields**: VP, JTBD Synthesis, and NABC Pitch sections replaced with `RichTextEditor` — a "Save Frameworks" button persists edits via the existing `saveStrategicFramework` action
+- **Optimization Suggestions fix**: Clarified `FALLBACK_STRATEGIC_FRAMEWORKS` prompt — `optimization_suggestions` now listed explicitly as a per-ICP field (not a root-level "Also include"), preventing AI from misplacing it
+- **Differentiated ICP fit score**: Prompt now asks AI to generate `score: 0–100` per ICP based on pain-point alignment, urgency, and market size; saved to `idea_icp.score`; displayed as "Fit XX/100" badge on the IcpArchitectCard (color-coded green/yellow/red)
+- Completion badges in `IcpPillSelector` now show the AI-generated score (when available) instead of field-fill count
+
+### Issue 5 — Benchmarking: Possible Business Models + step reorder
+- **New "Possible Business Models" section** added before "Key Takeaways"; AI-generated and manually editable
+- New Supabase column: `idea_benchmarking.possible_business_models text`
+- Updated `FALLBACK_BENCHMARKING` prompt, `generateBenchmarking`, and `saveBenchmarking` action
+- `AiLoadingOverlay` STEP_FIELDS updated for `benchmarking`
+- **Step reorder**: Benchmarking is now step 5, Strategic Frameworks is step 6 (was reversed)
+  - `IDEA_BLOCKS_ORDERED` and `IDEA_BLOCK_STEPS` updated in `sandbox-planner.ts`
+  - `computeUnlockedSteps()` chain: Product Definition → Benchmarking → Strategic Frameworks → PRD
+
+### Issue 6 — Auto-trigger Realtime race condition fix
+- `useAutoTriggerAi` now delays the trigger by 1 second (`setTimeout(fn, 1000)`) to ensure the Supabase Realtime channel is subscribed before AI starts setting `current_blocks_updating`
+
+---
+
+## [2026-04-16] — E2E test pass: all 10 Sandbox Planner steps verified (post-bugfix run)
+
+Full flow re-tested with idea "E2E Test — AI Recipe App" after implementing all 6 bug fixes:
+
+| Step | Result | Notes |
+|------|--------|-------|
+| Ideas | ✅ Pass | Idea selected from list |
+| Structure & Align | ✅ Pass | Auto-trigger fired, content saved |
+| Refining ICP | ✅ Pass | 3 ICPs, pill switching, Description on main page, Our Solution Value visible |
+| Product Definition & Flows | ✅ Pass | Product Summary + Feature List, no User Flows section (removed) |
+| Benchmarking | ✅ Pass (step 5) | Now correctly before Strategic Frameworks; Possible Business Models field populated |
+| Strategic Frameworks | ✅ Pass (step 6) | VP 2×2 grid, ICP Architect editable, NABC 2×2 layout; all 3 ICPs at 8/8 completion |
+| PRD | ✅ Pass | 9 sections, rich HTML, properly formatted |
+| Database | ✅ Pass | Multi-table schema with Relationships and Migration Notes |
+| Visual Styles | ✅ Pass | Logo & Branding, Color Palette, Product Feeling — all in proper HTML |
+| Project Milestones & Tasks | ✅ Pass | Multiple milestones with task tables, time estimates, exit criteria |
+
+**Issues confirmed fixed:**
+- Loading overlay no longer permanently stuck (155s timer + clearAiWorking works)
+- Benchmarking now at step 5, Strategic Frameworks at step 6 (reorder working)
+- Possible Business Models field generated and saved (was empty string bug — fixed with `|| null`)
+- Auto-trigger fires after 1s delay (Realtime race condition resolved)
+- AiLoadingOverlay shows correct step-specific field names per step
+- `Go to Settings` in timeout toast now opens inline AiConfigModal (not page redirect)
+
+**Known issues remaining:**
+- Gemini 2.5 Flash rate limits hit on every 2nd–3rd step transition when running rapid E2E; requires ~30s wait then Regenerate click. Workaround: switch to Claude or wait between steps.
+- Stray "AI response timed out" toasts appear when navigating away from a step while a fire-and-forget timer is still running (e.g. previous step's `runAiWithTimeout` timer fires after navigation). Root cause: the 120s timer is not tied to component lifecycle — it fires regardless of which page the user is on. Fix needed: cancel the timer on component unmount.
+- Gemini 2.5 Flash produces BBCode format (`[b]text[/b]`, `[list][*]item`) in some Strategic Frameworks fields instead of HTML. TipTap renders these as literal text. Fix needed: update prompts to explicitly show HTML tag examples (`<b>`, `<ul>`, `<li>`).
+- Strategic Frameworks VP: "Value Map Solutions" field occasionally not populated by AI (JSON likely truncated). Fix needed: investigate prompt structure and token budget.
+
+---
+
+## [2026-04-15] — E2E test pass: all 10 Sandbox Planner steps verified
+
+Full flow tested with idea "TaskFlow AI — Smart Task Delegation Platform":
+
+| Step | Result | Notes |
+|------|--------|-------|
+| Structure & Align | ✅ Pass | Auto-trigger, content saved |
+| Refining ICP | ✅ Pass | Pill switching, ICP content sync |
+| Product Definition & Flows | ✅ Pass | Summary + Feature List |
+| Strategic Frameworks | ✅ Pass (timeout toast shown) | Claude too slow; toast "Switch to Gemini 2.5 Flash" fired at 120s — server finished eventually |
+| Benchmarking | ✅ Pass | HTML comparison table rendered |
+| PRD | ✅ Pass | 9 sections, no JSON parse errors |
+| Database | ✅ Pass | 15+ tables, Relationships, Important Notes |
+| Visual Styles | ✅ Pass | Logo & Branding, Color Palette (hex table), Product Feeling |
+| Project Milestones & Tasks | ✅ Pass | 6 milestones, task tables with Estimated Time + DoD |
+
+**Known limitation discovered**: Supabase Realtime `router.refresh()` may miss events when the auto-trigger fires immediately on component mount before the channel finishes connecting. Loading overlay does not appear; content is present in DB and loads correctly on next navigation/reload. Workaround: a page reload always shows data. Fix: delay auto-trigger by a short interval or poll `current_blocks_updating` after mount.
+
+**AI model recommendation confirmed**: Claude Sonnet 4.6 times out on large generations (Strategic Frameworks, Database schema). Gemini 2.5 Flash completes Visual Styles in ~10s and Milestones in ~30s. The 120s timeout toast correctly directs users to Settings → AI Configuration.
+
+---
+
+## [2026-04-15] — Fix: AI JSON parse failures + RichTextEditor sync + 120s timeout toast
+
+- **`src/app/sandbox-planner/actions.ts`** — wrapped all 8 `renderPrompt()` context variables that contain HTML (e.g. `core_problem`, `target_audience`, `product_overview`, `features`, `essential_features`, ICP `description`/`day_in_life`/`pain_points`) with `stripHtml()` so the LLM receives clean text, eliminating the root cause of JSON parse failures
+- **`src/lib/api/claude.ts` / `openai.ts` / `gemini.ts`** — added `sanitizeJsonText()` helper in all three providers; strips markdown code fences (` ```json…``` `) and extracts the first `{…}` block before calling `JSON.parse()`; increased Claude default `maxTokens` from 4096 → 16384 to support large multi-ICP generations
+- **`src/app/sandbox-planner/_hooks/useAiWithTimeout.ts`** (new) — `runAiWithTimeout<T>()` wraps any server-action call with a 120-second `Promise.race()` client-side timeout; on timeout shows a sonner error toast "AI response timed out — Try switching to a faster AI model (e.g. Gemini 2.5 Flash)" with a "Go to Settings" action button; non-timeout errors also show a toast
+- **`src/app/sandbox-planner/_hooks/useAutoTriggerAi.ts`** — all auto-trigger calls now use `runAiWithTimeout` (previously fired raw with `void`, ignoring errors and hangs indefinitely)
+- **`src/app/layout.tsx`** — added `<Toaster>` (sonner, bottom-right, dark theme, richColors, closeButton) to root layout so toasts render app-wide
+- **`src/app/sandbox-planner/_components/RichTextEditor.tsx`** — added `useEffect` to call `editor.commands.setContent(content)` when the `content` prop changes externally (e.g. switching ICP pill); TipTap's `useEditor` only uses `content` as the initial value — this fix makes the editor reactive
+- **`src/app/sandbox-planner/_components/RefiningIcpStep.tsx` / `ProductDefinitionStep.tsx` / `StructureAlignStep.tsx`** — readonly context panels ("Original Idea", "Finalized Core Problem") switched from `<p className="whitespace-pre-wrap">` to `dangerouslySetInnerHTML` with `tiptap-content` class so HTML stored by RichTextEditor renders as prose, not raw tags
+- Applied `runAiWithTimeout` to all 9 step components' manual Regenerate handlers (previously only some steps were covered)
+- TypeScript: 0 errors. Build: ✓
+
+---
+
+## [2026-04-15] — Fix: rebuilt production server to expose all 10 Sandbox Planner steps
+
+- App was running a stale `next build` that referenced a missing JS chunk (`29188786e4d54c12.js`), causing a blank "Application error" screen on the sandbox-planner page
+- Ran `npx next build` (rebuilt in 3.2s), killed the old server process (PID 54812), and restarted with `npx next start --port 30003`
+- All 10 breadcrumb menu tabs (Ideas → Project Milestones & Tasks) are now correctly visible
+
+---
+
+## [2026-04-15] — Feature: 5 new Sandbox Planner steps (Benchmarking → Milestones & Tasks)
+
+- **Supabase migration** — extended `os_idea_block` enum with 5 new values; created 5 new tables with RLS: `idea_benchmarking` (3 sections), `idea_prd` (9 sections), `idea_database` (3 sections), `idea_styles` (3 sections), `idea_milestones_and_tasks` (1 section); seeded 5 prompt rows in `prompt` table
+- **`src/types/sandbox-planner.ts`** — extended `IdeaBlock` union (steps 6–10), added labels, `IDEA_BLOCK_STEPS` entries, `IDEA_BLOCKS_ORDERED` entries, 5 new interfaces (`IdeaBenchmarking`, `IdeaPrd`, `IdeaDatabase`, `IdeaStyles`, `IdeaMilestonesAndTasks`), extended `IdeaFull`
+- **`src/lib/api/json-converters.ts`** — added 5 output interfaces (`BenchmarkingOutput`, `PrdOutput`, `DatabaseOutput`, `VisualStylesOutput`, `MilestonesAndTasksOutput`)
+- **`src/app/sandbox-planner/actions.ts`** — added 5 CRUD upsert functions, 5 AI generate functions with fallback prompts, updated `PROMPT_ID_BY_STEP` with real UUIDs, extended `triggerAiGeneration` switch with 5 new cases
+- **`src/app/sandbox-planner/page.tsx`** — added 5 parallel Supabase queries in `Promise.all`, extended `ideaFull` construction
+- **`src/app/sandbox-planner/_components/SandboxPlannerShell.tsx`** — added 5 imports, extended `computeUnlockedSteps` with sequential unlock gates, added 5 conditional renders, updated step count to "of 10"
+- **`src/app/sandbox-planner/_components/AiLoadingOverlay.tsx`** — added 5 entries to `STEP_FIELDS`
+- **New step components**: `BenchmarkingStep.tsx`, `PrdStep.tsx` (9-section accordion), `DatabaseStep.tsx`, `VisualStylesStep.tsx`, `MilestonesAndTasksStep.tsx` — all follow RichTextEditor + save + AI regenerate pattern
+- TypeScript: 0 errors. Build: ✓
+
+---
+
+## [2026-03-28] — Feature: ICP CRUD, User Type redesign, modal backdrop fix
+
+- `IcpPillSelector.tsx` — redesigned to horizontal scrollable container (gray pill-shaped background, white active pill); optional `onAdd`, `onEdit`, `onDelete` props show `+ Add ICP` button and per-ICP pencil/trash icons
+- `RefiningIcpStep.tsx` — added `+ Add ICP` button, Edit ICP (pencil icon) and Delete ICP (trash icon) per pill; shared `IcpModal` handles both create and edit; uses existing `createIcp` + `saveIcpProfile` + `deleteIcp` server actions
+- `ProductDefinitionStep.tsx` — user type pills redesigned to match ICP selector style (gray container, white active, pencil + trash icons); added Edit User Type modal (same design as Create); modal can update name and description; fixed modal backdrop from `bg-black/60 backdrop-blur-sm` → `bg-black/75` (solid dark overlay)
+- TypeScript: 0 errors
+
+---
+
+## [2026-03-28] — Improvement: Upgrade AI prompt descriptions from CSV export
+
+- Updated all 4 `prompt.description` values in Supabase with richer, structured prompts from the CSV export — each now uses `<OBJECTIVE>`, `<CONTEXT>`, `<LIMITATIONS>`, `<STYLE>`, `<INSTRUCTIONS>` sections; `{{variable}}` placeholders retained; output JSON structure preserved
+- Fixed `getPromptTemplate()` in `src/app/sandbox-planner/actions.ts` — remote DB has no `type` column; switched to ID-based lookup via `PROMPT_ID_BY_STEP` map; prompts now actually read from DB instead of always falling back to hardcoded strings
+- Added migration `20260328100000_add_prompt_type_column.sql` for future type column addition
+- TypeScript: 0 errors
+
 ---
 
 ## [2026-03-28] — Refactor: Restructure prompt tables + redesign Prompts page

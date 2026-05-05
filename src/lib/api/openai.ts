@@ -7,6 +7,10 @@
 
 const OPENAI_API_URL = "https://api.openai.com/v1/responses";
 
+// Server-side timeout: slightly less than the client-side 240s in useAiWithTimeout,
+// so the server returns a clean error before the client gives up.
+const AI_FETCH_TIMEOUT_MS = 230_000;
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface OpenAIResponseOutputContent {
@@ -89,14 +93,27 @@ export async function generateOpenAIResponse(
     body.instructions = instructions;
   }
 
-  const res = await fetch(OPENAI_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(OPENAI_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(AI_FETCH_TIMEOUT_MS),
+    });
+  } catch (e) {
+    const isAbort = e instanceof DOMException && e.name === "TimeoutError";
+    return {
+      returned_an_error: true,
+      status_code: isAbort ? 504 : 0,
+      status_message: isAbort
+        ? `OpenAI request timed out after ${Math.round(AI_FETCH_TIMEOUT_MS / 1000)}s`
+        : e instanceof Error ? e.message : "Network error",
+    };
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -122,6 +139,23 @@ export async function generateOpenAIResponse(
 // ── Convenience: generate + parse JSON response ───────────────────────────────
 
 /**
+ * Strip markdown code fences and extract the JSON object from an AI response.
+ * Handles: ```json...```, ```...```, and any leading/trailing prose.
+ */
+function sanitizeJsonText(text: string): string {
+  let s = text.trim();
+  // Strip markdown code fences (```json...``` or ```...```)
+  s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+  // Extract from first { to last } to remove any remaining preamble/postamble
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    s = s.slice(start, end + 1);
+  }
+  return s.trim();
+}
+
+/**
  * Generate a response and parse the output as JSON.
  * Used by Bubble's "Message (copy)" pattern — extract structured JSON from AI output.
  */
@@ -137,13 +171,14 @@ export async function generateOpenAIJsonResponse<T = unknown>(
     };
   }
 
+  const sanitized = sanitizeJsonText(result.text);
   try {
-    const data = JSON.parse(result.text) as T;
+    const data = JSON.parse(sanitized) as T;
     return { returned_an_error: false, data };
   } catch {
     return {
       returned_an_error: true,
-      error: `Failed to parse JSON response: ${result.text.slice(0, 200)}`,
+      error: `Failed to parse JSON response: ${sanitized.slice(0, 300)}`,
     };
   }
 }

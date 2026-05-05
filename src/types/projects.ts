@@ -113,12 +113,20 @@ export type ProjectStage =
   | "final_invoice"
   | "completed";
 
+export type RecommendedBy = "dev_agency_owner" | "client";
+
+export const RECOMMENDED_BY_LABELS: Record<RecommendedBy, string> = {
+  dev_agency_owner: "Dev./Agency Owner",
+  client: "Client",
+};
+
 export interface UserProfile {
   id: string;
   first_name: string | null;
   last_name: string | null;
   picture: string | null;
   type: UserType | null;
+  signature?: string | null;
 }
 
 export interface UserRow extends UserProfile {
@@ -163,6 +171,7 @@ export interface Task {
   type: TaskType | null;
   level: TaskLevel | null;
   status: TaskStatus;
+  created_by: string | null;
   task_assignees: TaskAssignee[];
 }
 
@@ -187,16 +196,24 @@ export interface Project {
   change_automatically_milestone_estimated_time: boolean;
   change_automatically_project_start_end_dates: boolean;
   change_automatically_milestone_start_end_dates: boolean;
-  change_automatically_milestone_real_time: boolean;
-  change_automatically_project_real_time: boolean;
+  recommended_by: RecommendedBy | null;
   talent_who_recommended_id: string | null;
+  client_who_recommended_id: string | null;
   company_that_recommended_id: string | null;
+  referrer_id: string | null;
   created_at: string;
+  client_developer_estimated_time: number | null;
+  client_developer_real_time: number | null;
+  qa_developer_estimated_time: number | null;
+  qa_developer_real_time: number | null;
+  qa_tester_estimated_time: number | null;
+  qa_tester_real_time: number | null;
 }
 
 export interface TimeTrack {
   id: string;
-  owner_id: string | null;
+  /** Renamed from owner_id (Part 2 item 33). */
+  assignee_id: string;
   task_id: string | null;
   project_id: string | null;
   start_date: string | null;
@@ -211,12 +228,24 @@ export interface TimeTrack {
   } | null;
 }
 
+export interface TaskCommentAttachment {
+  path: string;
+  url: string;
+  name: string;
+  size: number;
+  type: string;
+}
+
 export interface TaskComment {
   id: string;
   task_id: string;
   project_id: string;
-  owner_id: string;
+  /** Renamed from owner_id (Part 2 item 32). */
+  created_by: string;
   message: string;
+  attachments: TaskCommentAttachment[];
+  /** Renamed from edited_at (Part 2 item 32). */
+  updated_at: string | null;
   created_at: string;
   profiles?: {
     id: string;
@@ -228,7 +257,8 @@ export interface TaskComment {
 
 export interface QATimeTrack {
   id: string;
-  owner_user_id: string | null;
+  /** Renamed from owner_user_id (Part 2 item 42). */
+  assignee_id: string;
   task_id: string | null;
   project_id: string | null;
   start_date: string | null;
@@ -242,26 +272,6 @@ export interface QATimeTrack {
     last_name: string | null;
     picture: string | null;
   } | null;
-}
-
-// ── Milestone totals ──────────────────────────────────────────────────────────
-
-export interface ClientMilestoneTotal {
-  id: string;
-  project_id: string | null;
-  task_milestone_id: string | null;
-  estimated_time_h: number | null;
-  real_time_h: number | null;
-}
-
-export interface QAMilestoneTotal {
-  id: string;
-  project_id: string | null;
-  task_milestone_id: string | null;
-  developer_estimated_time_h: number | null;
-  developer_real_time_h: number | null;
-  qa_estimated_time_h: number | null;
-  qa_real_time_h: number | null;
 }
 
 // ── Time helpers ───────────────────────────────────────────────────────────────
@@ -331,7 +341,7 @@ export type TabKey = "stages" | "developer" | "client_requests" | "qa_requests";
 
 export const TAB_LABELS: Record<TabKey, string> = {
   stages: "Stages Checking",
-  developer: "Developer Tasks",
+  developer: "Main Tasks",
   client_requests: "Client Requests",
   qa_requests: "QA Requests",
 };

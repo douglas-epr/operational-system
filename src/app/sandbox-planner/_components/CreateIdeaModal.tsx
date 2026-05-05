@@ -1,16 +1,20 @@
 /**
- * Create Idea modal.
+ * Create / Edit Idea modal.
  * Collects name (required), description (required), and optional project,
- * then calls the createIdea server action.
+ * then calls the createIdea or updateIdea server action depending on mode.
+ * Pass `idea` to switch to edit mode — the fields are prefilled and the
+ * submit button updates the existing row.
  */
 "use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "@/app/projects/_components/modals/Modal";
-import type { ProjectOption } from "@/types/sandbox-planner";
-import { createIdea } from "../actions";
+import type { Idea, ProjectOption } from "@/types/sandbox-planner";
+import { createIdea, updateIdea } from "../actions";
 import { cn } from "@/lib/utils";
+import RichTextEditor from "./RichTextEditor";
+import { isBlankHtml } from "../_hooks/useAutoTriggerAi";
 
 interface CreateIdeaModalProps {
   open: boolean;
@@ -18,32 +22,53 @@ interface CreateIdeaModalProps {
   projects: ProjectOption[];
   /** Pre-select this project in the dropdown (from URL ?project= param). */
   defaultProjectId?: string;
+  /** When provided, the modal renders in edit-mode for this idea. */
+  idea?: Idea | null;
+  currentUserId?: string;
+  isAdminOrManager?: boolean;
 }
 
-/** Modal form for creating a new idea with early validation and submit state. */
+/** Modal form for creating or editing an idea with early validation. */
 export default function CreateIdeaModal({
   open,
   onClose,
   projects,
   defaultProjectId,
+  idea = null,
+  currentUserId,
+  isAdminOrManager = false,
 }: CreateIdeaModalProps) {
   const router = useRouter();
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [projectId, setProjectId] = useState(defaultProjectId ?? "");
+  const isEdit = idea !== null;
+  // In edit mode, only allow editing if the user is admin/manager or the idea creator.
+  const canEdit = !isEdit || isAdminOrManager || (!!currentUserId && idea?.created_by === currentUserId);
 
-  // Sync when defaultProjectId changes
+  const [name, setName] = useState(idea?.name ?? "");
+  const [description, setDescription] = useState(idea?.description ?? "");
+  const [projectId, setProjectId] = useState(
+    idea?.project_id ?? defaultProjectId ?? ""
+  );
+
+  // Sync when the editing target or default project changes.
   useEffect(() => {
-    setProjectId(defaultProjectId ?? "");
-  }, [defaultProjectId]);
+    if (idea) {
+      setName(idea.name ?? "");
+      setDescription(idea.description ?? "");
+      setProjectId(idea.project_id ?? "");
+    } else {
+      setProjectId(defaultProjectId ?? "");
+    }
+  }, [idea, defaultProjectId]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const nameValid = name.trim().length > 0;
-  const descriptionValid = description.trim().length > 0;
-  const canSubmit = nameValid && descriptionValid && !isSubmitting;
+  const descriptionValid = !isBlankHtml(description);
+  const canSubmit = canEdit && nameValid && descriptionValid && !isSubmitting;
 
   function resetForm() {
+    if (isEdit) return; // Preserve edited state until the caller unmounts.
     setName("");
     setDescription("");
     setProjectId(defaultProjectId ?? "");
@@ -61,11 +86,17 @@ export default function CreateIdeaModal({
     setIsSubmitting(true);
     setError(null);
 
-    const result = await createIdea({
-      name: name.trim(),
-      description: description.trim(),
-      project_id: projectId || undefined,
-    });
+    const result = isEdit
+      ? await updateIdea(idea!.id, {
+          name: name.trim(),
+          description: description,
+          project_id: projectId || null,
+        })
+      : await createIdea({
+          name: name.trim(),
+          description: description,
+          project_id: projectId || undefined,
+        });
 
     setIsSubmitting(false);
 
@@ -80,8 +111,12 @@ export default function CreateIdeaModal({
   }
 
   return (
-    <Modal open={open} onClose={handleClose} title="Create Idea">
-      <div className="px-6 pb-2 space-y-5">
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title={isEdit ? "Edit Idea" : "Create Idea"}
+    >
+      <div className="px-6 pb-2 space-y-5 overflow-y-auto max-h-[60vh]">
         {/* Name */}
         <div>
           <label
@@ -96,14 +131,12 @@ export default function CreateIdeaModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Name here..."
-            disabled={isSubmitting}
+            disabled={isSubmitting || !canEdit}
             className={cn(
               "w-full rounded-lg border px-3 py-2.5 text-sm bg-base text-text-primary placeholder:text-text-muted",
               "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
               "disabled:opacity-50",
-              !nameValid && name.length > 0
-                ? "border-red-400"
-                : "border-border"
+              !nameValid && name.length > 0 ? "border-red-400" : "border-border"
             )}
           />
         </div>
@@ -116,21 +149,12 @@ export default function CreateIdeaModal({
           >
             Description<span className="text-red-400">*</span>
           </label>
-          <textarea
-            id="idea-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+          <RichTextEditor
+            content={description}
+            onChange={setDescription}
+            editable={canEdit && !isSubmitting}
             placeholder="Describe here the main problem you are trying to solve..."
-            rows={5}
-            disabled={isSubmitting}
-            className={cn(
-              "w-full rounded-lg border px-3 py-2.5 text-sm bg-base text-text-primary placeholder:text-text-muted resize-none",
-              "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
-              "disabled:opacity-50",
-              !descriptionValid && description.length > 0
-                ? "border-red-400"
-                : "border-border"
-            )}
+            minHeight="min-h-32"
           />
         </div>
 
@@ -146,7 +170,7 @@ export default function CreateIdeaModal({
             id="idea-project"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || !canEdit}
             className={cn(
               "w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-base text-text-primary",
               "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
@@ -184,18 +208,26 @@ export default function CreateIdeaModal({
         >
           Close
         </button>
-        <button
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          className={cn(
-            "flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors",
-            "bg-accent text-white hover:bg-accent/90",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          )}
-        >
-          {isSubmitting ? "Creating..." : "Create"}
-        </button>
+        {canEdit && (
+          <button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className={cn(
+              "flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors",
+              "bg-accent text-white hover:bg-accent/90",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            )}
+          >
+            {isSubmitting
+              ? isEdit
+                ? "Saving..."
+                : "Creating..."
+              : isEdit
+                ? "Save"
+                : "Create"}
+          </button>
+        )}
       </div>
     </Modal>
   );

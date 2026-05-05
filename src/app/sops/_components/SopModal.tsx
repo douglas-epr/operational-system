@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import Modal from "@/app/projects/_components/modals/Modal";
+import { UserMultiSelect } from "@/components/ui";
 import { createSop, updateSop, createTag } from "../actions";
 import type { SopWithTags, SopTag } from "@/types/sops";
 import { USER_TYPE_OPTIONS } from "@/types/sops";
@@ -14,9 +15,10 @@ interface Props {
   allTags: SopTag[];
   profiles: UserProfile[];
   onTagCreated: (tag: SopTag) => void;
+  isAdminOrManager?: boolean;
 }
 
-export default function SopModal({ open, onClose, sop, allTags, profiles, onTagCreated }: Props) {
+export default function SopModal({ open, onClose, sop, allTags, profiles, onTagCreated, isAdminOrManager = false }: Props) {
   const isEdit = !!sop;
 
   const [name, setName]                   = useState("");
@@ -50,12 +52,6 @@ export default function SopModal({ open, onClose, sop, allTags, profiles, onTagC
   function toggleType(type: UserType) {
     setSelectedTypes((prev) =>
       prev.includes(type) ? prev.filter((x) => x !== type) : [...prev, type]
-    );
-  }
-
-  function toggleUser(id: string) {
-    setSelectedUsers((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   }
 
@@ -107,30 +103,7 @@ export default function SopModal({ open, onClose, sop, allTags, profiles, onTagC
 
         {/* Tags */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-text-secondary">Tags</label>
-            <button onClick={() => setShowTagInput((v) => !v)} className="text-xs text-accent hover:underline">
-              Didn&apos;t find the tag? Create one now
-            </button>
-          </div>
-          {showTagInput && (
-            <div className="flex gap-2">
-              <input
-                value={newTagName}
-                onChange={(e) => setNewTagName(e.target.value)}
-                placeholder="Tag name…"
-                className="input-field flex-1"
-                onKeyDown={(e) => e.key === "Enter" && handleCreateTag()}
-              />
-              <button
-                onClick={handleCreateTag}
-                disabled={creatingTag}
-                className="px-3 py-1.5 rounded-md bg-accent text-white text-xs hover:bg-accent-hover transition-colors"
-              >
-                {creatingTag ? "…" : "Add"}
-              </button>
-            </div>
-          )}
+          <label className="text-xs font-medium text-text-secondary">Tags</label>
           <div className="flex flex-wrap gap-1.5">
             {allTags.map((tag) => (
               <button
@@ -147,64 +120,75 @@ export default function SopModal({ open, onClose, sop, allTags, profiles, onTagC
             ))}
             {allTags.length === 0 && <span className="text-xs text-text-muted">No tags yet.</span>}
           </div>
-        </div>
-
-        {/* Authorized User Types */}
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-text-secondary">Authorized User Types</label>
-          <div className="flex flex-wrap gap-1.5">
-            {USER_TYPE_OPTIONS.map(({ value, label }) => (
+          {/* "Create new tag" affordance lives BELOW the pill list — easier
+             to spot once the user has scanned the existing tags and decided
+             none fit. The hidden inline input collapses by default. */}
+          <button
+            type="button"
+            onClick={() => setShowTagInput((v) => !v)}
+            className="self-start text-xs text-accent hover:underline"
+          >
+            Didn&apos;t find the tag? Create one now
+          </button>
+          {showTagInput && (
+            <div className="flex gap-2 mt-1">
+              <input
+                value={newTagName}
+                onChange={(e) => setNewTagName(e.target.value)}
+                placeholder="Tag name…"
+                className="input-field flex-1"
+                onKeyDown={(e) => e.key === "Enter" && handleCreateTag()}
+              />
               <button
-                key={value}
-                onClick={() => toggleType(value)}
-                className={`px-2.5 py-1 rounded-full text-xs transition-colors border ${
-                  selectedTypes.includes(value)
-                    ? "bg-accent text-white border-accent"
-                    : "bg-muted text-text-secondary border-border hover:border-accent"
-                }`}
+                onClick={handleCreateTag}
+                disabled={creatingTag}
+                className="px-3 py-1.5 rounded-md bg-accent text-white text-xs hover:bg-accent-hover transition-colors"
               >
-                {selectedTypes.includes(value) && <span className="mr-1">×</span>}
-                {label}
+                {creatingTag ? "…" : "Add"}
               </button>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
 
-        {/* Authorized Users */}
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-medium text-text-secondary">Authorized Users</label>
-          <div className="flex flex-wrap gap-2 p-2 bg-muted rounded-md border border-border min-h-[40px]">
-            {selectedUsers.map((uid) => {
-              const p = profiles.find((x) => x.id === uid);
-              const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ") || uid.slice(0, 8);
-              return (
+        {/* Authorized User Types — admin/manager only */}
+        {isAdminOrManager && (
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-medium text-text-secondary">Authorized User Types</label>
+            <div className="flex flex-wrap gap-1.5">
+              {USER_TYPE_OPTIONS.map(({ value, label }) => (
                 <button
-                  key={uid}
-                  onClick={() => toggleUser(uid)}
-                  className="flex items-center gap-1 px-2 py-0.5 bg-accent/20 text-accent text-xs rounded-full hover:bg-red-500/20 hover:text-red-400 transition-colors"
-                  title="Remove"
+                  key={value}
+                  onClick={() => toggleType(value)}
+                  className={`px-2.5 py-1 rounded-full text-xs transition-colors border ${
+                    selectedTypes.includes(value)
+                      ? "bg-accent text-white border-accent"
+                      : "bg-muted text-text-secondary border-border hover:border-accent"
+                  }`}
                 >
-                  {name} ×
+                  {selectedTypes.includes(value) && <span className="mr-1">×</span>}
+                  {label}
                 </button>
-              );
-            })}
-            {/* Add user picker */}
-            <select
-              value=""
-              onChange={(e) => { if (e.target.value) toggleUser(e.target.value); }}
-              className="bg-transparent text-xs text-text-muted focus:outline-none cursor-pointer"
-            >
-              <option value="">+ Add user</option>
-              {profiles
-                .filter((p) => !selectedUsers.includes(p.id))
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {[p.first_name, p.last_name].filter(Boolean).join(" ") || p.id}
-                  </option>
-                ))}
-            </select>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Authorized Users — admin/manager only */}
+        {isAdminOrManager && (
+          <UserMultiSelect
+            label="Authorized Users"
+            value={selectedUsers}
+            onChange={setSelectedUsers}
+            options={profiles.map((p) => ({
+              id: p.id,
+              name: [p.first_name, p.last_name].filter(Boolean).join(" ") || "Unknown",
+              role: p.type ?? null,
+              picture: p.picture ?? null,
+            }))}
+            placeholder="Add people"
+          />
+        )}
+
 
         {/* Buttons */}
         <div className="flex gap-3 pt-1">

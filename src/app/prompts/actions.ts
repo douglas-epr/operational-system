@@ -39,6 +39,16 @@ export async function getPromptGroups(): Promise<{ data?: PromptGroupRow[]; erro
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
+  // Role check — service client bypasses RLS; gate it explicitly
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("type")
+    .eq("id", user.id)
+    .single();
+  if (profile?.type !== "admin" && profile?.type !== "manager") {
+    return { error: "Insufficient permissions." };
+  }
+
   const serviceClient = createServiceClient();
 
   const [groupsRes, promptsRes] = await Promise.all([

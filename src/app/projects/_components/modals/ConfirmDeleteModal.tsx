@@ -6,8 +6,8 @@ import Modal from "./Modal";
 interface ConfirmDeleteModalProps {
   open: boolean;
   onClose: () => void;
-  /** "project" | "task" */
-  kind: "project" | "task";
+  /** "project" | "task" | "idea" */
+  kind: "project" | "task" | "idea";
   itemName: string;
   onConfirm: () => Promise<{ error?: string }>;
 }
@@ -45,7 +45,11 @@ export default function ConfirmDeleteModal({
           </p>
           <p className="text-sm text-text-secondary">
             This {kind} will be permanently removed
-            {kind === "task" ? " and all sub-tasks, if there are any." : " and all tasks."}
+            {kind === "task"
+              ? " and all sub-tasks, if there are any."
+              : kind === "idea"
+                ? " along with all associated ICPs, benchmarking, PRD, and generated data."
+                : " and all tasks."}
           </p>
           <p className="text-sm text-text-secondary">Are you sure you want to proceed?</p>
           {error && <p className="text-sm text-red-400">{error}</p>}

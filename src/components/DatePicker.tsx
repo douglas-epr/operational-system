@@ -22,6 +22,12 @@ interface DatePickerProps {
   placeholder?: string;
   /** "compact" for narrow cells (time-tracker rows) */
   size?: "default" | "compact";
+  /** When true, the input cannot be opened or cleared. */
+  readOnly?: boolean;
+  /** ISO date string (YYYY-MM-DD). Dates before this are disabled. */
+  minDate?: string | null;
+  /** ISO date string (YYYY-MM-DD). Dates after this are disabled. */
+  maxDate?: string | null;
 }
 
 const MONTHS = [
@@ -35,6 +41,9 @@ export default function DatePicker({
   className = "",
   placeholder = "dd/mm/yyyy",
   size = "default",
+  readOnly = false,
+  minDate = null,
+  maxDate = null,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<"calendar" | "months" | "years">("calendar");
@@ -69,11 +78,18 @@ export default function DatePicker({
   }, []);
 
   function handleOpen() {
+    if (readOnly) return;
     setOpen((o) => {
       if (!o) setView("calendar");
       return !o;
     });
   }
+
+  const minDateObj = minDate ? parse(minDate, "yyyy-MM-dd", new Date()) : null;
+  const maxDateObj = maxDate ? parse(maxDate, "yyyy-MM-dd", new Date()) : null;
+  const disabledMatchers: Array<{ before: Date } | { after: Date }> = [];
+  if (minDateObj && isValid(minDateObj)) disabledMatchers.push({ before: minDateObj });
+  if (maxDateObj && isValid(maxDateObj)) disabledMatchers.push({ after: maxDateObj });
 
   function handleSelectDay(date: Date | undefined) {
     onChange(date ? format(date, "yyyy-MM-dd") : "");
@@ -91,10 +107,11 @@ export default function DatePicker({
     setView("calendar");
   }
 
+  const cursorCls = readOnly ? "cursor-default text-text-muted" : "cursor-pointer";
   const inputCls =
     size === "compact"
-      ? `text-xs bg-muted border border-border rounded px-2 py-1 text-text-primary focus:outline-none focus:border-accent cursor-pointer w-full ${className}`
-      : `input-field cursor-pointer ${className}`;
+      ? `text-xs bg-muted border border-border rounded px-2 py-1 text-text-primary focus:outline-none focus:border-accent w-full ${cursorCls} ${className}`
+      : `input-field ${cursorCls} ${className}`;
 
   return (
     <div className="relative w-full" ref={containerRef}>
@@ -105,6 +122,7 @@ export default function DatePicker({
         placeholder={placeholder}
         onClick={handleOpen}
         onKeyDown={(e) => {
+          if (readOnly) return;
           if (e.key === "Delete" || e.key === "Backspace") {
             e.preventDefault();
             onChange("");
@@ -206,6 +224,7 @@ export default function DatePicker({
               month={calMonth}
               onMonthChange={setCalMonth}
               onSelect={handleSelectDay}
+              disabled={disabledMatchers.length > 0 ? disabledMatchers : undefined}
               hideNavigation
               classNames={{
                 root: "text-[var(--color-text-primary)]",

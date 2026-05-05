@@ -7,15 +7,18 @@ import type { UserProfile } from "@/types/projects";
 import { deleteSop } from "../actions";
 import SopModal from "./SopModal";
 import Modal from "@/app/projects/_components/modals/Modal";
+import { AddIcon, FilterIcon, EditIcon, DeleteIcon } from "@/components/ui/icons";
 
 interface Props {
   sops: SopWithTags[];
   allTags: SopTag[];
   profiles: UserProfile[];
   activeSopId: string | null;
+  currentUserId: string;
+  isAdminOrManager: boolean;
 }
 
-export default function SopList({ sops, allTags, profiles, activeSopId }: Props) {
+export default function SopList({ sops, allTags, profiles, activeSopId, currentUserId, isAdminOrManager }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -87,18 +90,14 @@ export default function SopList({ sops, allTags, profiles, activeSopId }: Props)
             className="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-colors"
             title="New SOP"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
+            <AddIcon className="w-4 h-4" strokeWidth={2} />
           </button>
           <button
             onClick={() => setShowFilters((v) => !v)}
             className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${showFilters ? "bg-accent/20 text-accent" : "hover:bg-surface-hover text-text-secondary hover:text-text-primary"}`}
             title="Toggle filters"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="4" y1="6" x2="20" y2="6" /><line x1="8" y1="12" x2="16" y2="12" /><line x1="11" y1="18" x2="13" y2="18" />
-            </svg>
+            <FilterIcon className="w-3.5 h-3.5" strokeWidth={2} />
           </button>
         </div>
       </div>
@@ -161,29 +160,25 @@ export default function SopList({ sops, allTags, profiles, activeSopId }: Props)
                 )}
               </div>
 
-              {/* Actions (visible on hover or when active) */}
-              <div className={`flex items-center gap-1 ml-2 shrink-0 transition-opacity ${s.id === activeSopId ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setSopModal({ open: true, sop: s }); }}
-                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface text-text-secondary hover:text-text-primary"
-                  title="Edit SOP"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setDeleteModal({ open: true, sop: s }); setDeleteError(""); }}
-                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface text-text-secondary hover:text-red-400"
-                  title="Delete SOP"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                    <path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4h6v2" />
-                  </svg>
-                </button>
-              </div>
+              {/* Actions — only for admin/manager or the creator */}
+              {(isAdminOrManager || s.created_by === currentUserId) && (
+                <div className={`flex items-center gap-1 ml-2 shrink-0 transition-opacity ${s.id === activeSopId ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setSopModal({ open: true, sop: s }); }}
+                    className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface text-text-secondary hover:text-text-primary"
+                    title="Edit SOP"
+                  >
+                    <EditIcon className="w-3 h-3" strokeWidth={2} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDeleteModal({ open: true, sop: s }); setDeleteError(""); }}
+                    className="w-6 h-6 flex items-center justify-center rounded hover:bg-surface text-text-secondary hover:text-red-400"
+                    title="Delete SOP"
+                  >
+                    <DeleteIcon className="w-3 h-3" strokeWidth={2} />
+                  </button>
+                </div>
+              )}
             </div>
           ))
         )}
@@ -197,6 +192,7 @@ export default function SopList({ sops, allTags, profiles, activeSopId }: Props)
         allTags={localTags}
         profiles={profiles}
         onTagCreated={handleTagCreated}
+        isAdminOrManager={isAdminOrManager}
       />
 
       {/* Delete Confirm Modal */}

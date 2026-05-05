@@ -51,8 +51,9 @@ export default function QATimeTrackerModal({
     setLoading(true);
     const supabase = createClient();
     supabase
-      .from("qa_time_track")
-      .select("id, owner_user_id, task_id, project_id, start_date, start_time_min, end_time_min, time_spent_h, paid, profiles(id, first_name, last_name, picture)")
+      .from("project_qa_time_track")
+      // qa_time_track.owner_user_id → assignee_id (B8 item 42).
+      .select("id, assignee_id, task_id, project_id, start_date, start_time_min, end_time_min, time_spent_h, paid, profiles(id, first_name, last_name, picture)")
       .eq("project_id", projectId)
       .then(({ data }) => {
         const loaded = (data ?? []) as unknown as QATimeTrack[];
@@ -128,16 +129,9 @@ export default function QATimeTrackerModal({
     <Modal open={open} onClose={onClose} width="max-w-2xl">
       <div className="px-6 pt-6 pb-2">
         {/* Header */}
-        <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center justify-between mb-5 pr-10">
           <h2 className="text-xl font-bold text-text-primary">QA Time Tracker</h2>
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-text-primary">{totalAll.toFixed(0)} h</span>
-            <button onClick={onClose} className="ml-2 p-1.5 text-text-muted hover:text-text-primary hover:bg-muted rounded-md transition-colors">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+          <span className="text-lg font-bold text-text-primary">{totalAll.toFixed(0)} h</span>
         </div>
 
         {loading && <p className="text-sm text-text-muted py-6 text-center">Loading…</p>}

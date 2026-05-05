@@ -12,6 +12,7 @@ export interface SopWithTags {
   authorized_users: string[];
   authorized_user_types: UserType[];
   created_at: string;
+  created_by: string | null;
   tags: SopTag[];
 }
 
@@ -21,6 +22,7 @@ export interface SopVersion {
   version_name: string;
   content: string | null;
   created_at: string;
+  created_by?: string | null;
 }
 
 export const USER_TYPE_OPTIONS: { value: UserType; label: string }[] = [

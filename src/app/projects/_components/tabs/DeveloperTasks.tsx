@@ -2,21 +2,22 @@
 
 import { useState, useTransition, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import type { Task, TaskStatus, UserType, UserProfile, ClientMilestoneTotal, QAMilestoneTotal } from "@/types/projects";
+import type { Task, TaskStatus, UserType, UserProfile, Project } from "@/types/projects";
 import DatePicker from "@/components/DatePicker";
 import TaskModal from "../modals/TaskModal";
 import TaskTimeTrackerModal from "../modals/TaskTimeTrackerModal";
 import ConfirmDeleteModal from "../modals/ConfirmDeleteModal";
-import { deleteTask, updateTask, updateClientMilestoneTotal, updateQAMilestoneTotal } from "../../actions";
+import ImportTasksFromIdeaModal from "../modals/ImportTasksFromIdeaModal";
+import { deleteTask, updateTask, updateProjectAggregateEstimate } from "../../actions";
 
 interface DeveloperTasksProps {
   tasks: Task[];
   userType: UserType | null;
-  projectId: string;
+  project: Project;
   profiles?: UserProfile[];
   currentUserId: string;
-  clientMilestoneTotals?: ClientMilestoneTotal[];
-  qaMilestoneTotals?: QAMilestoneTotal[];
+  /** Map of task_id → unread comment count (caller-aggregated). */
+  unreadByTaskId?: Record<string, number>;
 }
 
 const CHILD_LEVELS: Task["level"][] = ["level_2", "level_3", "level_4"];
@@ -38,21 +39,13 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
 };
 
 export default function DeveloperTasks({
-  tasks, userType, projectId, profiles = [], currentUserId,
-  clientMilestoneTotals = [], qaMilestoneTotals = [],
+  tasks, userType, project, profiles = [], currentUserId, unreadByTaskId = {},
 }: DeveloperTasksProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
+  const projectId = project.id;
   const devTasks = tasks.filter((t) => t.type === "developer_tasks");
   const milestones = devTasks.filter((t) => t.level === "level_1" && !t.parent_task_id);
-
-  // Build parent→children map (include ALL task types for milestone children)
-  const allTasksByParent = new Map<string, Task[]>();
-  tasks.filter((t) => t.parent_task_id).forEach((t) => {
-    const arr = allTasksByParent.get(t.parent_task_id!) ?? [];
-    arr.push(t);
-    allTasksByParent.set(t.parent_task_id!, arr);
-  });
 
   // Developer tasks only for tree display
   const byParent = new Map<string, Task[]>();
@@ -65,6 +58,16 @@ export default function DeveloperTasks({
   const canEdit = userType === "admin" || userType === "manager" || userType === "developer";
   const canEditTotals = userType === "admin" || userType === "manager";
 
+  // Aggregate unread comments for a task plus every descendant. Used so a
+  // collapsed milestone still surfaces unread comments inside its tree.
+  function unreadAggregate(taskId: string): number {
+    const own = unreadByTaskId[taskId] ?? 0;
+    const kids = byParent.get(taskId) ?? [];
+    return kids.reduce((s, k) => s + unreadAggregate(k.id), own);
+  }
+
+  const authorizedProfiles = profiles.filter((p) => project.authorized_users.includes(p.id));
+
   const [modalKey, setModalKey] = useState(0);
   const [taskModal, setTaskModal] = useState<{
     open: boolean;
@@ -76,6 +79,7 @@ export default function DeveloperTasks({
   const [timeTrackerModal, setTimeTrackerModal] = useState<{
     open: boolean; taskId: string; taskName: string;
   }>({ open: false, taskId: "", taskName: "" });
+  const [importIdeaOpen, setImportIdeaOpen] = useState(false);
 
   const openCreate = (parentTaskId: string | null, level: Task["level"]) => {
     setModalKey((k) => k + 1);
@@ -96,15 +100,15 @@ export default function DeveloperTasks({
     });
   };
 
-  // Build milestone total maps
-  const clientTotalMap = new Map<string, ClientMilestoneTotal>();
-  for (const ct of clientMilestoneTotals) {
-    if (ct.task_milestone_id) clientTotalMap.set(ct.task_milestone_id, ct);
-  }
-  const qaTotalMap = new Map<string, QAMilestoneTotal>();
-  for (const qt of qaMilestoneTotals) {
-    if (qt.task_milestone_id) qaTotalMap.set(qt.task_milestone_id, qt);
-  }
+  const onUpdateAggregateEst = (
+    field: "client_developer_estimated_time" | "qa_developer_estimated_time" | "qa_tester_estimated_time" | "estimated_time",
+    value: number | null,
+  ) => {
+    startTransition(async () => {
+      await updateProjectAggregateEstimate(projectId, field, value);
+      router.refresh();
+    });
+  };
 
   return (
     <div className="flex flex-col">
@@ -129,30 +133,80 @@ export default function DeveloperTasks({
           idx={idx + 1}
           byParent={byParent}
           canEdit={canEdit}
-          canEditTotals={canEditTotals}
           onEdit={openEdit}
           onDelete={(t) => setDeleteModal({ open: true, task: t })}
           onAddChild={openCreate}
           onOpenTimeTracker={openTimeTracker}
           onInlineUpdate={inlineUpdate}
-          projectId={projectId}
-          clientTotal={clientTotalMap.get(milestone.id)}
-          qaTotal={qaTotalMap.get(milestone.id)}
-          profiles={profiles}
+          profiles={authorizedProfiles}
+          unreadByTaskId={unreadByTaskId}
+          unreadAggregate={unreadAggregate}
         />
       ))}
 
       {canEdit && (
-        <button
-          onClick={() => openCreate(null, "level_1")}
-          className="flex items-center gap-2 px-4 py-3 text-sm text-text-muted hover:text-text-secondary transition-colors border-t border-border"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          Add milestone
-        </button>
+        <div className="flex items-center gap-1 border-t border-border">
+          <button
+            onClick={() => openCreate(null, "level_1")}
+            className="flex items-center gap-2 px-4 py-3 text-sm text-text-muted hover:text-text-secondary transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            Add milestone
+          </button>
+          {canEditTotals && (
+            // admin/manager only — the importer hits an LLM and writes
+            // milestones + tasks server-side, so we keep it gated to
+            // the same role used for project-total edits.
+            <button
+              onClick={() => setImportIdeaOpen(true)}
+              className="flex items-center gap-2 px-4 py-3 text-sm text-text-muted hover:text-text-secondary transition-colors"
+              title="Import milestones and tasks from a Sandbox idea"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Import tasks from idea
+            </button>
+          )}
+        </div>
       )}
+
+      {/* Project-level totals (replaces the per-milestone totals block) */}
+      <div className="mt-6 border-t border-border">
+        <div className="px-4 py-2 text-xs font-semibold text-text-secondary uppercase tracking-widest bg-muted/30 border-b border-border">
+          Project Totals
+        </div>
+        <ProjectTotalRow
+          label="Client Requests (Developer)"
+          estimatedTime={project.client_developer_estimated_time}
+          realTime={project.client_developer_real_time}
+          estEditable={canEditTotals}
+          onEstChange={(v) => onUpdateAggregateEst("client_developer_estimated_time", v)}
+        />
+        <ProjectTotalRow
+          label="QA Requests (Developer)"
+          estimatedTime={project.qa_developer_estimated_time}
+          realTime={project.qa_developer_real_time}
+          estEditable={canEditTotals}
+          onEstChange={(v) => onUpdateAggregateEst("qa_developer_estimated_time", v)}
+        />
+        <ProjectTotalRow
+          label="QA Requests (QA Tester)"
+          estimatedTime={project.qa_tester_estimated_time}
+          realTime={project.qa_tester_real_time}
+          estEditable={canEditTotals}
+          onEstChange={(v) => onUpdateAggregateEst("qa_tester_estimated_time", v)}
+        />
+        <ProjectTotalRow
+          label="Project"
+          estimatedTime={project.estimated_time}
+          realTime={project.real_time}
+          estEditable={canEditTotals}
+          onEstChange={(v) => onUpdateAggregateEst("estimated_time", v)}
+        />
+      </div>
 
       <TaskModal
         key={modalKey}
@@ -164,6 +218,7 @@ export default function DeveloperTasks({
         type="developer_tasks"
         level={taskModal.level ?? "level_1"}
         profiles={profiles}
+        authorizedUserIds={project.authorized_users}
         currentUserId={currentUserId}
       />
       <TaskTimeTrackerModal
@@ -180,6 +235,11 @@ export default function DeveloperTasks({
         itemName={deleteModal.task?.name ?? ""}
         onConfirm={() => deleteTask(deleteModal.task!.id)}
       />
+      <ImportTasksFromIdeaModal
+        open={importIdeaOpen}
+        projectId={projectId}
+        onClose={() => setImportIdeaOpen(false)}
+      />
     </div>
   );
 }
@@ -187,26 +247,30 @@ export default function DeveloperTasks({
 // ── Milestone row ─────────────────────────────────────────────────────────────
 
 function MilestoneRow({
-  milestone, idx, byParent, canEdit, canEditTotals, onEdit, onDelete, onAddChild,
-  onOpenTimeTracker, onInlineUpdate, projectId, clientTotal, qaTotal, profiles,
+  milestone, idx, byParent, canEdit, onEdit, onDelete, onAddChild,
+  onOpenTimeTracker, onInlineUpdate, profiles, unreadByTaskId, unreadAggregate,
 }: {
   milestone: Task;
   idx: number;
   byParent: Map<string, Task[]>;
   canEdit: boolean;
-  canEditTotals: boolean;
   onEdit: (t: Task) => void;
   onDelete: (t: Task) => void;
   onAddChild: (parentId: string, level: Task["level"]) => void;
   onOpenTimeTracker: (t: Task) => void;
   onInlineUpdate: (taskId: string, data: Record<string, unknown>) => void;
-  projectId: string;
-  clientTotal?: ClientMilestoneTotal;
-  qaTotal?: QAMilestoneTotal;
   profiles: UserProfile[];
+  unreadByTaskId: Record<string, number>;
+  unreadAggregate: (taskId: string) => number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const children = (byParent.get(milestone.id) ?? []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  // When the milestone is collapsed, surface every unread comment underneath
+  // it so the user knows there's something new in the subtree. When expanded,
+  // children render their own badges, so the milestone shows just its own.
+  const unreadHere = expanded
+    ? (unreadByTaskId[milestone.id] ?? 0)
+    : unreadAggregate(milestone.id);
 
   return (
     <>
@@ -224,6 +288,14 @@ function MilestoneRow({
           <span className="text-sm font-semibold text-text-primary truncate">
             Milestone {idx}: {milestone.name}
           </span>
+          {unreadHere > 0 && (
+            <span
+              title={`${unreadHere} unread comment${unreadHere === 1 ? "" : "s"}`}
+              className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-danger text-white text-[10px] font-semibold leading-none px-1.5 tabular-nums"
+            >
+              {unreadHere}
+            </span>
+          )}
         </div>
         {canEdit ? (
           <InlineStatusSelect value={milestone.status} onChange={(v) => onInlineUpdate(milestone.id, { status: v })} />
@@ -231,12 +303,12 @@ function MilestoneRow({
           <StatusBadge status={milestone.status} />
         )}
         {canEdit ? (
-          <InlineDateInput value={milestone.start_date_estimated} onChange={(v) => onInlineUpdate(milestone.id, { start_date_estimated: v })} />
+          <InlineDateInput value={milestone.start_date_estimated} onChange={(v) => onInlineUpdate(milestone.id, { start_date_estimated: v })} maxDate={milestone.end_date_estimated} />
         ) : (
           <DateCell value={milestone.start_date_estimated} />
         )}
         {canEdit ? (
-          <InlineDateInput value={milestone.end_date_estimated} onChange={(v) => onInlineUpdate(milestone.id, { end_date_estimated: v })} />
+          <InlineDateInput value={milestone.end_date_estimated} onChange={(v) => onInlineUpdate(milestone.id, { end_date_estimated: v })} minDate={milestone.start_date_estimated} />
         ) : (
           <DateCell value={milestone.end_date_estimated} />
         )}
@@ -273,6 +345,8 @@ function MilestoneRow({
               onOpenTimeTracker={onOpenTimeTracker}
               onInlineUpdate={onInlineUpdate}
               profiles={profiles}
+              unreadByTaskId={unreadByTaskId}
+              unreadAggregate={unreadAggregate}
             />
           ))}
           {canEdit && (
@@ -287,32 +361,6 @@ function MilestoneRow({
               Add task
             </button>
           )}
-
-          {/* 3 Static rows: Client Requests (Developer), QA Requests (Developer), QA Requests (QA Tester) */}
-          <StaticTotalRow
-            label="Client Requests (Developer)"
-            estimatedTime={clientTotal?.estimated_time_h ?? null}
-            realTime={clientTotal?.real_time_h ?? null}
-            canEditEst={canEditTotals}
-            onEstChange={(v) => updateClientMilestoneTotal(milestone.id, projectId, { estimated_time_h: v })}
-            depth={1}
-          />
-          <StaticTotalRow
-            label="QA Requests (Developer)"
-            estimatedTime={qaTotal?.developer_estimated_time_h ?? null}
-            realTime={qaTotal?.developer_real_time_h ?? null}
-            canEditEst={canEditTotals}
-            onEstChange={(v) => updateQAMilestoneTotal(milestone.id, projectId, { developer_estimated_time_h: v })}
-            depth={1}
-          />
-          <StaticTotalRow
-            label="QA Requests (QA Tester)"
-            estimatedTime={qaTotal?.qa_estimated_time_h ?? null}
-            realTime={qaTotal?.qa_real_time_h ?? null}
-            canEditEst={canEditTotals}
-            onEstChange={(v) => updateQAMilestoneTotal(milestone.id, projectId, { qa_estimated_time_h: v })}
-            depth={1}
-          />
         </>
       )}
     </>
@@ -322,7 +370,7 @@ function MilestoneRow({
 // ── Task row (recursive) ───────────────────────────────────────────────────────
 
 function TaskRow({
-  task, depth, byParent, canEdit, onEdit, onDelete, onAddChild, onOpenTimeTracker, onInlineUpdate, profiles,
+  task, depth, byParent, canEdit, onEdit, onDelete, onAddChild, onOpenTimeTracker, onInlineUpdate, profiles, unreadByTaskId, unreadAggregate,
 }: {
   task: Task;
   depth: number;
@@ -334,11 +382,17 @@ function TaskRow({
   onOpenTimeTracker: (t: Task) => void;
   onInlineUpdate: (taskId: string, data: Record<string, unknown>) => void;
   profiles: UserProfile[];
+  unreadByTaskId: Record<string, number>;
+  unreadAggregate: (taskId: string) => number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const children = (byParent.get(task.id) ?? []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const hasChildren = children.length > 0;
   const childLevel = CHILD_LEVELS[depth] as Task["level"] | undefined;
+  // Same collapsed-vs-expanded display rule as MilestoneRow.
+  const unreadHere = expanded
+    ? (unreadByTaskId[task.id] ?? 0)
+    : unreadAggregate(task.id);
 
   return (
     <>
@@ -361,6 +415,14 @@ function TaskRow({
             <span className="w-4 h-4 shrink-0" />
           )}
           <span className="text-sm text-text-primary truncate">{task.name}</span>
+          {unreadHere > 0 && (
+            <span
+              title={`${unreadHere} unread comment${unreadHere === 1 ? "" : "s"}`}
+              className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-danger text-white text-[10px] font-semibold leading-none px-1.5 tabular-nums"
+            >
+              {unreadHere}
+            </span>
+          )}
         </div>
         {canEdit ? (
           <InlineStatusSelect value={task.status} onChange={(v) => onInlineUpdate(task.id, { status: v })} />
@@ -368,12 +430,12 @@ function TaskRow({
           <StatusBadge status={task.status} />
         )}
         {canEdit ? (
-          <InlineDateInput value={task.start_date_estimated} onChange={(v) => onInlineUpdate(task.id, { start_date_estimated: v })} />
+          <InlineDateInput value={task.start_date_estimated} onChange={(v) => onInlineUpdate(task.id, { start_date_estimated: v })} maxDate={task.end_date_estimated} />
         ) : (
           <DateCell value={task.start_date_estimated} />
         )}
         {canEdit ? (
-          <InlineDateInput value={task.end_date_estimated} onChange={(v) => onInlineUpdate(task.id, { end_date_estimated: v })} />
+          <InlineDateInput value={task.end_date_estimated} onChange={(v) => onInlineUpdate(task.id, { end_date_estimated: v })} minDate={task.start_date_estimated} />
         ) : (
           <DateCell value={task.end_date_estimated} />
         )}
@@ -410,6 +472,8 @@ function TaskRow({
               onOpenTimeTracker={onOpenTimeTracker}
               onInlineUpdate={onInlineUpdate}
               profiles={profiles}
+              unreadByTaskId={unreadByTaskId}
+              unreadAggregate={unreadAggregate}
             />
           ))}
           {canEdit && childLevel && (
@@ -430,38 +494,34 @@ function TaskRow({
   );
 }
 
-// ── Static total row (Client Requests / QA Requests summary) ────────────────
+// ── Project-level total row (shown once at bottom of developer tab) ─────────
 
-function StaticTotalRow({
-  label, estimatedTime, realTime, canEditEst, onEstChange, depth,
+function ProjectTotalRow({
+  label, estimatedTime, realTime, estEditable, onEstChange,
 }: {
   label: string;
   estimatedTime: number | null;
   realTime: number | null;
-  canEditEst: boolean;
-  onEstChange: (value: number | null) => void;
-  depth: number;
+  estEditable: boolean;
+  onEstChange?: (value: number | null) => void;
 }) {
   return (
-    <div
-      className="grid grid-cols-[1fr_120px_100px_100px_80px_80px_120px_64px] gap-2 px-4 py-2 border-b border-border/50 items-center bg-muted/20"
-      style={{ paddingLeft: `${16 + depth * 24}px` }}
-    >
+    <div className="grid grid-cols-[1fr_120px_100px_100px_80px_80px_120px_64px] gap-2 px-4 py-2 border-b border-border/50 items-center bg-muted/20">
       <div className="flex items-center gap-2">
         <span className="w-4 h-4 shrink-0" />
-        <span className="text-xs text-text-muted italic">{label}</span>
+        <span className="text-xs text-text-secondary italic">{label}</span>
       </div>
-      <span /> {/* Status - empty */}
-      <span /> {/* Start Date - empty */}
-      <span /> {/* End Date - empty */}
-      {canEditEst ? (
+      <span />
+      <span />
+      <span />
+      {estEditable && onEstChange ? (
         <InlineNumberInput value={estimatedTime} onChange={onEstChange} />
       ) : (
         <NumCell value={estimatedTime} />
       )}
       <NumCell value={realTime} />
-      <span /> {/* Assignees - empty */}
-      <span /> {/* Actions - empty */}
+      <span />
+      <span />
     </div>
   );
 }
@@ -482,13 +542,22 @@ function InlineStatusSelect({ value, onChange }: { value: TaskStatus; onChange: 
   );
 }
 
-function InlineDateInput({ value, onChange }: { value: string | null | undefined; onChange: (v: string | null) => void }) {
+function InlineDateInput({
+  value, onChange, minDate = null, maxDate = null,
+}: {
+  value: string | null | undefined;
+  onChange: (v: string | null) => void;
+  minDate?: string | null;
+  maxDate?: string | null;
+}) {
   return (
     <DatePicker
       value={value ?? ""}
       onChange={(v) => onChange(v || null)}
       size="compact"
       className="bg-transparent border-0 text-text-secondary"
+      minDate={minDate}
+      maxDate={maxDate}
     />
   );
 }

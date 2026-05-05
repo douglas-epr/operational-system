@@ -12,11 +12,15 @@ import type { UserAiSettingsClient } from "@/types/settings";
 import { cn } from "@/lib/utils";
 import CreateIdeaModal from "./CreateIdeaModal";
 import AiSettingsModal from "./AiSettingsModal";
+import ConfirmDeleteModal from "@/app/projects/_components/modals/ConfirmDeleteModal";
+import { deleteIdea } from "../actions";
 
 interface IdeasGridProps {
   ideas: Idea[];
   projects: ProjectOption[];
   userName: string;
+  currentUserId: string;
+  isAdminOrManager: boolean;
   onSelectIdea: (ideaId: string) => void;
   /** Current project filter from URL ?project= param. null = show all. */
   selectedProjectId: string | null;
@@ -31,6 +35,8 @@ export default function IdeasGrid({
   ideas,
   projects,
   userName,
+  currentUserId,
+  isAdminOrManager,
   onSelectIdea,
   selectedProjectId,
   hasAiConfigured,
@@ -41,6 +47,8 @@ export default function IdeasGrid({
   const [modalOpen, setModalOpen] = useState(false);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [pendingIdeaId, setPendingIdeaId] = useState<string | null>(null);
+  const [deletingIdea, setDeletingIdea] = useState<Idea | null>(null);
+  const [editingIdea, setEditingIdea] = useState<Idea | null>(null);
 
   /** Gate "See Refinement" — show AI settings modal if not configured. */
   function handleSelectIdea(ideaId: string) {
@@ -64,8 +72,7 @@ export default function IdeasGrid({
 
   // Filter ideas by selected project
   const filteredIdeas = useMemo(() => {
-    if (!selectedProjectId) return ideas;
-    if (selectedProjectId === "general")
+    if (!selectedProjectId || selectedProjectId === "general")
       return ideas.filter((i) => !i.project_id);
     return ideas.filter((i) => i.project_id === selectedProjectId);
   }, [ideas, selectedProjectId]);
@@ -135,7 +142,6 @@ export default function IdeasGrid({
             SandBox Planner
           </h1>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-text-muted">{userName}</span>
             <button
               onClick={() => setModalOpen(true)}
               className={cn(
@@ -173,6 +179,8 @@ export default function IdeasGrid({
                   key={idea.id}
                   idea={idea}
                   onSelect={() => handleSelectIdea(idea.id)}
+                  onDeleteClick={() => setDeletingIdea(idea)}
+                  onEditClick={() => setEditingIdea(idea)}
                 />
               ))}
             </div>
@@ -188,6 +196,16 @@ export default function IdeasGrid({
         defaultProjectId={defaultProjectId}
       />
 
+      {/* Edit Idea Modal (same component, edit mode) */}
+      <CreateIdeaModal
+        open={!!editingIdea}
+        onClose={() => setEditingIdea(null)}
+        projects={projects}
+        idea={editingIdea}
+        currentUserId={currentUserId}
+        isAdminOrManager={isAdminOrManager}
+      />
+
       {/* AI Settings Modal — shown when user needs to configure AI before refinement */}
       <AiSettingsModal
         open={aiModalOpen}
@@ -198,6 +216,22 @@ export default function IdeasGrid({
         initialSettings={aiSettings}
         onConfigured={handleAiConfigured}
       />
+
+      {/* Delete Idea confirm modal */}
+      <ConfirmDeleteModal
+        open={!!deletingIdea}
+        onClose={() => setDeletingIdea(null)}
+        kind="idea"
+        itemName={deletingIdea?.name ?? ""}
+        onConfirm={async () => {
+          if (!deletingIdea) return {};
+          const result = await deleteIdea(deletingIdea.id);
+          if (!result.error) {
+            router.refresh();
+          }
+          return result;
+        }}
+      />
     </div>
   );
 }
@@ -207,28 +241,56 @@ export default function IdeasGrid({
 interface IdeaCardProps {
   idea: Idea;
   onSelect: () => void;
+  onDeleteClick: () => void;
+  onEditClick: () => void;
 }
 
-/** Single idea card displaying name, description, and a refinement action. */
-function IdeaCard({ idea, onSelect }: IdeaCardProps) {
+/** Single idea card displaying name and description. Click to open refinement. */
+function IdeaCard({ idea, onSelect, onDeleteClick, onEditClick }: IdeaCardProps) {
   return (
-    <div className="flex flex-col bg-surface border border-border rounded-xl p-5 transition-shadow hover:shadow-md">
-      <h3 className="text-sm font-semibold text-text-primary line-clamp-2 mb-2">
+    <div
+      className="group relative flex flex-col bg-surface border border-border rounded-xl p-5 transition-shadow hover:shadow-md cursor-pointer"
+      onClick={onSelect}
+    >
+      {/* Action buttons — hidden until hover */}
+      <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          type="button"
+          aria-label="Edit idea"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEditClick();
+          }}
+          className="p-1.5 rounded-md text-text-muted/70 hover:text-accent hover:bg-accent/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M16.732 3.732a2.5 2.5 0 113.536 3.536L7.5 20.036 3 21l.964-4.5L16.732 3.732z" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          aria-label="Delete idea"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteClick();
+          }}
+          className="p-1.5 rounded-md text-text-muted/70 hover:text-red-500 hover:bg-red-500/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
+
+      <h3 className="text-sm font-semibold text-text-primary line-clamp-2 mb-2 pr-16">
         {idea.name}
       </h3>
-      <p className="text-xs text-text-muted line-clamp-3 flex-1 mb-4">
-        {idea.description ?? "No description yet."}
-      </p>
-      <button
-        onClick={onSelect}
-        className={cn(
-          "self-start px-4 py-2 rounded-lg text-xs font-medium",
-          "bg-accent text-white hover:bg-accent/90 transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-        )}
-      >
-        See Refinement
-      </button>
+      <div
+        className="text-xs text-text-muted line-clamp-3 flex-1 prose prose-invert max-w-none [&_*]:!text-xs [&_*]:!leading-snug [&_p]:!my-0"
+        dangerouslySetInnerHTML={{
+          __html: idea.description ?? "<em>No description yet.</em>",
+        }}
+      />
     </div>
   );
 }

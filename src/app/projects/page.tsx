@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import type { Project, Task, UserType, TabKey, UserProfile, ClientMilestoneTotal, QAMilestoneTotal } from "@/types/projects";
-import Sidebar from "@/components/layout/Sidebar";
+import { requirePageAccess } from "@/lib/auth/page-gate";
+import type { Project, Task, UserType, TabKey, UserProfile } from "@/types/projects";
+import PageShell from "@/components/layout/PageShell";
+import PageHeader from "@/components/layout/PageHeader";
 import ProjectsList from "./_components/ProjectsList";
 import ProjectDetail from "./_components/ProjectDetail";
 
@@ -12,20 +13,25 @@ interface PageProps {
 }
 
 export default async function ProjectsPage({ searchParams }: PageProps) {
-  const supabase = await createClient();
+  // Gate: admin/manager/operational/developer/qa/client. referrer + lead are
+  // bounced via the shared helper.
+  const { supabase, userId, role } = await requirePageAccess([
+    "admin",
+    "manager",
+    "operational",
+    "developer",
+    "qa",
+    "client",
+  ]);
 
-  // Auth check
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/signin");
-
-  // Fetch user profile
+  // Fetch user profile (needed by Sidebar at the bottom).
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, first_name, last_name, picture, type")
-    .eq("id", user.id)
+    .eq("id", userId)
     .single();
 
-  const userType = (profile?.type ?? null) as UserType | null;
+  const userType = role as UserType;
 
   // Fetch all profiles for user pickers in modals
   const { data: profilesData } = await supabase
@@ -39,24 +45,22 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
 
   // ── Project detail view ────────────────────────────────────────────────────
   if (projectId) {
-    const [{ data: projectData }, { data: tasksData }, { data: clientTotalsData }, { data: qaTotalsData }] = await Promise.all([
+    const [{ data: projectData }, { data: tasksData }, { data: unreadData }] = await Promise.all([
       supabase
         .from("project")
-        .select("id, name, picture, status, stage, program, description, price, referrer_commission, start_date_real, end_date_real, start_date_estimated, end_date_estimated, estimated_time, real_time, authorized_users, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, change_automatically_milestone_real_time, change_automatically_project_real_time, talent_who_recommended_id, company_that_recommended_id, created_at")
+        .select("id, name, picture, status, stage, program, description, price, referrer_commission, start_date_real, end_date_real, start_date_estimated, end_date_estimated, estimated_time, real_time, authorized_users, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, recommended_by, talent_who_recommended_id, client_who_recommended_id, company_that_recommended_id, referrer_id, created_at, client_developer_estimated_time, client_developer_real_time, qa_developer_estimated_time, qa_developer_real_time, qa_tester_estimated_time, qa_tester_real_time")
         .eq("id", projectId)
         .single(),
       supabase
-        .from("task")
-        .select("id, project_id, parent_task_id, name, order, start_date_estimated, end_date_estimated, start_date_real, end_date_real, real_time, estimated_time, type, level, status, task_assignees(user_id, profiles(id, first_name, last_name, picture))")
+        .from("project_task")
+        .select("id, project_id, parent_task_id, name, order, start_date_estimated, end_date_estimated, start_date_real, end_date_real, real_time, estimated_time, type, level, status, assignees, created_by")
         .eq("project_id", projectId),
       supabase
-        .from("client_milestone_total")
-        .select("id, project_id, task_milestone_id, estimated_time_h, real_time_h")
-        .eq("project_id", projectId),
-      supabase
-        .from("qa_milestone_total")
-        .select("id, project_id, task_milestone_id, developer_estimated_time_h, developer_real_time_h, qa_estimated_time_h, qa_real_time_h")
-        .eq("project_id", projectId),
+        .from("project_task_comment")
+        .select("task_id, viewed_by")
+        .eq("project_id", projectId)
+        // task_comment.owner_id → created_by (B8 item 32).
+        .neq("created_by", userId),
     ]);
 
     if (!projectData) {
@@ -64,29 +68,53 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
     }
 
     const project = projectData as unknown as Project;
-    const tasks = (tasksData ?? []) as unknown as Task[];
-    const clientMilestoneTotals = (clientTotalsData ?? []) as unknown as ClientMilestoneTotal[];
-    const qaMilestoneTotals = (qaTotalsData ?? []) as unknown as QAMilestoneTotal[];
+    // Hydrate the `assignees` UUID array into the legacy `task_assignees:
+    // [{ user_id, profiles }]` shape the UI consumers expect (Part 2
+    // item 10/34). Done client-side via a single profiles fetch instead
+    // of a per-task embed.
+    const rawTasks = (tasksData ?? []) as Array<Record<string, unknown> & { assignees?: string[] }>;
+    const allAssigneeIds = Array.from(
+      new Set(rawTasks.flatMap((t) => (t.assignees ?? []) as string[]))
+    );
+    const assigneeProfilesById = new Map<string, { id: string; first_name: string | null; last_name: string | null; picture: string | null }>();
+    if (allAssigneeIds.length > 0) {
+      const { data: assigneeProfiles } = await supabase
+        .from("profiles")
+        .select("id, first_name, last_name, picture")
+        .in("id", allAssigneeIds);
+      for (const p of (assigneeProfiles ?? []) as Array<{ id: string; first_name: string | null; last_name: string | null; picture: string | null }>) {
+        assigneeProfilesById.set(p.id, p);
+      }
+    }
+    const tasks = rawTasks.map((t) => ({
+      ...t,
+      task_assignees: ((t.assignees ?? []) as string[]).map((uid) => ({
+        user_id: uid,
+        profiles: assigneeProfilesById.get(uid) ?? null,
+      })),
+    })) as unknown as Task[];
+
+    const unreadByTaskId: Record<string, number> = {};
+    for (const row of (unreadData ?? []) as { task_id: string; viewed_by: string[] | null }[]) {
+      if ((row.viewed_by ?? []).includes(userId)) continue;
+      unreadByTaskId[row.task_id] = (unreadByTaskId[row.task_id] ?? 0) + 1;
+    }
 
     const validTabs: TabKey[] = ["stages", "developer", "client_requests", "qa_requests"];
     const initialTab: TabKey = validTabs.includes(tabParam as TabKey) ? (tabParam as TabKey) : "stages";
 
     return (
-      <div className="flex h-screen bg-base overflow-hidden">
-        <Sidebar profile={profile} />
-        <main className="flex flex-col flex-1 ml-[220px] min-w-0 overflow-hidden">
-          <ProjectDetail
-            project={project}
-            tasks={tasks}
-            userType={userType}
-            initialTab={initialTab}
-            profiles={profiles}
-            currentUserId={user.id}
-            clientMilestoneTotals={clientMilestoneTotals}
-            qaMilestoneTotals={qaMilestoneTotals}
-          />
-        </main>
-      </div>
+      <PageShell profile={profile} fullBleed flush>
+        <ProjectDetail
+          project={project}
+          tasks={tasks}
+          userType={userType}
+          initialTab={initialTab}
+          profiles={profiles}
+          currentUserId={userId}
+          unreadByTaskId={unreadByTaskId}
+        />
+      </PageShell>
     );
   }
 
@@ -94,10 +122,10 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
   const [{ data: projectsData }, { data: taskAggData }] = await Promise.all([
     supabase
       .from("project")
-      .select("id, name, picture, status, stage, program, description, price, referrer_commission, start_date_real, end_date_real, start_date_estimated, end_date_estimated, estimated_time, real_time, authorized_users, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, change_automatically_milestone_real_time, change_automatically_project_real_time, talent_who_recommended_id, company_that_recommended_id, created_at")
+      .select("id, name, picture, status, stage, program, description, price, referrer_commission, start_date_real, end_date_real, start_date_estimated, end_date_estimated, estimated_time, real_time, authorized_users, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, recommended_by, talent_who_recommended_id, client_who_recommended_id, company_that_recommended_id, referrer_id, created_at")
       .order("created_at", { ascending: false }),
     supabase
-      .from("task")
+      .from("project_task")
       .select("project_id, status, estimated_time")
       .not("project_id", "is", null),
   ]);
@@ -121,17 +149,15 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
   }
 
   return (
-    <div className="flex h-screen bg-base overflow-hidden">
-      <Sidebar profile={profile} />
-      <main className="flex flex-col flex-1 ml-[220px] min-w-0 overflow-auto">
-        {/* Page header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border shrink-0">
-          <h1 className="text-heading-2 text-text-primary">Projects</h1>
-          <span className="text-xs text-text-muted">{projects.length} project{projects.length !== 1 ? "s" : ""}</span>
-        </div>
-
-        <ProjectsList projects={projects} userType={userType} profiles={profiles} taskProgressMap={taskProgressMap} />
-      </main>
-    </div>
+    <PageShell profile={profile} flush>
+      <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
+        <PageHeader
+          title="Projects"
+          subtitle={`${projects.length} project${projects.length !== 1 ? "s" : ""}`}
+          compact
+        />
+      </div>
+      <ProjectsList projects={projects} userType={userType} profiles={profiles} taskProgressMap={taskProgressMap} />
+    </PageShell>
   );
 }

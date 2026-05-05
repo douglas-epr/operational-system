@@ -4,18 +4,15 @@
  * Source: docs/reference_docs/paginas.md — sandbox-planner page
  */
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import Sidebar from "@/components/layout/Sidebar";
+import { requirePageAccess } from "@/lib/auth/page-gate";
+import PageShell from "@/components/layout/PageShell";
 import SandboxPlannerShell from "./_components/SandboxPlannerShell";
+import { loadIdeaFull } from "./_lib/loadIdeaFull";
+import { getAgencyAiSettingsSummary } from "@/app/settings/actions";
 import type {
   Idea,
   IdeaBlock,
   IdeaFull,
-  IdeaIcp,
-  IdeaUserType,
-  IdeaBlockProductDefinition,
-  IdeaBlockStructureAlign,
-  IdeaOptimizationSuggestion,
   ProjectOption,
 } from "@/types/sandbox-planner";
 import type { AiService, UserAiSettingsClient } from "@/types/settings";
@@ -25,19 +22,22 @@ interface PageProps {
 }
 
 export default async function SandboxPlannerPage({ searchParams }: PageProps) {
-  const supabase = await createClient();
+  // Gate: admin/manager/operational/developer/client/lead. qa →
+  // /projects, referrer → /recommended-projects via the shared helper.
+  const { supabase, userId } = await requirePageAccess([
+    "admin",
+    "manager",
+    "operational",
+    "developer",
+    "client",
+    "lead",
+  ]);
 
-  // Auth check
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/signin");
-
-  // Fetch user profile
+  // Fetch user profile for the Sidebar.
   const { data: profile } = await supabase
     .from("profiles")
     .select("id, first_name, last_name, picture, type")
-    .eq("id", user.id)
+    .eq("id", userId)
     .single();
 
   const params = await searchParams;
@@ -50,7 +50,7 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
     await Promise.all([
       supabase
         .from("idea")
-        .select("id, project_id, created_by, name, score, description, success_metrics, current_block_ended, current_blocks_updating, created_at, project:project_id(id, name)")
+        .select("id, project_id, created_by, name, score, description, success_metrics, current_block_ended, current_blocks_updating, created_at, project:project_id(id, name), creator:created_by(first_name, last_name)")
         .order("created_at", { ascending: false }),
       supabase
         .from("project")
@@ -59,13 +59,20 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
       supabase
         .from("user_ai_settings" as never)
         .select(
-          "active_service, openai_api_key, gemini_api_key, claude_api_key, openai_model, gemini_model, claude_model"
+          "active_service, openai_api_key, gemini_api_key, claude_api_key, openai_model, gemini_model, claude_model, use_agency_settings"
         )
-        .eq("user_id" as never, user.id)
+        .eq("owner_id" as never, userId)
         .maybeSingle(),
     ]);
 
-  const ideas = (ideasData ?? []) as unknown as Idea[];
+  const ideasRaw = (ideasData ?? []) as unknown as (Idea & {
+    creator?: { first_name: string | null; last_name: string | null } | null;
+  })[];
+  const ideas: Idea[] = ideasRaw.map((i) => ({
+    ...i,
+    creator_name:
+      [i.creator?.first_name, i.creator?.last_name].filter(Boolean).join(" ") || null,
+  }));
   const projects = (projectsData ?? []) as unknown as ProjectOption[];
 
   // Cast AI settings since generated types may not include the new table yet
@@ -77,14 +84,33 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
     openai_model: string | null;
     gemini_model: string | null;
     claude_model: string | null;
+    use_agency_settings: boolean | null;
   } | null;
 
-  // Determine if AI is configured (active service + key for that service)
-  const hasAiConfigured = (() => {
-    if (!aiSettingsRow?.active_service) return false;
-    const keyField = `${aiSettingsRow.active_service}_api_key` as keyof typeof aiSettingsRow;
-    return !!aiSettingsRow[keyField];
-  })();
+  const useAgencySettings = aiSettingsRow?.use_agency_settings ?? true;
+
+  // Determine if AI is configured: check agency keys when use_agency_settings=true,
+  // otherwise check the user's personal key for their active service.
+  let hasAiConfigured = false;
+  if (useAgencySettings) {
+    const agencySummary = await getAgencyAiSettingsSummary();
+    if (agencySummary?.active_service) {
+      const keyMap = {
+        openai: agencySummary.has_openai_key,
+        gemini: agencySummary.has_gemini_key,
+        claude: agencySummary.has_claude_key,
+      } as Record<string, boolean>;
+      hasAiConfigured = !!keyMap[agencySummary.active_service];
+    }
+  } else {
+    if (aiSettingsRow?.active_service) {
+      const keyField = `${aiSettingsRow.active_service}_api_key` as keyof typeof aiSettingsRow;
+      hasAiConfigured = !!aiSettingsRow[keyField];
+    }
+  }
+
+  const role = (profile as { type?: string | null } | null)?.type ?? null;
+  const isAdminOrManager = role === "admin" || role === "manager";
 
   // Mask keys for client
   const aiSettings: UserAiSettingsClient = {
@@ -95,79 +121,36 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
     openaiModel: aiSettingsRow?.openai_model ?? "gpt-4.1",
     geminiModel: aiSettingsRow?.gemini_model ?? "gemini-2.5-flash",
     claudeModel: aiSettingsRow?.claude_model ?? "claude-sonnet-4-20250514",
+    useAgencySettings,
   };
 
   // If an idea is selected, fetch full data for refinement steps
   let ideaFull: IdeaFull | null = null;
 
   if (ideaId) {
-    const selectedIdea = ideas.find((i) => i.id === ideaId);
-    if (!selectedIdea) {
+    ideaFull = await loadIdeaFull(supabase, ideaId);
+    if (!ideaFull) {
       redirect("/sandbox-planner");
     }
-
-    const [
-      { data: structureAlignData },
-      { data: icpsData },
-      { data: userTypesData },
-      { data: productDefData },
-      { data: suggestionsData },
-    ] = await Promise.all([
-      supabase
-        .from("idea_block_structure_and_align")
-        .select("id, idea_id, success_metrics_text, product_overview_text, essential_features_text, success_metrics, target_audience, core_problem, created_at")
-        .eq("idea_id", ideaId)
-        .maybeSingle(),
-      supabase
-        .from("idea_icp")
-        .select("id, idea_id, name, title, subtitle, description, day_in_life, score, picture, tags, jtbd, pitch_need, pain_points, firmographics, pitch_benefit, pitch_approach, psychographics, pitch_competition, value_proposition_icp_pains, value_proposition_icp_gains, created_at")
-        .eq("idea_id", ideaId)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("idea_user_type")
-        .select("id, idea_id, name, flows, description, created_at")
-        .eq("idea_id", ideaId)
-        .order("created_at", { ascending: true }),
-      supabase
-        .from("idea_block_product_definition_and_flows")
-        .select("id, idea_id, created_by, summary, features, created_at")
-        .eq("idea_id", ideaId)
-        .maybeSingle(),
-      supabase
-        .from("idea_optimization_suggestion")
-        .select("id, idea_id, icp_id, name, description, created_at")
-        .eq("idea_id", ideaId)
-        .order("created_at", { ascending: true }),
-    ]);
-
-    ideaFull = {
-      idea: selectedIdea,
-      structureAlign: (structureAlignData as unknown as IdeaBlockStructureAlign) ?? null,
-      icps: (icpsData ?? []) as unknown as IdeaIcp[],
-      userTypes: (userTypesData ?? []) as unknown as IdeaUserType[],
-      productDefinition: (productDefData as unknown as IdeaBlockProductDefinition) ?? null,
-      optimizationSuggestions: (suggestionsData ?? []) as unknown as IdeaOptimizationSuggestion[],
-    };
   }
 
   const userName =
     [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "User";
 
   return (
-    <div className="flex h-screen bg-base overflow-hidden">
-      <Sidebar profile={profile} />
-      <main className="flex flex-col flex-1 ml-[220px] min-w-0 overflow-hidden">
-        <SandboxPlannerShell
-          ideas={ideas}
-          projects={projects}
-          ideaFull={ideaFull}
-          initialTab={tabParam ?? "ideas"}
-          userName={userName}
-          selectedProjectId={projectParam}
-          hasAiConfigured={hasAiConfigured}
-          aiSettings={aiSettings}
-        />
-      </main>
-    </div>
+    <PageShell profile={profile} fullBleed flush>
+      <SandboxPlannerShell
+        ideas={ideas}
+        projects={projects}
+        ideaFull={ideaFull}
+        initialTab={tabParam ?? "ideas"}
+        userName={userName}
+        currentUserId={userId}
+        isAdminOrManager={isAdminOrManager}
+        selectedProjectId={projectParam}
+        hasAiConfigured={hasAiConfigured}
+        aiSettings={aiSettings}
+      />
+    </PageShell>
   );
 }

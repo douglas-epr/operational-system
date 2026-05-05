@@ -40,8 +40,9 @@ export default function WorkingHoursModal({
     setLoading(true);
     const supabase = createClient();
     supabase
-      .from("time_track")
-      .select("id, owner_id, task_id, project_id, start_date, start_time_min, end_time_min, time_spent_h, profiles(id, first_name, last_name, picture)")
+      .from("project_task_time_track")
+      // time_track.owner_id → assignee_id (B8 item 33).
+      .select("id, assignee_id, task_id, project_id, start_date, start_time_min, end_time_min, time_spent_h, profiles(id, first_name, last_name, picture)")
       .eq("project_id", projectId)
       .order("start_date", { ascending: false })
       .then(({ data }) => {

@@ -13,6 +13,8 @@ export async function createSop(data: {
   authorized_users: string[];
 }): Promise<{ error?: string; id?: string }> {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
 
   // Get max order
   const { data: existing } = await supabase.from("sop").select("order");
@@ -25,18 +27,13 @@ export async function createSop(data: {
       order: maxOrder + 1,
       authorized_user_types: data.authorized_user_types,
       authorized_users: data.authorized_users,
+      tags: data.tag_ids,
+      created_by: user.id,
     })
     .select("id")
     .single();
 
   if (error) return { error: error.message };
-
-  // Insert tags
-  if (data.tag_ids.length > 0) {
-    await supabase.from("sop_tags").insert(
-      data.tag_ids.map((tid) => ({ sop_id: sop.id, sop_tag_id: tid }))
-    );
-  }
 
   // Create initial version
   await supabase.from("sop_version").insert({
@@ -45,6 +42,7 @@ export async function createSop(data: {
     content: "",
     authorized_user_types: data.authorized_user_types,
     authorized_users: data.authorized_users,
+    created_by: user.id,
   });
 
   revalidatePath("/sops");
@@ -63,6 +61,8 @@ export async function updateSop(
   }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
 
   const { error } = await supabase
     .from("sop")
@@ -70,18 +70,13 @@ export async function updateSop(
       name: data.name,
       authorized_user_types: data.authorized_user_types,
       authorized_users: data.authorized_users,
+      // Tags now live as a UUID[] array — replace in one shot, no
+      // separate join-table sync needed.
+      tags: data.tag_ids,
     })
     .eq("id", id);
 
   if (error) return { error: error.message };
-
-  // Sync tags: delete all then re-insert
-  await supabase.from("sop_tags").delete().eq("sop_id", id);
-  if (data.tag_ids.length > 0) {
-    await supabase.from("sop_tags").insert(
-      data.tag_ids.map((tid) => ({ sop_id: id, sop_tag_id: tid }))
-    );
-  }
 
   revalidatePath("/sops");
   return {};
@@ -91,6 +86,8 @@ export async function updateSop(
 
 export async function deleteSop(id: string): Promise<{ error?: string }> {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
   const { error } = await supabase.from("sop").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/sops");
@@ -134,6 +131,16 @@ export async function saveAsNewVersion(
   if (error) return { error: error.message };
   revalidatePath("/sops");
   return { version };
+}
+
+// ── Delete version ────────────────────────────────────────────────────────────
+
+export async function deleteVersion(versionId: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("sop_version").delete().eq("id", versionId);
+  if (error) return { error: error.message };
+  revalidatePath("/sops");
+  return {};
 }
 
 // ── Update current version ─────────────────────────────────────────────────────

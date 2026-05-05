@@ -8,6 +8,10 @@
 const GEMINI_BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta/models";
 
+// Server-side timeout: slightly less than the client-side 240s in useAiWithTimeout,
+// so the server returns a clean error before the client gives up.
+const AI_FETCH_TIMEOUT_MS = 230_000;
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface GeminiPart {
@@ -83,11 +87,24 @@ export async function generateGeminiContent(
   const body: Record<string, unknown> = { contents };
   if (generationConfig) body.generationConfig = generationConfig;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(AI_FETCH_TIMEOUT_MS),
+    });
+  } catch (e) {
+    const isAbort = e instanceof DOMException && e.name === "TimeoutError";
+    return {
+      returned_an_error: true,
+      status_code: isAbort ? 504 : 0,
+      status_message: isAbort
+        ? `Gemini request timed out after ${Math.round(AI_FETCH_TIMEOUT_MS / 1000)}s`
+        : e instanceof Error ? e.message : "Network error",
+    };
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -112,6 +129,21 @@ export async function generateGeminiContent(
 // ── Convenience: generate + parse JSON response ───────────────────────────────
 
 /**
+ * Strip markdown code fences and extract the JSON object from an AI response.
+ * Handles: ```json...```, ```...```, and any leading/trailing prose.
+ */
+function sanitizeJsonText(text: string): string {
+  let s = text.trim();
+  s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    s = s.slice(start, end + 1);
+  }
+  return s.trim();
+}
+
+/**
  * Generate content from Gemini and parse the output as JSON.
  * Mirrors Bubble's pattern of using response_mime_type: "application/json".
  */
@@ -134,13 +166,14 @@ export async function generateGeminiJsonResponse<T = unknown>(
     };
   }
 
+  const sanitized = sanitizeJsonText(result.text);
   try {
-    const data = JSON.parse(result.text) as T;
+    const data = JSON.parse(sanitized) as T;
     return { returned_an_error: false, data };
   } catch {
     return {
       returned_an_error: true,
-      error: `Failed to parse JSON response: ${result.text.slice(0, 200)}`,
+      error: `Failed to parse JSON response: ${sanitized.slice(0, 300)}`,
     };
   }
 }

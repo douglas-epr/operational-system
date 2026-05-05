@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type {
+  AgencyAiSettingsSummary,
   AiService,
   UserAiSettingsClient,
   SaveAiSettingsPayload,
@@ -27,6 +28,22 @@ interface AiSettingsFormProps {
   onSuccess?: () => void;
   /** Label for the submit button. Defaults to "Save Settings". */
   submitLabel?: string;
+  /**
+   * Agency-AI summary (no raw keys) used to render a read-only preview
+   * when the user has the "Use my agency's AI keys" toggle ON.
+   *
+   * Pass `null` if the agency has no AI config yet, or `undefined` when
+   * the form is being used in a context where the toggle shouldn't appear
+   * at all (e.g. the dedicated Agency-AI editor reuses this same form
+   * with `allowAgencyToggle={false}`).
+   */
+  agencySummary?: AgencyAiSettingsSummary | null;
+  /**
+   * When false the toggle is hidden entirely. Default true. The
+   * `referrer` / `lead` Settings flow + the Agency-AI editor both pass
+   * false to suppress the toggle.
+   */
+  allowAgencyToggle?: boolean;
 }
 
 /** Form for configuring AI service, API keys, and model selection. */
@@ -35,6 +52,8 @@ export default function AiSettingsForm({
   onSave,
   onSuccess,
   submitLabel = "Save Settings",
+  agencySummary,
+  allowAgencyToggle = true,
 }: AiSettingsFormProps) {
   const [activeService, setActiveService] = useState<AiService | "">(
     initialSettings.activeService ?? ""
@@ -59,6 +78,14 @@ export default function AiSettingsForm({
     !initialSettings.claudeKeySet
   );
 
+  // The "Use my agency's AI keys" toggle. When ON, the per-service form is
+  // collapsed into a read-only preview built from `agencySummary` and the
+  // user's personal fields are still saved (so flipping back OFF restores
+  // their previous personal config).
+  const [useAgency, setUseAgency] = useState<boolean>(
+    initialSettings.useAgencySettings
+  );
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -74,6 +101,7 @@ export default function AiSettingsForm({
       openaiModel,
       geminiModel,
       claudeModel,
+      useAgencySettings: allowAgencyToggle ? useAgency : undefined,
     };
 
     // Only include key fields if user is editing them
@@ -105,10 +133,76 @@ export default function AiSettingsForm({
     "disabled:opacity-50"
   );
 
+  // When the agency toggle is ON, the per-service editor is hidden and the
+  // form renders a compact summary of the agency configuration instead.
+  // The user's personal fields are still kept in state — flipping the
+  // toggle OFF reveals them again unmodified.
+  const showAgencyPreview = allowAgencyToggle && useAgency;
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Use-agency toggle (hidden for personal-only roles + the Agency-AI
+          editor that wraps this same form) */}
+      {allowAgencyToggle && (
+        <label className="flex items-start gap-3 rounded-lg border border-border bg-elevated p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={useAgency}
+            onChange={(e) => setUseAgency(e.target.checked)}
+            disabled={isSubmitting}
+            className="mt-0.5 h-4 w-4 rounded border-border accent-accent"
+          />
+          <span className="text-sm">
+            <span className="font-medium text-text-primary">
+              Use my agency&apos;s AI keys
+            </span>
+            <span className="block text-xs text-text-muted mt-0.5">
+              When enabled, your AI calls run on the agency&apos;s shared API key
+              and model. Disable to use your personal keys below.
+            </span>
+          </span>
+        </label>
+      )}
+
+      {showAgencyPreview && (
+        <div className="rounded-lg border border-accent/40 bg-accent/5 p-4 space-y-1 text-sm">
+          {agencySummary?.active_service ? (
+            <>
+              <div className="text-text-primary font-medium">
+                Using agency configuration
+              </div>
+              <div className="text-text-muted">
+                Provider: {AI_SERVICE_LABELS[agencySummary.active_service]}
+                {" · "}
+                Model:{" "}
+                {agencySummary.active_service === "openai"
+                  ? agencySummary.openai_model
+                  : agencySummary.active_service === "gemini"
+                    ? agencySummary.gemini_model
+                    : agencySummary.claude_model}
+              </div>
+              <div className="text-xs text-text-muted">
+                Key configured:{" "}
+                {agencySummary.active_service === "openai"
+                  ? agencySummary.has_openai_key ? "Yes" : "No"
+                  : agencySummary.active_service === "gemini"
+                    ? agencySummary.has_gemini_key ? "Yes" : "No"
+                    : agencySummary.has_claude_key ? "Yes" : "No"}
+              </div>
+            </>
+          ) : (
+            <div className="text-text-muted">
+              The agency hasn&apos;t configured AI yet. Ask an admin or manager
+              to fill in <span className="text-text-primary">Agency AI
+              Configuration</span> above, or disable this toggle to use your
+              own keys.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Active Service */}
-      <div>
+      <div className={cn(showAgencyPreview && "hidden")}>
         <label
           htmlFor="ai-active-service"
           className="block text-sm font-medium text-text-primary mb-1.5"
@@ -184,7 +278,8 @@ export default function AiSettingsForm({
               "rounded-lg border p-4 space-y-4 transition-opacity",
               isActive
                 ? "border-accent/50 bg-accent/5"
-                : "border-border opacity-60"
+                : "border-border opacity-60",
+              showAgencyPreview && "hidden"
             )}
           >
             <legend className="px-2 text-sm font-semibold text-text-primary">
@@ -241,21 +336,21 @@ export default function AiSettingsForm({
               >
                 Model
               </label>
-              <input
+              <select
                 id={`ai-model-${service}`}
-                type="text"
                 value={modelValue}
                 onChange={(e) => setModelValue(e.target.value)}
-                placeholder="Model name..."
                 disabled={isSubmitting}
-                list={`models-${service}`}
-                className={inputClass}
-              />
-              <datalist id={`models-${service}`}>
+                className={selectClass}
+              >
+                {/* If saved model isn't in the list, show it as a selectable option */}
+                {modelValue && !DEFAULT_MODELS[service].includes(modelValue) && (
+                  <option value={modelValue}>{modelValue}</option>
+                )}
                 {DEFAULT_MODELS[service].map((m) => (
-                  <option key={m} value={m} />
+                  <option key={m} value={m}>{m}</option>
                 ))}
-              </datalist>
+              </select>
             </div>
           </fieldset>
         );

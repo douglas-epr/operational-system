@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import RichTextEditor from "@/app/sandbox-planner/_components/RichTextEditor";
 import {
   updatePromptGroupName,
   updatePromptName,
@@ -167,17 +168,12 @@ function PromptCard({ prompt }: { prompt: PromptRow }) {
         <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide">
           Description
         </label>
-        <textarea
-          value={description}
-          onChange={(e) => { setDescription(e.target.value); setSaved(false); }}
-          rows={12}
-          disabled={isSaving}
-          className={cn(
-            "w-full rounded-lg border border-border px-3 py-2.5 text-sm font-mono",
-            "bg-base text-text-primary placeholder:text-text-muted resize-y",
-            "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
-            "disabled:opacity-50"
-          )}
+        <RichTextEditor
+          content={description}
+          onChange={(html) => { setDescription(html); setSaved(false); }}
+          editable={!isSaving}
+          placeholder="Prompt description..."
+          minHeight="min-h-64"
         />
       </div>
 

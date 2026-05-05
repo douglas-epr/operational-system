@@ -1,7 +1,20 @@
 "use client";
 
+/**
+ * Stages Checking — editorial timeline view of the project's stage milestones.
+ *
+ * Design notes (VibeUX): adopts the shared design tokens (`text-text-*`,
+ * `bg-surface`, `border-border`, semantic status classes) instead of the
+ * old hand-rolled hex pills. Each stage is a row anchored to a vertical
+ * timeline rail; status is communicated by an icon + label, not by
+ * flooding the row with saturated colour.
+ */
+
 import type { Task, ProjectStage } from "@/types/projects";
 import { STAGE_LABELS, STAGE_ORDER } from "@/types/projects";
+import { CheckIcon, ClockIcon, MinusIcon, AlertTriangleIcon } from "@/components/ui/icons";
+
+type StageStatus = "done" | "in_progress" | "not_started" | "ready_for_qa" | "blocked";
 
 interface StagesCheckingProps {
   tasks: Task[];
@@ -14,41 +27,82 @@ export default function StagesChecking({ tasks, projectStage }: StagesCheckingPr
   tasks
     .filter((t) => t.type === "stages_checking")
     .forEach((t) => {
-      // Match task name to stage key (case-insensitive)
       const stageKey = STAGE_ORDER.find(
         (s) => STAGE_LABELS[s].toLowerCase() === t.name?.toLowerCase()
       );
       if (stageKey) taskByStage.set(stageKey, t);
     });
 
-  // Determine current stage index for coloring
   const currentStageIndex = projectStage ? STAGE_ORDER.indexOf(projectStage) : -1;
+  const total = STAGE_ORDER.length;
+  const completed = STAGE_ORDER.filter((stage, idx) => {
+    const task = taskByStage.get(stage);
+    const status = (task?.status ?? inferStatus(idx, currentStageIndex)) as StageStatus;
+    return status === "done";
+  }).length;
+  const progressPct = Math.round((completed / total) * 100);
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="px-4 py-2 text-xs font-semibold text-text-secondary uppercase tracking-widest">
-        Name
+    <div className="px-6 py-6 max-w-4xl mx-auto">
+      {/* ── Header summary ─────────────────────────────────────── */}
+      <div className="flex items-end justify-between mb-6 pb-4 border-b border-border">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted">
+            Project Lifecycle
+          </div>
+          <h2 className="font-display text-2xl font-semibold text-text-primary leading-tight mt-1">
+            Stages Checking
+          </h2>
+        </div>
+        <div className="text-right">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted">
+            Progress
+          </div>
+          <div className="font-display text-2xl font-semibold text-text-primary tabular-nums leading-tight mt-1">
+            {completed}<span className="text-text-muted text-base font-normal">/{total}</span>
+          </div>
+        </div>
       </div>
 
-      {STAGE_ORDER.map((stage, idx) => {
-        const task = taskByStage.get(stage);
-        const status = task?.status ?? inferStatus(idx, currentStageIndex);
-        return (
-          <StageRow
-            key={stage}
-            label={STAGE_LABELS[stage]}
-            status={status}
+      {/* ── Slim progress rail ─────────────────────────────────── */}
+      <div className="mb-8">
+        <div className="h-1 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full bg-accent rounded-full transition-all duration-500"
+            style={{ width: `${progressPct}%` }}
           />
-        );
-      })}
+        </div>
+        <div className="mt-1.5 text-[11px] text-text-muted tabular-nums">
+          {progressPct}% complete
+        </div>
+      </div>
+
+      {/* ── Timeline ───────────────────────────────────────────── */}
+      <ol className="relative">
+        {/* Vertical rail */}
+        <span
+          aria-hidden
+          className="absolute left-[15px] top-2 bottom-2 w-px bg-border"
+        />
+
+        {STAGE_ORDER.map((stage, idx) => {
+          const task = taskByStage.get(stage);
+          const status = (task?.status ?? inferStatus(idx, currentStageIndex)) as StageStatus;
+          return (
+            <StageRow
+              key={stage}
+              index={idx + 1}
+              label={STAGE_LABELS[stage]}
+              status={status}
+            />
+          );
+        })}
+      </ol>
     </div>
   );
 }
 
-function inferStatus(
-  idx: number,
-  currentIdx: number
-): "done" | "in_progress" | "not_started" {
+function inferStatus(idx: number, currentIdx: number): StageStatus {
   if (currentIdx === -1) return "not_started";
   if (idx < currentIdx) return "done";
   if (idx === currentIdx) return "in_progress";
@@ -56,68 +110,82 @@ function inferStatus(
 }
 
 function StageRow({
+  index,
   label,
   status,
 }: {
+  index: number;
   label: string;
-  status: "done" | "in_progress" | "not_started" | "ready_for_qa" | "blocked";
+  status: StageStatus;
 }) {
-  const bg = {
-    done: "bg-[#dcfce7]",
-    in_progress: "bg-[#fef9c3]",
-    ready_for_qa: "bg-[#dbeafe]",
-    not_started: "bg-white",
-    blocked: "bg-[#fee2e2]",
+  const isDone = status === "done";
+  const isActive = status === "in_progress";
+  const isBlocked = status === "blocked";
+  const isReadyQa = status === "ready_for_qa";
+
+  const statusPillClass = {
+    done: "status-badge status-done",
+    in_progress: "status-badge status-in-progress",
+    ready_for_qa: "status-badge status-ready-qa",
+    not_started: "status-badge status-not-started",
+    blocked: "status-badge status-blocked",
   }[status];
 
-  const textColor = {
-    done: "text-[#166534]",
-    in_progress: "text-[#854d0e]",
-    ready_for_qa: "text-[#1e40af]",
-    not_started: "text-[#6b7280]",
-    blocked: "text-[#991b1b]",
+  const statusLabel = {
+    done: "Completed",
+    in_progress: "In progress",
+    ready_for_qa: "Ready for QA",
+    not_started: "Not started",
+    blocked: "Blocked",
   }[status];
 
   return (
-    <div
-      className={`flex items-center justify-between px-4 py-3 rounded-lg border border-gray-100 ${bg}`}
-    >
-      <span className={`text-sm font-medium ${textColor}`}>{label}</span>
-      <StatusIcon status={status} />
-    </div>
-  );
-}
+    <li className="relative pl-12 pr-2 py-3 group">
+      {/* Timeline dot */}
+      <span
+        aria-hidden
+        className={[
+          "absolute left-2 top-1/2 -translate-y-1/2 w-[18px] h-[18px] rounded-full flex items-center justify-center transition-colors",
+          isDone
+            ? "bg-success text-white"
+            : isActive
+            ? "bg-accent text-white ring-4 ring-accent/15"
+            : isBlocked
+            ? "bg-danger text-white"
+            : isReadyQa
+            ? "bg-[var(--status-ready-qa-text)] text-white"
+            : "bg-muted border border-border text-text-muted",
+        ].join(" ")}
+      >
+        {isDone && <CheckIcon className="w-3 h-3" strokeWidth={3} />}
+        {isActive && <ClockIcon className="w-2.5 h-2.5" strokeWidth={3} />}
+        {isBlocked && <AlertTriangleIcon className="w-2.5 h-2.5" strokeWidth={3} />}
+        {!isDone && !isActive && !isBlocked && !isReadyQa && (
+          <MinusIcon className="w-2.5 h-2.5" strokeWidth={3} />
+        )}
+      </span>
 
-function StatusIcon({
-  status,
-}: {
-  status: "done" | "in_progress" | "not_started" | "ready_for_qa" | "blocked";
-}) {
-  if (status === "done") {
-    return (
-      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-green-500 text-white">
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-        </svg>
-      </span>
-    );
-  }
-  if (status === "in_progress") {
-    return (
-      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-yellow-400 text-white text-xs">
-        ●
-      </span>
-    );
-  }
-  if (status === "blocked") {
-    return (
-      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-red-500 text-white">
-        <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-        </svg>
-      </span>
-    );
-  }
-  // not_started / ready_for_qa
-  return <span className="w-6 h-6 rounded-full border-2 border-gray-200" />;
+      {/* Row content — single hover card */}
+      <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-lg border border-transparent group-hover:border-border group-hover:bg-elevated/50 transition-colors">
+        <div className="flex items-baseline gap-3 min-w-0">
+          <span className="text-[10px] font-mono text-text-muted tabular-nums leading-none">
+            {String(index).padStart(2, "0")}
+          </span>
+          <span
+            className={[
+              "text-sm leading-tight truncate",
+              isDone
+                ? "text-text-secondary line-through decoration-1 decoration-text-muted/40"
+                : isActive
+                ? "text-text-primary font-medium"
+                : "text-text-primary",
+            ].join(" ")}
+          >
+            {label}
+          </span>
+        </div>
+        <span className={`${statusPillClass} shrink-0`}>{statusLabel}</span>
+      </div>
+    </li>
+  );
 }

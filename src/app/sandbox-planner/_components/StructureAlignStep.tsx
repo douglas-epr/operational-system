@@ -11,6 +11,9 @@ import type { IdeaFull } from "@/types/sandbox-planner";
 import { saveStructureAlign, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";
+import RichTextEditor from "./RichTextEditor";
+import { useAutoTriggerAi, clearAutoTriggerGuard, isBlankHtml } from "../_hooks/useAutoTriggerAi";
+import { runAiWithTimeout } from "../_hooks/useAiWithTimeout";
 
 interface StructureAlignStepProps {
   ideaFull: IdeaFull;
@@ -40,10 +43,17 @@ export default function StructureAlignStep({ ideaFull }: StructureAlignStepProps
     setSuccessMetrics(structureAlign?.success_metrics ?? "");
   }, [structureAlign?.core_problem, structureAlign?.target_audience, structureAlign?.success_metrics]);
 
+  const isEmpty =
+    isBlankHtml(structureAlign?.core_problem) &&
+    isBlankHtml(structureAlign?.target_audience) &&
+    isBlankHtml(structureAlign?.success_metrics);
+
+  useAutoTriggerAi(idea.id, "structure_align", isEmpty, isAiWorking);
+
   const canSave =
-    coreProblem.trim().length > 0 &&
-    targetAudience.trim().length > 0 &&
-    successMetrics.trim().length > 0 &&
+    !isBlankHtml(coreProblem) &&
+    !isBlankHtml(targetAudience) &&
+    !isBlankHtml(successMetrics) &&
     !isSaving &&
     !isRegenerating;
 
@@ -53,9 +63,9 @@ export default function StructureAlignStep({ ideaFull }: StructureAlignStepProps
     setError(null);
 
     const result = await saveStructureAlign(idea.id, {
-      core_problem: coreProblem.trim(),
-      target_audience: targetAudience.trim(),
-      success_metrics: successMetrics.trim(),
+      core_problem: coreProblem,
+      target_audience: targetAudience,
+      success_metrics: successMetrics,
     });
 
     setIsSaving(false);
@@ -65,16 +75,17 @@ export default function StructureAlignStep({ ideaFull }: StructureAlignStepProps
   async function handleRegenerate() {
     setIsRegenerating(true);
     setError(null);
+    clearAutoTriggerGuard(idea.id, "structure_align");
 
-    const result = await triggerAiGeneration(idea.id, "structure_align");
+    const result = await runAiWithTimeout(() => triggerAiGeneration(idea.id, "structure_align"));
 
     setIsRegenerating(false);
     if (result.error) setError(result.error);
   }
 
-  // Show AI loading overlay when generation is in progress
-  if (isAiWorking) {
-    return <AiLoadingOverlay step="structure_align" />;
+  // Show AI loading overlay when generation is in progress OR user just clicked regenerate
+  if (isAiWorking || isRegenerating) {
+    return <AiLoadingOverlay ideaId={idea.id} step="structure_align" />;
   }
 
   return (
@@ -85,13 +96,14 @@ export default function StructureAlignStep({ ideaFull }: StructureAlignStepProps
           <h3 className="text-sm font-semibold text-text-primary mb-1">
             Idea*
           </h3>
-          <div className="rounded-lg border border-border bg-surface p-4">
+          <div className="tiptap-content rounded-lg border border-border bg-surface p-4">
             <h4 className="text-sm font-bold text-text-primary mb-2">
               {idea.name}
             </h4>
-            <p className="text-sm text-text-secondary whitespace-pre-wrap">
-              {idea.description ?? "No description provided."}
-            </p>
+            <div
+              className="prose prose-sm prose-invert max-w-none text-sm text-text-secondary"
+              dangerouslySetInnerHTML={{ __html: idea.description ?? "<p>No description provided.</p>" }}
+            />
           </div>
         </div>
       </div>
@@ -106,18 +118,12 @@ export default function StructureAlignStep({ ideaFull }: StructureAlignStepProps
           >
             The Core Problem*
           </label>
-          <textarea
-            id="core-problem"
-            value={coreProblem}
-            onChange={(e) => setCoreProblem(e.target.value)}
-            rows={5}
-            disabled={isSaving || isRegenerating}
+          <RichTextEditor
+            content={coreProblem}
+            onChange={setCoreProblem}
+            editable={!isSaving && !isRegenerating}
             placeholder="Describe the core problem this idea solves..."
-            className={cn(
-              "w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-base text-text-primary placeholder:text-text-muted resize-none",
-              "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
-              "disabled:opacity-50"
-            )}
+            minHeight="min-h-32"
           />
         </div>
 
@@ -129,18 +135,12 @@ export default function StructureAlignStep({ ideaFull }: StructureAlignStepProps
           >
             Target Audience*
           </label>
-          <textarea
-            id="target-audience"
-            value={targetAudience}
-            onChange={(e) => setTargetAudience(e.target.value)}
-            rows={5}
-            disabled={isSaving || isRegenerating}
+          <RichTextEditor
+            content={targetAudience}
+            onChange={setTargetAudience}
+            editable={!isSaving && !isRegenerating}
             placeholder="Describe the primary target audience..."
-            className={cn(
-              "w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-base text-text-primary placeholder:text-text-muted resize-none",
-              "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
-              "disabled:opacity-50"
-            )}
+            minHeight="min-h-32"
           />
         </div>
 
@@ -152,18 +152,12 @@ export default function StructureAlignStep({ ideaFull }: StructureAlignStepProps
           >
             Primary Success Metric*
           </label>
-          <textarea
-            id="success-metrics"
-            value={successMetrics}
-            onChange={(e) => setSuccessMetrics(e.target.value)}
-            rows={5}
-            disabled={isSaving || isRegenerating}
+          <RichTextEditor
+            content={successMetrics}
+            onChange={setSuccessMetrics}
+            editable={!isSaving && !isRegenerating}
             placeholder="Define specific, quantifiable success metrics..."
-            className={cn(
-              "w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-base text-text-primary placeholder:text-text-muted resize-none",
-              "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
-              "disabled:opacity-50"
-            )}
+            minHeight="min-h-32"
           />
         </div>
 

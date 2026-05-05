@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import type { Project, Task, UserType, TabKey, UserProfile, ClientMilestoneTotal, QAMilestoneTotal } from "@/types/projects";
+import type { Project, Task, UserType, TabKey, UserProfile } from "@/types/projects";
 import { getVisibleTabs, TAB_LABELS, getScheduleProgressBadge } from "@/types/projects";
 import StagesChecking from "./tabs/StagesChecking";
 import DeveloperTasks from "./tabs/DeveloperTasks";
@@ -19,8 +19,7 @@ interface ProjectDetailProps {
   initialTab: TabKey;
   profiles: UserProfile[];
   currentUserId: string;
-  clientMilestoneTotals: ClientMilestoneTotal[];
-  qaMilestoneTotals: QAMilestoneTotal[];
+  unreadByTaskId: Record<string, number>;
 }
 
 const PROGRESS_COLORS: Record<"green" | "yellow" | "red", string> = {
@@ -29,7 +28,7 @@ const PROGRESS_COLORS: Record<"green" | "yellow" | "red", string> = {
   red:    "bg-[#7f1d1d] text-[#fca5a5]",
 };
 
-export default function ProjectDetail({ project, tasks, userType, initialTab, profiles, currentUserId, clientMilestoneTotals, qaMilestoneTotals }: ProjectDetailProps) {
+export default function ProjectDetail({ project, tasks, userType, initialTab, profiles, currentUserId, unreadByTaskId }: ProjectDetailProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const visibleTabs = getVisibleTabs(userType);
@@ -53,10 +52,21 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
   const progress = getScheduleProgressBadge(project, { totalEst, doneOrQaEst });
   const milestones = tasks.filter((t) => t.type === "developer_tasks" && t.level === "level_1" && !t.parent_task_id);
 
-  // Tab badge counts
+  // Tab status badge counts (blue — shows actionable items count)
   const clientNotStarted = tasks.filter((t) => t.type === "client_requests" && t.status === "not_started").length;
   const qaNotStarted = tasks.filter((t) => t.type === "qa_requests" && t.status === "not_started").length;
   const qaReadyForQa = tasks.filter((t) => t.type === "qa_requests" && t.status === "ready_for_qa").length;
+
+  // Unread comment counts per tab (red — shows unread messages)
+  const clientUnread = tasks
+    .filter((t) => t.type === "client_requests")
+    .reduce((s, t) => s + (unreadByTaskId[t.id] ?? 0), 0);
+  const qaUnread = tasks
+    .filter((t) => t.type === "qa_requests")
+    .reduce((s, t) => s + (unreadByTaskId[t.id] ?? 0), 0);
+  const developerUnread = tasks
+    .filter((t) => t.type === "developer_tasks")
+    .reduce((s, t) => s + (unreadByTaskId[t.id] ?? 0), 0);
 
   function getTabBadge(tab: TabKey): number {
     if (tab === "client_requests" && (userType === "admin" || userType === "manager" || userType === "developer")) {
@@ -66,6 +76,13 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
       if (userType === "qa") return qaReadyForQa;
       if (userType === "admin" || userType === "manager" || userType === "developer") return qaNotStarted;
     }
+    return 0;
+  }
+
+  function getTabUnread(tab: TabKey): number {
+    if (tab === "client_requests") return clientUnread;
+    if (tab === "qa_requests")     return qaUnread;
+    if (tab === "developer")       return developerUnread;
     return 0;
   }
 
@@ -108,24 +125,42 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
         </button>
       </div>
 
-      {/* Tab bar */}
+      {/* Tab bar — badges sit inline beside the label for a tight, balanced read.
+          Blue = open / actionable count · Red = unread comments. */}
       <div className="flex items-end gap-0 px-6 border-b border-border">
         {visibleTabs.map((tab) => {
           const badge = getTabBadge(tab);
+          const tabUnread = getTabUnread(tab);
+          const isActive = activeTab === tab;
           return (
             <button
               key={tab}
               onClick={() => handleTabChange(tab)}
-              className={`relative px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab
+              className={`relative flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                isActive
                   ? "border-accent text-text-primary"
                   : "border-transparent text-text-secondary hover:text-text-primary hover:border-border"
               }`}
             >
-              {TAB_LABELS[tab]}
-              {badge > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none px-1">
-                  {badge}
+              <span className="leading-none">{TAB_LABELS[tab]}</span>
+              {(badge > 0 || tabUnread > 0) && (
+                <span className="flex items-center gap-1">
+                  {badge > 0 && (
+                    <span
+                      title={`${badge} open`}
+                      className="min-w-[18px] h-[18px] inline-flex items-center justify-center rounded-full bg-info text-white text-[10px] font-semibold leading-none px-1.5 tabular-nums"
+                    >
+                      {badge}
+                    </span>
+                  )}
+                  {tabUnread > 0 && (
+                    <span
+                      title={`${tabUnread} unread`}
+                      className="min-w-[18px] h-[18px] inline-flex items-center justify-center rounded-full bg-danger text-white text-[10px] font-semibold leading-none px-1.5 tabular-nums"
+                    >
+                      {tabUnread}
+                    </span>
+                  )}
                 </span>
               )}
             </button>
@@ -145,11 +180,10 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
           <DeveloperTasks
             tasks={tasks}
             userType={userType}
-            projectId={project.id}
+            project={project}
             profiles={profiles}
             currentUserId={currentUserId}
-            clientMilestoneTotals={clientMilestoneTotals}
-            qaMilestoneTotals={qaMilestoneTotals}
+            unreadByTaskId={unreadByTaskId}
           />
         )}
         {activeTab === "client_requests" && (
@@ -161,6 +195,8 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
             profiles={profiles}
             currentUserId={currentUserId}
             milestones={milestones}
+            authorizedUserIds={project.authorized_users}
+            unreadByTaskId={unreadByTaskId}
           />
         )}
         {activeTab === "qa_requests" && (
@@ -173,6 +209,8 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
             currentUserId={currentUserId}
             onTrackQATime={() => setQaTrackerOpen(true)}
             milestones={milestones}
+            authorizedUserIds={project.authorized_users}
+            unreadByTaskId={unreadByTaskId}
           />
         )}
       </div>
@@ -196,6 +234,7 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
         project={project}
         profiles={profiles}
         taskProgress={null}
+        userType={userType}
       />
     </div>
   );

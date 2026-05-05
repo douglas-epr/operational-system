@@ -3,6 +3,7 @@
 import { useState, useTransition, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { updateProfile } from "../actions";
+import SignatureEditor from "./SignatureEditor";
 
 const COUNTRIES = [
   "Afghanistan","Albania","Algeria","Argentina","Australia","Austria","Belgium",
@@ -24,6 +25,7 @@ interface Props {
     picture:    string;
     country:    string;
     email:      string;
+    signature:  string | null;
   };
 }
 
@@ -35,6 +37,7 @@ export default function ProfileForm({ profile }: Props) {
   const [country,   setCountry]   = useState(profile.country || "");
   const [picture,   setPicture]   = useState(profile.picture);
   const [preview,   setPreview]   = useState(profile.picture);
+  const [signature, setSignature] = useState<string | null>(profile.signature);
 
   const [uploading, setUploading] = useState(false);
   const [error,     setError]     = useState("");
@@ -68,7 +71,7 @@ export default function ProfileForm({ profile }: Props) {
     setError("");
     setSuccess(false);
     startTransition(async () => {
-      const result = await updateProfile({ first_name: firstName, last_name: lastName, country, picture });
+      const result = await updateProfile({ first_name: firstName, last_name: lastName, country, picture, signature });
       if (result?.error) setError(result.error);
       else setSuccess(true);
     });
@@ -155,6 +158,20 @@ export default function ProfileForm({ profile }: Props) {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
+      </div>
+
+      {/* Signature */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-text-secondary">Signature</label>
+        <p className="text-xs text-text-muted">
+          Used to sign agreements. Upload a PNG/JPG or draw one below.
+        </p>
+        <div className="mt-2">
+          <SignatureEditor
+            initialUrl={signature}
+            onChange={(url) => setSignature(url)}
+          />
+        </div>
       </div>
 
       <hr className="border-border" />

@@ -4,9 +4,9 @@
  */
 
 import type { AiService } from "@/types/settings";
-import { generateOpenAIJsonResponse } from "./openai";
-import { generateGeminiJsonResponse } from "./gemini";
-import { generateClaudeJsonResponse } from "./claude";
+import { generateOpenAIResponse, generateOpenAIJsonResponse } from "./openai";
+import { generateGeminiContent, generateGeminiJsonResponse } from "./gemini";
+import { generateClaudeResponse, generateClaudeJsonResponse } from "./claude";
 
 export interface AiGenerationParams {
   /** Which AI service to use */
@@ -51,5 +51,36 @@ export async function generateAiJsonResponse<T = unknown>(
         returned_an_error: true,
         error: `Unknown AI service: ${service}`,
       };
+  }
+}
+
+/**
+ * Generate a plain-text response from the specified AI service.
+ * Use this for free-form HTML or prose output (not JSON).
+ */
+export async function generateAiTextResponse(
+  params: AiGenerationParams
+): Promise<{ text?: string; returned_an_error: boolean; error?: string }> {
+  const { service, apiKey, model, prompt } = params;
+
+  switch (service) {
+    case "openai": {
+      const res = await generateOpenAIResponse({ model, input: prompt, apiKey });
+      return { returned_an_error: res.returned_an_error, text: res.text, error: res.status_message };
+    }
+    case "gemini": {
+      const res = await generateGeminiContent({
+        model,
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        apiKey,
+      });
+      return { returned_an_error: res.returned_an_error, text: res.text, error: res.status_message };
+    }
+    case "claude": {
+      const res = await generateClaudeResponse({ model, input: prompt, apiKey });
+      return { returned_an_error: res.returned_an_error, text: res.text, error: res.status_message };
+    }
+    default:
+      return { returned_an_error: true, error: `Unknown AI service: ${service}` };
   }
 }

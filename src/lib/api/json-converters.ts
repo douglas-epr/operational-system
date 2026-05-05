@@ -60,6 +60,8 @@ export interface ICP {
   description?: string;
   operational_environment: string;
   strategic_pain_points_and_acute_needs: string;
+  how_problems_are_solved_currently?: string;
+  how_problems_could_be_solved?: string;
 }
 
 export interface ICPsOutput {
@@ -126,7 +128,136 @@ export function convertProductDefinitionJson(
   return parseJson<ProductDefinitionOutput>(input_json);
 }
 
-// ── 5. Talent & Client Verification ──────────────────────────────────────────
+// ── 5. Benchmarking ─────────────────────────────────────────────────────────
+// AI-generated competitive analysis with overview, comparison table, and takeaways.
+
+export interface BenchmarkingOutput {
+  overview: string;
+  comparison: string;
+  possible_business_models?: string;
+  takeaways: string;
+}
+
+// ── 6. PRD (Product Requirements Document) ──────────────────────────────────
+// AI-generated PRD with 9 sections.
+
+export interface PrdOutput {
+  app_overview: string;
+  objectives: string;
+  priority_personas: string;
+  essential_features: string;
+  user_flow: string;
+  non_functional_reqs: string;
+  out_of_scope: string;
+  success_indicators: string;
+  phasing_notes: string;
+}
+
+// ── 7. Database ─────────────────────────────────────────────────────────────
+// AI-generated data model with tables, relationships, and notes.
+
+export interface DatabaseOutput {
+  tables_schema: string;
+  relationships: string;
+  notes: string;
+}
+
+// ── 8. Visual Styles ────────────────────────────────────────────────────────
+// AI-generated branding + full design system.
+
+export interface VisualStylesColorToken {
+  name: string;
+  hex: string;
+  role: string;
+  shades?: { hex: string; label: string }[];
+}
+
+export interface VisualStylesTypography {
+  heading_font: string;
+  body_font: string;
+  mono_font?: string;
+  scale: { name: string; size_px: number; weight: number; line_height: number }[];
+}
+
+export interface VisualStylesSpacing {
+  unit_px: number;
+  scale: number[];
+}
+
+export interface VisualStylesBorderRadius {
+  sm: string;
+  md: string;
+  lg: string;
+  xl: string;
+  full: string;
+}
+
+export interface VisualStylesShadow {
+  name: string;
+  css_value: string;
+  usage: string;
+}
+
+export interface VisualStylesOutput {
+  // Legacy rich-text (kept for backward compat)
+  logo_branding: string;
+  product_feeling: string;
+  // Quick-access colors
+  primary_color: string;
+  secondary_color: string;
+  accent_color: string;
+  neutral_color: string;
+  // Structured tokens
+  color_tokens: VisualStylesColorToken[];
+  typography: VisualStylesTypography;
+  spacing: VisualStylesSpacing;
+  border_radius: VisualStylesBorderRadius;
+  shadows: VisualStylesShadow[];
+  // Narrative sections (HTML)
+  brand_voice: string;
+  iconography_style: string;
+  motion_principles: string;
+}
+
+// ── 9. Milestones & Tasks ───────────────────────────────────────────────────
+// AI-generated project milestones with tasks and time estimates.
+
+export interface MilestonesAndTasksOutput {
+  content: string;
+}
+
+// ── 9b. Report (readiness dashboard + playbook) ──────────────────────────────
+// AI-generated weighted score, automatic penalties, and long-form playbook.
+
+export interface ReportAreaOutput {
+  key: string;
+  label: string;
+  weight_pct: number;
+  raw_score_pct: number;
+  weighted_points: number;
+  status: "strong" | "average" | "weak";
+  description: string;
+}
+
+export interface ReportPenaltyOutput {
+  label: string;
+  points: number;
+}
+
+export interface ReportOutput {
+  area_scores: ReportAreaOutput[];
+  penalties: ReportPenaltyOutput[];
+  final_score: number;
+  threshold_bucket: "ready" | "refine" | "risk";
+  headline: string;
+  summary: string;
+  next_steps: string;
+  playbook_title: string;
+  playbook_subtitle: string;
+  playbook_html: string;
+}
+
+// ── 10. Talent & Client Verification ─────────────────────────────────────────
 // Source: "Talent verification" and "Client verification" GET calls
 //
 // NOTE: In the old Bubble app these were GET requests to the Bubble app's own

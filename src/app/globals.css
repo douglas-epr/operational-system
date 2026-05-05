@@ -1,52 +1,120 @@
-@import "tailwindcss";
+/*
+ * Tailwind v4 entry.
+ *
+ * IMPORTANT — DO NOT change these two lines without reading this comment.
+ *
+ * Two pitfalls were hit on this dev box (dougl, Windows OneDrive):
+ *
+ *   1. `@import "tailwindcss" source("../")` made Tailwind treat
+ *      `C:\Users\dougl\OneDrive\Área de Trabalho` as the source root.
+ *      That dir has no `node_modules`, so the PostCSS plugin couldn't
+ *      resolve the `tailwindcss` package and turbopack hung every page
+ *      request (server printed "Ready" but `/signin` never compiled).
+ *
+ *   2. With no `@source` pin, Tailwind v4 auto-detects sources by
+ *      walking up to the nearest `package-lock.json`. There's a stray
+ *      `C:\Users\dougl\package-lock.json` on this box, so Tailwind ended
+ *      up scanning every file under `Área de Trabalho` — `.lnk`, `.zip`,
+ *      `.png`, etc. — and crashed with `RangeError: Invalid code point …`
+ *      inside `markUsedVariable` when it tried to read a non-UTF-8 byte.
+ *
+ * Fix: import without `source(...)`, and explicitly pin `@source` to
+ * the directories that hold our class-using files. This is also faster.
+ */
+@import "tailwindcss" source(none);
+@source "./";
+@source "../components";
+@source "../lib";
 @plugin "@tailwindcss/typography";
 
 /* ================================================================
-   BLUR STUDIO — GLOBAL DESIGN TOKENS
-   Tailwind v4: all custom tokens live here via @theme {}
-   Source: docs/architecture.md — Design System
+   BLUR STUDIO — GLOBAL DESIGN TOKENS  (refresh: 2026-04-29)
+
+   Style: dark-first SaaS dashboard, neutral corporate radius (8px),
+   blue accent, FLAT (no gradients per VibeUX 1.6), soft shadows
+   (5–12% opacity per VibeUX 1.5), 40px buttons + inputs (VibeUX 1.14),
+   progressive type scale 32→24→18→16→14 (VibeUX 1.8).
    ================================================================ */
 
 /* ── Raw CSS custom properties ───────────────────────────────── */
 :root {
-  /* Backgrounds */
-  --bg-base:     #0d0d10;
-  --bg-surface:  #18181b;
-  --bg-elevated: #1f1f23;
-  --bg-sidebar:  #111114;
-  --bg-muted:    #27272a;
+  /* Backgrounds — dark first; slight reduction in contrast vs. previous
+     version so cards/elevation steps feel cleaner. */
+  --bg-base:     #0b0b0e;
+  --bg-surface:  #131318;
+  --bg-elevated: #1a1a20;
+  --bg-sidebar:  #0d0d11;
+  --bg-muted:    #232329;
+  --bg-hover:    #2a2a31;
 
-  /* Brand / Accent */
+  /* Brand / Accent — kept blue (#3b82f6) but tuned the subtle for
+     better legibility on dark surfaces. */
   --accent:        #3b82f6;
   --accent-hover:  #2563eb;
-  --accent-subtle: #1e3a5f;
+  --accent-active: #1d4ed8;
+  --accent-subtle: rgba(59, 130, 246, 0.12);
+  --accent-soft:   rgba(59, 130, 246, 0.06);
+  --accent-ring:   rgba(59, 130, 246, 0.35);
 
-  /* Text */
+  /* Text — increased the muted contrast slightly so 12px labels remain
+     readable per VibeUX 1.7. */
   --text-primary:   #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --text-muted:     #52525b;
-  --text-inverted:  #0d0d10;
+  --text-secondary: #b4b4bc;
+  --text-muted:     #6b6b75;
+  --text-inverted:  #0b0b0e;
+  --text-link:      #60a5fa;
 
   /* Borders */
-  --border:        #27272a;
-  --border-subtle: #1f1f23;
+  --border:        #2a2a31;
+  --border-subtle: #1f1f25;
+  --border-strong: #3a3a42;
   --border-focus:  #3b82f6;
 
+  /* Semantic colors — matches VibeUX 1.2 mapping (success/warning/error)
+     plus an info channel for the blue accent family. */
+  --success:        #16a34a;
+  --success-soft:   rgba(34, 197, 94, 0.14);
+  --success-strong: #4ade80;
+  --warning:        #f59e0b;
+  --warning-soft:   rgba(245, 158, 11, 0.14);
+  --warning-strong: #fbbf24;
+  --danger:         #dc2626;
+  --danger-soft:    rgba(220, 38, 38, 0.14);
+  --danger-strong:  #f87171;
+  --info:           #3b82f6;
+  --info-soft:      rgba(59, 130, 246, 0.14);
+  --info-strong:    #60a5fa;
+
   /* Layout */
-  --sidebar-width: 220px;
+  --sidebar-width: 232px;
+  --header-height: 56px;
+
+  /* Radius — single neutral 8px corner per VibeUX 1.13 ("safe default" for
+     corporate B2B). Components compose from these. */
+  --radius-sm:   4px;
+  --radius:      8px;
+  --radius-lg:   12px;
+  --radius-pill: 9999px;
+
+  /* Soft shadows (5–12% opacity, VibeUX 1.5). */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.10), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow:    0 4px 12px rgba(0, 0, 0, 0.10), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 20px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 16px 32px rgba(0, 0, 0, 0.14), 0 4px 8px rgba(0, 0, 0, 0.06);
 
   /* Status backgrounds */
-  --status-not-started-bg: #27272a;
-  --status-in-progress-bg: #1d3f7a;
-  --status-ready-qa-bg:    #4c1d95;
-  --status-done-bg:        #14532d;
-  --status-blocked-bg:     #7f1d1d;
-  --status-archived-bg:    #1f2937;
-  --status-prospecting-bg: #451a03;
-  --status-lost-deal-bg:   #111827;
+  --status-not-started-bg: #2a2a31;
+  --status-in-progress-bg: rgba(59, 130, 246, 0.18);
+  --status-ready-qa-bg:    rgba(168, 85, 247, 0.18);
+  --status-done-bg:        rgba(34, 197, 94, 0.18);
+  --status-blocked-bg:     rgba(220, 38, 38, 0.18);
+  --status-archived-bg:    #1f1f25;
+  --status-prospecting-bg: rgba(245, 158, 11, 0.18);
+  --status-lost-deal-bg:   #18181c;
 
   /* Status text */
-  --status-not-started-text: #a1a1aa;
+  --status-not-started-text: #b4b4bc;
   --status-in-progress-text: #93c5fd;
   --status-ready-qa-text:    #d8b4fe;
   --status-done-text:        #86efac;
@@ -54,37 +122,129 @@
   --status-archived-text:    #9ca3af;
   --status-prospecting-text: #fcd34d;
   --status-lost-deal-text:   #6b7280;
+
+  /* Animation */
+  --ease:       cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --duration:   180ms;
+}
+
+/* ── Light-mode overrides ────────────────────────────────────────
+   Triggered by `class="light"` on <html>. The ThemeScript injected in
+   layout.tsx sets this before paint to avoid flash. Tokens here
+   override the dark-first defaults above; only color/elevation tokens
+   change — radii, shadows, ease, animation, layout are theme-agnostic.
+   ================================================================ */
+:root.light {
+  /* Backgrounds — slightly cool off-white surfaces. */
+  --bg-base:     #f7f7fa;
+  --bg-surface:  #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-sidebar:  #f1f1f4;
+  --bg-muted:    #ececf0;
+  --bg-hover:    #e2e2e8;
+
+  /* Accent — same blue, slightly tuned subtle/soft for light surfaces. */
+  --accent-subtle: rgba(59, 130, 246, 0.10);
+  --accent-soft:   rgba(59, 130, 246, 0.06);
+  --accent-ring:   rgba(59, 130, 246, 0.30);
+
+  /* Text — inverted; primary lands above WCAG AAA on bg-base. */
+  --text-primary:   #0e0e12;
+  --text-secondary: #43434c;
+  --text-muted:     #71717a;
+  --text-inverted:  #ffffff;
+  --text-link:      #1d4ed8;
+
+  /* Borders — neutral grays at the right contrast for white surfaces. */
+  --border:        #e1e1e6;
+  --border-subtle: #ececf0;
+  --border-strong: #c8c8d0;
+  --border-focus:  #3b82f6;
+
+  /* Semantic — saturate the strong tone so it pops on white. */
+  --success:        #15803d;
+  --success-soft:   rgba(22, 163, 74, 0.10);
+  --success-strong: #15803d;
+  --warning:        #b45309;
+  --warning-soft:   rgba(245, 158, 11, 0.12);
+  --warning-strong: #b45309;
+  --danger:         #b91c1c;
+  --danger-soft:    rgba(220, 38, 38, 0.10);
+  --danger-strong:  #b91c1c;
+  --info:           #1d4ed8;
+  --info-soft:      rgba(59, 130, 246, 0.10);
+  --info-strong:    #1d4ed8;
+
+  /* Soft shadows — slightly stronger so cards still read on white-on-white. */
+  --shadow-xs: 0 1px 2px rgba(15, 15, 25, 0.05);
+  --shadow-sm: 0 1px 3px rgba(15, 15, 25, 0.08), 0 1px 2px rgba(15, 15, 25, 0.04);
+  --shadow:    0 4px 12px rgba(15, 15, 25, 0.08), 0 1px 2px rgba(15, 15, 25, 0.04);
+  --shadow-md: 0 8px 20px rgba(15, 15, 25, 0.10), 0 2px 4px rgba(15, 15, 25, 0.04);
+  --shadow-lg: 0 16px 32px rgba(15, 15, 25, 0.12), 0 4px 8px rgba(15, 15, 25, 0.04);
+
+  /* Status backgrounds — translucent over light surfaces. */
+  --status-not-started-bg: #ececf0;
+  --status-in-progress-bg: rgba(59, 130, 246, 0.12);
+  --status-ready-qa-bg:    rgba(168, 85, 247, 0.12);
+  --status-done-bg:        rgba(22, 163, 74, 0.12);
+  --status-blocked-bg:     rgba(220, 38, 38, 0.10);
+  --status-archived-bg:    #ececf0;
+  --status-prospecting-bg: rgba(245, 158, 11, 0.14);
+  --status-lost-deal-bg:   #f1f1f4;
+
+  /* Status text — saturated darks for legibility on light pills. */
+  --status-not-started-text: #52525b;
+  --status-in-progress-text: #1d4ed8;
+  --status-ready-qa-text:    #6b21a8;
+  --status-done-text:        #15803d;
+  --status-blocked-text:     #b91c1c;
+  --status-archived-text:    #52525b;
+  --status-prospecting-text: #b45309;
+  --status-lost-deal-text:   #6b7280;
 }
 
 /* ── Tailwind v4 theme registration ──────────────────────────── */
 @theme inline {
   /* Fonts */
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans:    var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-manrope), var(--font-inter), system-ui, sans-serif;
+  --font-mono:    var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
 
-  /* Background colors — available as bg-base, bg-surface, etc. */
+  /* Background colors */
   --color-base:          var(--bg-base);
   --color-surface:       var(--bg-surface);
   --color-elevated:      var(--bg-elevated);
   --color-sidebar:       var(--bg-sidebar);
   --color-muted:         var(--bg-muted);
+  --color-hover:         var(--bg-hover);
   --color-overlay:       rgba(0, 0, 0, 0.6);
 
-  /* Accent — available as bg-accent, text-accent, border-accent */
+  /* Accent */
   --color-accent:        var(--accent);
   --color-accent-hover:  var(--accent-hover);
+  --color-accent-active: var(--accent-active);
   --color-accent-subtle: var(--accent-subtle);
+  --color-accent-soft:   var(--accent-soft);
 
-  /* Text — available as text-primary, text-secondary, etc. */
+  /* Text */
   --color-text-primary:   var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-muted:     var(--text-muted);
   --color-text-inverted:  var(--text-inverted);
+  --color-text-link:      var(--text-link);
 
-  /* Borders — available as border-default, border-subtle, border-focus */
+  /* Borders */
   --color-border:        var(--border);
   --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
   --color-border-focus:  var(--border-focus);
+
+  /* Semantic */
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger:  var(--danger);
+  --color-info:    var(--info);
 }
 
 /* ── Base reset & body ───────────────────────────────────────── */
@@ -97,6 +257,7 @@
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -104,48 +265,228 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans, system-ui, sans-serif);
   font-size: 14px;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11"; /* Inter alt-letterforms */
   line-height: 1.5;
   min-height: 100vh;
 }
 
+/* Numbers should always look tabular in dashboards/tables. */
+.tabular-nums { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
 /* ── Scrollbar ───────────────────────────────────────────────── */
-::-webkit-scrollbar        { width: 6px; height: 6px; }
-::-webkit-scrollbar-track  { background: var(--bg-base); }
-::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+::-webkit-scrollbar        { width: 10px; height: 10px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 6px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); border: 2px solid transparent; background-clip: padding-box; }
+
+.scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
+.scrollbar-thin-x { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.scrollbar-thin-x::-webkit-scrollbar { height: 4px; }
+.scrollbar-thin-x::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin-x::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.scrollbar-thin-x::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 /* ── Focus ring ──────────────────────────────────────────────── */
 :focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
+  border-radius: 4px;
 }
+
+/* ── Typography helpers ──────────────────────────────────────── */
+/* Progressive scale: 32 → 24 → 18 → 16 → 14 (VibeUX 1.8). Headings use
+ * the display font (Manrope) for character; body uses Inter. */
+.text-display    { font-family: var(--font-display); font-size: 32px; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; }
+.text-heading-1  { font-family: var(--font-display); font-size: 24px; font-weight: 700; line-height: 1.2;  letter-spacing: -0.015em; }
+.text-heading-2  { font-family: var(--font-display); font-size: 18px; font-weight: 600; line-height: 1.3;  letter-spacing: -0.01em; }
+.text-heading-3  { font-size: 16px; font-weight: 600; line-height: 1.4; letter-spacing: -0.005em; }
+.text-heading-4  { font-size: 14px; font-weight: 600; line-height: 1.4; }
+.text-body       { font-size: 14px; font-weight: 400; line-height: 1.55; }
+.text-body-sm    { font-size: 13px; font-weight: 400; line-height: 1.5; }
+.text-caption    { font-size: 12px; font-weight: 400; line-height: 1.45; color: var(--text-muted); }
+.text-label      { font-size: 11px; font-weight: 600; line-height: 1.4; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+
+/* ── Buttons ─────────────────────────────────────────────────── */
+/* Single source of truth, 40px height (VibeUX 1.14), no gradients
+ * (1.6). Variants: primary / secondary / tertiary / destructive.
+ * Sizes:    sm (32px) / md (40px) / lg (44px). */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--duration) var(--ease),
+              border-color    var(--duration) var(--ease),
+              color           var(--duration) var(--ease),
+              box-shadow      var(--duration) var(--ease),
+              transform       var(--duration) var(--ease);
+  user-select: none;
+}
+.btn:active:not(:disabled) { transform: translateY(0.5px); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn-lg { height: 44px; padding: 0 20px; font-size: 14px; }
+.btn-icon { padding: 0; width: 40px; }
+.btn-icon.btn-sm { width: 32px; }
+.btn-icon.btn-lg { width: 44px; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: var(--shadow-xs);
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-primary:active:not(:disabled){ background: var(--accent-active); }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+.btn-secondary:hover:not(:disabled) { border-color: var(--border-strong); background: var(--bg-elevated); }
+
+.btn-tertiary {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.btn-tertiary:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-elevated); }
+
+.btn-destructive {
+  background: var(--danger);
+  color: #fff;
+}
+.btn-destructive:hover:not(:disabled) { background: #b91c1c; }
+
+.btn-destructive-outline {
+  background: transparent;
+  color: var(--danger-strong);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+.btn-destructive-outline:hover:not(:disabled) { background: rgba(220, 38, 38, 0.08); border-color: var(--danger); }
 
 /* ── Form inputs ─────────────────────────────────────────────── */
-.input-field {
+.input-field,
+.input {
   width: 100%;
-  background-color: var(--bg-muted);
+  height: 40px;                 /* VibeUX 1.14 */
+  background-color: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
+  border-radius: var(--radius);
+  padding: 0 12px;
+  font-size: 14px;
   color: var(--text-primary);
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--duration) var(--ease),
+              box-shadow   var(--duration) var(--ease);
 }
-.input-field:focus {
+.input-field:focus,
+.input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
-.input-field::placeholder {
+.input-field::placeholder,
+.input::placeholder {
   color: var(--text-muted);
 }
+.input-field:disabled,
+.input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
-/* ── Status badges ───────────────────────────────────────────── */
-/* Source: os_task_status, os_project_status (docs/reference_docs/option-sets.md) */
-/* Usage:  <span class="status-badge status-done">Done</span>                      */
+textarea.input-field,
+textarea.input {
+  height: auto;
+  min-height: 96px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* Variant for inputs with a leading icon. */
+.input-field--search,
+.input--icon-left {
+  padding-left: 36px;
+}
+
+/* ── Cards ───────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;                /* VibeUX 1.4: 16–24px */
+  box-shadow: var(--shadow-xs);
+}
+.card-sm { padding: 16px; border-radius: var(--radius); }
+.card-lg { padding: 24px; }
+.card-compact { padding: 12px 16px; }
+
+.card-interactive {
+  cursor: pointer;
+  transition: border-color var(--duration) var(--ease),
+              transform   var(--duration) var(--ease),
+              box-shadow  var(--duration) var(--ease);
+}
+.card-interactive:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Badges ──────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+}
+.badge-sm  { height: 16px; font-size: 10px; padding: 0 6px; }
+.badge-success { background: var(--success-soft); color: var(--success-strong); }
+.badge-warning { background: var(--warning-soft); color: var(--warning-strong); }
+.badge-danger  { background: var(--danger-soft);  color: var(--danger-strong);  }
+.badge-info    { background: var(--info-soft);    color: var(--info-strong);    }
+.badge-accent  { background: var(--accent-subtle); color: var(--info-strong);   }
+
+/* Notification dot — red unread bubble used in the chat sidebar etc. */
+.badge-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ── Status badges (existing API kept) ───────────────────────── */
 .status-badge {
   display: inline-flex;
   align-items: center;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   padding: 2px 10px;
   font-size: 11px;
   font-weight: 500;
@@ -161,17 +502,55 @@ body {
 .status-prospecting  { background-color: var(--status-prospecting-bg);  color: var(--status-prospecting-text); }
 .status-lost-deal    { background-color: var(--status-lost-deal-bg);    color: var(--status-lost-deal-text); }
 
-/* ── Typography helpers ──────────────────────────────────────── */
-/* Maps to Bubble named styles: Text_heading_3_, Text_body_small_ */
-.text-heading-1 { font-size: 24px; font-weight: 700; line-height: 1.2; }
-.text-heading-2 { font-size: 18px; font-weight: 600; line-height: 1.3; }
-.text-heading-3 { font-size: 14px; font-weight: 600; line-height: 1.4; }
-.text-body      { font-size: 14px; font-weight: 400; line-height: 1.5; }
-.text-body-sm   { font-size: 12px; font-weight: 400; line-height: 1.5; }
-.text-label     { font-size: 11px; font-weight: 500; line-height: 1.4; letter-spacing: 0.05em; }
+/* ── KPI cards (dashboards) ──────────────────────────────────── */
+.kpi {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kpi-label   { font-size: 11px; font-weight: 600; line-height: 1.2; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.kpi-value   { font-family: var(--font-display); font-size: 28px; font-weight: 700; line-height: 1.1; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.kpi-delta   { font-size: 11px; font-weight: 500; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.kpi-delta-pos { color: var(--success-strong); }
+.kpi-delta-neg { color: var(--danger-strong); }
+.kpi-meta    { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+
+/* ── Skeleton loader (VibeUX 8.4) ────────────────────────────── */
+@keyframes skeleton-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-muted) 0%,
+    var(--bg-hover) 40%,
+    var(--bg-muted) 80%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius);
+}
+
+/* ── Page-load animation: staggered fade up ──────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-up {
+  animation: fade-up 360ms var(--ease-out) backwards;
+}
+.fade-up-1 { animation-delay: 0ms; }
+.fade-up-2 { animation-delay: 60ms; }
+.fade-up-3 { animation-delay: 120ms; }
+.fade-up-4 { animation-delay: 180ms; }
+.fade-up-5 { animation-delay: 240ms; }
 
 /* ── Layout shells ───────────────────────────────────────────── */
-/* Source: FG sidebar pattern in docs/reference_docs/elementos-reutilizaveis.md */
 .sidebar {
   position: fixed;
   left: 0;
@@ -190,10 +569,43 @@ body {
   margin-left: var(--sidebar-width);
   min-height: 100vh;
   background-color: var(--bg-base);
-  padding: 24px;
+  padding: 32px 32px 48px;
 }
 
-/* ── TipTap / ProseMirror editor styles ──────────────────────── */
+/* ── Divider ─────────────────────────────────────────────────── */
+.divider {
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ── TipTap / ProseMirror editor styles (unchanged) ──────────── */
+.tiptap-content .ProseMirror .comment-highlight,
+.tiptap-content .ProseMirror span[data-comment-id] {
+  background: rgba(234, 179, 8, 0.18);
+  border-bottom: 2px solid rgba(234, 179, 8, 0.55);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+.tiptap-content .ProseMirror .comment-highlight:hover,
+.tiptap-content .ProseMirror span[data-comment-id]:hover {
+  background: rgba(234, 179, 8, 0.32);
+}
+.tiptap-content .ProseMirror .comment-highlight[data-status="solved"],
+.tiptap-content .ProseMirror span[data-comment-id][data-status="solved"] {
+  background: transparent;
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.22);
+}
+.tiptap-content .ProseMirror .comment-highlight[data-status="solved"]:hover,
+.tiptap-content .ProseMirror span[data-comment-id][data-status="solved"]:hover {
+  background: rgba(234, 179, 8, 0.12);
+}
+.tiptap-content .ProseMirror .comment-highlight[data-hidden="true"],
+.tiptap-content .ProseMirror span[data-comment-id][data-hidden="true"] {
+  background: transparent;
+  border-bottom: none;
+  cursor: inherit;
+  pointer-events: none;
+}
+
 .tiptap-content .ProseMirror {
   outline: none;
   min-height: 400px;
@@ -203,10 +615,10 @@ body {
   line-height: 1.75;
 }
 
-.tiptap-content .ProseMirror h1 { font-size: 1.875rem; font-weight: 700; margin: 1.25rem 0 0.75rem; color: var(--text-primary); }
-.tiptap-content .ProseMirror h2 { font-size: 1.5rem;   font-weight: 700; margin: 1.1rem 0 0.6rem;  color: var(--text-primary); }
-.tiptap-content .ProseMirror h3 { font-size: 1.25rem;  font-weight: 600; margin: 1rem 0 0.5rem;    color: var(--text-primary); }
-.tiptap-content .ProseMirror h4 { font-size: 1.1rem;   font-weight: 600; margin: 0.9rem 0 0.4rem;  color: var(--text-primary); }
+.tiptap-content .ProseMirror h1 { font-size: 1.875rem; font-weight: 700; margin: 1.25rem 0 0.75rem; color: var(--text-primary); font-family: var(--font-display); }
+.tiptap-content .ProseMirror h2 { font-size: 1.5rem;   font-weight: 700; margin: 1.1rem 0 0.6rem;  color: var(--text-primary); font-family: var(--font-display); }
+.tiptap-content .ProseMirror h3 { font-size: 1.25rem;  font-weight: 600; margin: 1rem 0 0.5rem;    color: var(--text-primary); font-family: var(--font-display); }
+.tiptap-content .ProseMirror h4 { font-size: 1.1rem;   font-weight: 600; margin: 0.9rem 0 0.4rem;  color: var(--text-primary); font-family: var(--font-display); }
 
 .tiptap-content .ProseMirror p  { margin: 0.5rem 0; }
 .tiptap-content .ProseMirror strong { font-weight: 700; }
@@ -232,7 +644,7 @@ body {
   background: var(--bg-muted);
   border-radius: 4px;
   padding: 0.15em 0.4em;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.875em;
   color: #93c5fd;
 }
@@ -259,7 +671,7 @@ body {
 }
 
 .tiptap-content .ProseMirror a {
-  color: var(--accent);
+  color: var(--text-link);
   text-decoration: underline;
 }
 
@@ -276,4 +688,51 @@ body {
   pointer-events: none;
   float: left;
   height: 0;
+}
+
+/* ── Tables (TipTap) ─────────────────────────────────────────── */
+.tiptap-content .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 0.75rem 0;
+  overflow: hidden;
+}
+.tiptap-content .ProseMirror th,
+.tiptap-content .ProseMirror td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+  position: relative;
+  min-width: 1em;
+}
+.tiptap-content .ProseMirror th {
+  background: var(--bg-surface);
+  font-weight: 600;
+  text-align: left;
+}
+.tiptap-content .ProseMirror .selectedCell:after {
+  background: rgba(99, 102, 241, 0.15);
+  content: "";
+  inset: 0;
+  position: absolute;
+  pointer-events: none;
+}
+.tiptap-content .ProseMirror .tableWrapper {
+  overflow-x: auto;
+}
+.tiptap-content .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background-color: var(--accent);
+  pointer-events: none;
+}
+.tiptap-content .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  margin: 0.5rem 0;
 }
