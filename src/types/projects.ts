@@ -127,6 +127,7 @@ export interface UserProfile {
   picture: string | null;
   type: UserType | null;
   signature?: string | null;
+  theme?: string | null;
 }
 
 export interface UserRow extends UserProfile {

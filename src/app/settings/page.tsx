@@ -64,7 +64,7 @@ export default async function SettingsPage() {
     use_agency_settings: boolean | null;
   } | null;
 
-  const profileRow = profile as { type?: string | null; theme?: string | null } | null;
+  const profileRow = profile as unknown as { id: string; first_name: string | null; last_name: string | null; picture: string | null; type: string | null; theme?: string | null } | null;
   const role = profileRow?.type ?? null;
   const initialTheme: ThemeChoice = (profileRow?.theme === "light" ? "light" : "dark");
   const isPersonalOnlyRole = role === "referrer" || role === "lead";
@@ -93,7 +93,7 @@ export default async function SettingsPage() {
   const agencyAiRow = isAdminOrManager ? await getAgencyAiSettings() : null;
 
   return (
-    <PageShell profile={profile} flush>
+    <PageShell profile={profileRow as import("@/types/projects").UserProfile | null} flush>
       <div className="px-6 pt-6 pb-4 border-b border-border shrink-0">
         <PageHeader title="Settings" compact />
       </div>
