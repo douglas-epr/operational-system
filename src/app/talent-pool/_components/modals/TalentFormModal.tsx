@@ -205,7 +205,7 @@ export default function TalentFormModal({
   return (
     <>
       <Modal open={open} onClose={handleClose} title={isEdit ? "Edit Talent" : "Create Talent"} width="max-w-4xl" zIndex={50}>
-        <div className="px-6 pb-2 space-y-5">
+        <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-2 space-y-5">
           <div className="flex justify-center">
             <AvatarUpload value={picture} onChange={setPicture} />
           </div>

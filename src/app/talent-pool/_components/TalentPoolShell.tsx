@@ -115,7 +115,7 @@ export default function TalentPoolShell({ talents, companies, clients }: Props) 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search talent name…"
-              className="input-field pl-9"
+              className="input-field input-field--search"
             />
           </div>
           <button
