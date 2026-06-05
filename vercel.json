@@ -3,15 +3,15 @@
   "crons": [
     {
       "path": "/api/mkt/cron/process-outreach",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/mkt/cron/process-content",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 0 * * *"
     },
     {
       "path": "/api/mkt/cron/sync-sourcing",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
