@@ -20,6 +20,27 @@ interface PromptsShellProps {
 }
 
 export default function PromptsShell({ groups }: PromptsShellProps) {
+  const [search, setSearch] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState<string>("all");
+
+  const filtered = groups
+    .filter((g) => selectedGroup === "all" || g.id === Number(selectedGroup))
+    .map((g) => {
+      if (!search.trim()) return g;
+      const q = search.toLowerCase();
+      // Keep only prompts whose name or description contains the query
+      const matchingPrompts = g.prompts.filter(
+        (p) =>
+          (p.name ?? "").toLowerCase().includes(q) ||
+          (p.description ?? "").toLowerCase().includes(q)
+      );
+      // Also keep the whole group if the group name matches
+      if (g.name.toLowerCase().includes(q)) return g;
+      if (matchingPrompts.length === 0) return null;
+      return { ...g, prompts: matchingPrompts };
+    })
+    .filter(Boolean) as PromptGroupRow[];
+
   return (
     <div className="space-y-6">
       <div>
@@ -31,13 +52,58 @@ export default function PromptsShell({ groups }: PromptsShellProps) {
         </p>
       </div>
 
-      {groups.map((group) => (
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Group dropdown */}
+        <select
+          value={selectedGroup}
+          onChange={(e) => setSelectedGroup(e.target.value)}
+          className="px-3 py-2 bg-elevated border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+        >
+          <option value="all">All groups</option>
+          {groups.map((g) => (
+            <option key={g.id} value={String(g.id)}>{g.name}</option>
+          ))}
+        </select>
+
+        {/* Name search */}
+        <div className="relative flex-1 min-w-[220px]">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+          </svg>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name or content…"
+            className="w-full pl-9 pr-3 py-2 bg-elevated border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {(search || selectedGroup !== "all") && (
+          <span className="text-xs text-text-muted">
+            {filtered.reduce((n, g) => n + g.prompts.length, 0)} prompt{filtered.reduce((n, g) => n + g.prompts.length, 0) !== 1 ? "s" : ""} found
+          </span>
+        )}
+      </div>
+
+      {filtered.map((group) => (
         <PromptGroupCard key={group.id} group={group} />
       ))}
 
-      {groups.length === 0 && (
+      {filtered.length === 0 && (
         <div className="text-center py-16 text-text-muted">
-          No prompt groups found.
+          {groups.length === 0 ? "No prompt groups found." : "No prompts match your search."}
         </div>
       )}
     </div>

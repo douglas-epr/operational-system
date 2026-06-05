@@ -182,3 +182,61 @@ export async function generateOpenAIJsonResponse<T = unknown>(
     };
   }
 }
+
+// ── Image generation (gpt-image-1) ────────────────────────────────────────────
+
+const OPENAI_IMAGE_URL = "https://api.openai.com/v1/images/generations";
+
+export interface OpenAIGeneratedImage {
+  bytes: Buffer;
+  mimeType: string;
+}
+
+/**
+ * Generate an image from a text prompt using OpenAI's gpt-image-1 model.
+ * gpt-image-1 always returns base64 (no URL), so we decode to bytes.
+ */
+export async function generateOpenAIImage(
+  prompt: string,
+  apiKey?: string
+): Promise<{ image?: OpenAIGeneratedImage; returned_an_error: boolean; error?: string }> {
+  const key = apiKey ?? process.env.OPENAI_API_KEY;
+  if (!key) return { returned_an_error: true, error: "Missing OpenAI API key" };
+
+  let res: Response;
+  try {
+    res = await fetch(OPENAI_IMAGE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model: "gpt-image-1",
+        prompt,
+        n: 1,
+        size: "1024x1024",
+      }),
+      signal: AbortSignal.timeout(AI_FETCH_TIMEOUT_MS),
+    });
+  } catch (e) {
+    return {
+      returned_an_error: true,
+      error: e instanceof Error ? e.message : "OpenAI image network error",
+    };
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return {
+      returned_an_error: true,
+      error: (err as { error?: { message?: string } }).error?.message ?? res.statusText,
+    };
+  }
+
+  const data = (await res.json()) as { data?: { b64_json?: string }[] };
+  const b64 = data.data?.[0]?.b64_json;
+  if (!b64) return { returned_an_error: true, error: "OpenAI returned no image data" };
+
+  return {
+    returned_an_error: false,
+    image: { bytes: Buffer.from(b64, "base64"), mimeType: "image/png" },
+  };
+}

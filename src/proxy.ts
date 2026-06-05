@@ -55,12 +55,16 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Public routes that don't require auth
+  // Public routes that don't require auth.
+  // `/m/...` are the public marketing-validation landing pages (mkt_landing);
+  // they must render for anonymous prospects, so they are exempt from the gate.
   const isPublicRoute =
     pathname === "/signin" ||
     pathname === "/reset_pw" ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/") ||
+    pathname === "/m" ||
+    pathname.startsWith("/m/") ||
     pathname === "/favicon.ico";
 
   // Already logged in → redirect away from signin only.

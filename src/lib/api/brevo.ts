@@ -230,6 +230,39 @@ export async function sendBlankTemplateEmail(
   });
 }
 
+// ── 6b. Raw transactional email (subject + HTML) ─────────────────────────────
+// Used by the Marketing Validation Engine outreach worker. Sends arbitrary
+// subject/body without a Brevo template. Falls back to BREVO_FROM_* env vars.
+
+export interface RawEmailParams {
+  to: BrevoRecipient;
+  subject: string;
+  htmlContent: string;
+  textContent?: string;
+  from?: BrevoRecipient;
+  /** Optional reply-to so prospect replies land in a monitored inbox. */
+  replyTo?: BrevoRecipient;
+  /** Brevo "tags" for filtering events in the dashboard / webhooks. */
+  tags?: string[];
+}
+
+export async function sendRawEmail(params: RawEmailParams): Promise<BrevoResponse> {
+  const from =
+    params.from ?? {
+      email: process.env.BREVO_FROM_EMAIL ?? "no-reply@move37.fun",
+      name: process.env.BREVO_FROM_NAME ?? "Move37",
+    };
+  return sendEmail({
+    sender: from,
+    to: [params.to],
+    subject: params.subject,
+    htmlContent: params.htmlContent,
+    textContent: params.textContent ?? params.htmlContent.replace(/<[^>]+>/g, " "),
+    ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+    ...(params.tags ? { tags: params.tags } : {}),
+  });
+}
+
 // ── 7. Parent Package Booking DofE ───────────────────────────────────────────
 // Source: "Brevo - Parent Package Booking DofE" call
 

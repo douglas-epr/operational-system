@@ -10,7 +10,7 @@
  *   - Analytics panel: Buffer REST v1 post stats + local DB summary
  */
 
-import { useCallback, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { MktContent, MktContentStatus } from "@/types/marketing";
 import type { BufferChannel } from "@/lib/api/buffer-labels";
@@ -25,6 +25,7 @@ import {
   scheduleWithBuffer,
   uploadMedia,
   fetchAnalytics,
+  refreshResearchCache,
 } from "../actions";
 import Button from "@/components/ui/Button";
 import {
@@ -47,6 +48,9 @@ const CHAR_LIMITS: Record<string, number> = {
   facebook: 63206,
   googlebusiness: 1500,
 };
+
+/** OpenSquad 3-agent pipeline stage labels (Strategist → Copywriter → Reviewer). */
+const AI_STAGES = ["Strategist analysing…", "Copywriter writing…", "Reviewer checking…"];
 
 function charLimit(services: string[]): number | null {
   const limits = services
@@ -117,11 +121,11 @@ function ServiceIcon({ service }: { service: string }) {
 function PlatformPreview({
   channel,
   text,
-  imageUrl,
+  imageUrls,
 }: {
   channel: BufferChannel | null;
   text: string;
-  imageUrl: string | null;
+  imageUrls: string[];
 }) {
   if (!channel) {
     return (
@@ -153,11 +157,20 @@ function PlatformPreview({
       {/* Post body */}
       <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{displayText}</p>
 
-      {/* Image preview */}
-      {imageUrl && (
-        <div className="rounded-lg overflow-hidden border border-border">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageUrl} alt="Post media" className="w-full max-h-48 object-cover" />
+      {/* Image previews */}
+      {imageUrls.length > 0 && (
+        <div className={imageUrls.length === 1 ? "" : "grid grid-cols-2 gap-1"}>
+          {imageUrls.slice(0, 4).map((url, i) => (
+            <div key={url} className="relative rounded-lg overflow-hidden border border-border">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={`Image ${i + 1}`} className={["w-full object-cover", imageUrls.length === 1 ? "max-h-48" : "h-24"].join(" ")} />
+              {i === 3 && imageUrls.length > 4 && (
+                <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-lg">
+                  +{imageUrls.length - 4}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -181,112 +194,138 @@ function PlatformPreview({
   );
 }
 
-// ── Image dropzone ────────────────────────────────────────────────────────────
+// ── Image uploader (multi-image, label→input pattern) ────────────────────────
 
-function ImageDropzone({
+const MAX_IMAGES = 10;
+
+function ImageUploader({
   projectId,
-  value,
+  values,
   onChange,
 }: {
   projectId: string;
-  value: string | null;
-  onChange: (url: string | null) => void;
+  values: string[];
+  onChange: (urls: string[]) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = `media-upload-${projectId}`;
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
-  async function handleFile(file: File) {
-    setError(null);
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploadError(null);
+    const remaining = MAX_IMAGES - values.length;
+    if (remaining <= 0) { setUploadError(`Maximum ${MAX_IMAGES} images per post.`); return; }
+    const batch = Array.from(files).slice(0, remaining);
     setUploading(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    const r = await uploadMedia(projectId, fd);
+    const results = await Promise.all(
+      batch.map(async (file) => {
+        const fd = new FormData();
+        fd.append("file", file);
+        return uploadMedia(projectId, fd);
+      })
+    );
     setUploading(false);
-    if (r.error) { setError(r.error); return; }
-    if (r.url) onChange(r.url);
+    const errors = results.filter((r) => r.error).map((r) => r.error!);
+    if (errors.length) { setUploadError(errors[0]); }
+    const newUrls = results.filter((r) => r.url).map((r) => r.url!);
+    if (newUrls.length) onChange([...values, ...newUrls]);
   }
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    handleFiles(e.dataTransfer.files);
   }
 
-  if (value) {
-    return (
-      <div className="relative rounded-lg overflow-hidden border border-border group">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={value} alt="Post media" className="w-full max-h-52 object-cover" />
-        <button
-          onClick={() => onChange(null)}
-          className="absolute top-2 right-2 p-1 bg-black/70 text-white rounded-full hover:bg-black/90 transition-colors"
-          aria-label="Remove image"
-        >
-          <CloseIcon className="w-3.5 h-3.5" strokeWidth={2.5} />
-        </button>
-      </div>
-    );
+  function removeImage(idx: number) {
+    onChange(values.filter((_, i) => i !== idx));
   }
+
+  const canAddMore = values.length < MAX_IMAGES;
 
   return (
-    <div>
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-        onClick={() => inputRef.current?.click()}
-        className={[
-          "flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg px-4 py-5 cursor-pointer transition-colors text-center",
-          dragging ? "border-accent bg-accent/5" : "border-border hover:border-accent/50 hover:bg-muted/30",
-        ].join(" ")}
-      >
-        <svg className={["w-7 h-7", dragging ? "text-accent" : "text-text-muted"].join(" ")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M13.5 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM3 16.5V18A2.25 2.25 0 0 0 5.25 20.25h13.5A2.25 2.25 0 0 0 21 18v-1.5M4.5 8.25v-.75A2.25 2.25 0 0 1 6.75 5.25h10.5A2.25 2.25 0 0 1 19.5 7.5v.75" />
-        </svg>
-        <span className="text-sm text-text-muted">
-          {uploading ? "Uploading…" : (
-            <><span className="text-accent font-medium">Click to upload</span> or drag &amp; drop</>
-          )}
-        </span>
-        <span className="text-xs text-text-muted">PNG, JPG, GIF, WEBP — max 10 MB</span>
-      </div>
-      {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-      />
+    <div className="space-y-2">
+      {/* Thumbnail grid */}
+      {values.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          {values.map((url, idx) => (
+            <div key={url} className="relative rounded-lg overflow-hidden border border-border aspect-square group">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt={`Image ${idx + 1}`} className="w-full h-full object-cover" />
+              <button
+                type="button"
+                onClick={() => removeImage(idx)}
+                className="absolute top-1 right-1 p-0.5 bg-black/70 text-white rounded-full hover:bg-black/90 transition-colors opacity-0 group-hover:opacity-100"
+                aria-label="Remove image"
+              >
+                <CloseIcon className="w-3 h-3" strokeWidth={2.5} />
+              </button>
+              {idx === 0 && values.length > 1 && (
+                <span className="absolute bottom-1 left-1 text-[9px] bg-black/60 text-white px-1 rounded">Cover</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Drop zone — only shown when more images can be added */}
+      {canAddMore && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+        >
+          <label
+            htmlFor={inputId}
+            className={[
+              "flex flex-col items-center justify-center gap-1.5 border-2 border-dashed rounded-lg px-4 py-4 cursor-pointer transition-colors text-center",
+              dragging ? "border-accent bg-accent/5" : "border-border hover:border-accent/50 hover:bg-muted/20",
+            ].join(" ")}
+          >
+            <svg className={["w-6 h-6", dragging ? "text-accent" : "text-text-muted"].join(" ")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M13.5 12a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0ZM3 16.5V18A2.25 2.25 0 0 0 5.25 20.25h13.5A2.25 2.25 0 0 0 21 18v-1.5M4.5 8.25v-.75A2.25 2.25 0 0 1 6.75 5.25h10.5A2.25 2.25 0 0 1 19.5 7.5v.75" />
+            </svg>
+            <span className="text-sm text-text-muted">
+              {uploading ? "Uploading…" : (
+                <>
+                  <span className="text-accent font-medium">Click to upload</span> or drag &amp; drop
+                </>
+              )}
+            </span>
+            <span className="text-xs text-text-muted">
+              PNG, JPG, GIF, WEBP · max 10 MB · up to {MAX_IMAGES} images
+              {values.length > 0 && ` (${MAX_IMAGES - values.length} remaining)`}
+            </span>
+          </label>
+          <input
+            id={inputId}
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
+          />
+        </div>
+      )}
+
+      {uploadError && <p className="text-xs text-red-400">{uploadError}</p>}
     </div>
   );
 }
 
-// ── Analytics panel ───────────────────────────────────────────────────────────
+// ── Analytics panel (always-visible, data passed from parent) ────────────────
 
 function AnalyticsPanel({
-  projectId,
+  data,
+  loading,
   channels,
 }: {
-  projectId: string;
+  data: ContentAnalytics | null;
+  loading: boolean;
   channels: BufferChannel[];
 }) {
-  const [data, setData] = useState<ContentAnalytics | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-
-  async function load() {
-    if (data) { setOpen((v) => !v); return; }
-    setLoading(true);
-    setOpen(true);
-    const result = await fetchAnalytics(projectId);
-    setData(result);
-    setLoading(false);
-  }
-
   const statusColors: Record<string, string> = {
     draft: "text-text-muted",
     scheduled: "text-accent",
@@ -294,107 +333,134 @@ function AnalyticsPanel({
     failed: "text-red-400",
   };
 
+  // Aggregate totals across all profiles' sent posts
+  const totals = useMemo(() => {
+    if (!data) return null;
+    let impressions = 0, reach = 0, clicks = 0, reactions = 0, comments = 0, posts = 0;
+    for (const profilePosts of Object.values(data.postsByProfile)) {
+      for (const p of profilePosts) {
+        posts++;
+        impressions += p.statistics.impressions ?? p.statistics.reach ?? 0;
+        reach      += p.statistics.reach ?? 0;
+        clicks     += p.statistics.clicks ?? 0;
+        reactions  += p.statistics.likes ?? p.statistics.favorites ?? 0;
+        comments   += p.statistics.comments ?? 0;
+      }
+    }
+    const engRate = impressions > 0 ? (((reactions + comments) / impressions) * 100).toFixed(1) : "0";
+    return { impressions, reach, clicks, reactions, comments, engRate, posts };
+  }, [data]);
+
   return (
-    <div className="mt-6">
-      <button
-        onClick={load}
-        className="flex items-center gap-2 text-sm font-semibold text-text-primary mb-3 hover:text-accent transition-colors"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <div className="mb-6 space-y-4">
+      {/* Section header */}
+      <div className="flex items-center gap-2">
+        <svg className="w-4 h-4 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
         </svg>
-        Analytics
-        <svg className={["w-3.5 h-3.5 transition-transform", open ? "rotate-180" : ""].join(" ")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
-        </svg>
-      </button>
+        <h2 className="text-sm font-semibold text-text-primary">Analytics</h2>
+        {loading && <span className="text-xs text-text-muted">Loading…</span>}
+      </div>
 
-      {open && (
-        <div className="space-y-4">
-          {loading && (
-            <div className="text-sm text-text-muted py-4 text-center">Loading analytics…</div>
-          )}
-
-          {data && (
-            <>
-              {/* Summary cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {(["draft","scheduled","posted","failed"] as MktContentStatus[]).map((s) => (
-                  <div key={s} className="rounded-xl border border-border bg-elevated px-4 py-3">
-                    <p className={["text-2xl font-bold", statusColors[s]].join(" ")}>
-                      {data.summaryByStatus[s] ?? 0}
-                    </p>
-                    <p className="text-xs text-text-muted mt-0.5">{STATUS_LABEL[s]}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Per-profile sent post stats */}
-              {data.profiles.length === 0 && (
-                <p className="text-sm text-text-muted">No Buffer profiles connected via REST API.</p>
-              )}
-              {data.profiles.map((profile) => {
-                const posts = data.postsByProfile[profile.id] ?? [];
-                const ch = channels.find((c) => c.service === profile.service);
-                return (
-                  <div key={profile.id} className="rounded-xl border border-border bg-elevated overflow-hidden">
-                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-                      <ServiceIcon service={profile.service} />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-text-primary truncate">
-                          {profile.service_username || ch?.name || profile.service}
-                        </p>
-                        <p className="text-xs text-text-muted">{serviceName(profile.service)}</p>
-                      </div>
-                      {profile.statistics.followers != null && (
-                        <span className="ml-auto text-xs text-text-muted shrink-0">
-                          {profile.statistics.followers.toLocaleString()} followers
-                        </span>
-                      )}
-                    </div>
-
-                    {posts.length === 0 ? (
-                      <p className="text-xs text-text-muted px-4 py-3">No sent posts found.</p>
-                    ) : (
-                      <div className="divide-y divide-border">
-                        {posts.slice(0, 5).map((post) => {
-                          const s = post.statistics;
-                          const engagement = [
-                            s.impressions && { label: "Impressions", value: s.impressions },
-                            s.reach && { label: "Reach", value: s.reach },
-                            s.clicks && { label: "Clicks", value: s.clicks },
-                            (s.likes ?? s.favorites) && { label: "Likes", value: s.likes ?? s.favorites },
-                            s.comments && { label: "Comments", value: s.comments },
-                            s.retweets && { label: "Retweets", value: s.retweets },
-                          ].filter(Boolean) as { label: string; value: number }[];
-
-                          return (
-                            <div key={post.id} className="px-4 py-3 space-y-2">
-                              <p className="text-xs text-text-secondary line-clamp-2">{post.text}</p>
-                              {engagement.length > 0 ? (
-                                <div className="flex flex-wrap gap-3">
-                                  {engagement.map((e) => (
-                                    <div key={e.label} className="text-center">
-                                      <p className="text-sm font-bold text-text-primary">{e.value.toLocaleString()}</p>
-                                      <p className="text-[10px] text-text-muted">{e.label}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <p className="text-xs text-text-muted">No engagement data available for this platform.</p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </>
-          )}
+      {/* Post status summary */}
+      {data && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {(["draft","scheduled","posted","failed"] as MktContentStatus[]).map((s) => (
+            <div key={s} className="rounded-xl border border-border bg-elevated px-4 py-3">
+              <p className={["text-2xl font-bold", statusColors[s]].join(" ")}>
+                {data.summaryByStatus[s] ?? 0}
+              </p>
+              <p className="text-xs text-text-muted mt-0.5">{STATUS_LABEL[s]}</p>
+            </div>
+          ))}
         </div>
       )}
+
+      {/* Engagement totals row */}
+      {totals && totals.posts > 0 && (
+        <div className="rounded-xl border border-border bg-elevated overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-border bg-surface/50">
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">
+              Total engagement · last {totals.posts} sent posts
+            </p>
+          </div>
+          <div className="grid grid-cols-5 divide-x divide-border">
+            {[
+              { label: "Reactions",    value: totals.reactions.toLocaleString() },
+              { label: "Comments",     value: totals.comments.toLocaleString() },
+              { label: "Eng. Rate",    value: `${totals.engRate}%` },
+              { label: "Impressions",  value: totals.impressions.toLocaleString() },
+              { label: "Reach",        value: totals.reach.toLocaleString() },
+            ].map(({ label, value }) => (
+              <div key={label} className="px-4 py-3 text-center">
+                <p className="text-lg font-bold text-text-primary">{value}</p>
+                <p className="text-[10px] text-text-muted mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Per-profile sent post list */}
+      {data && data.profiles.length === 0 && !loading && (
+        <p className="text-sm text-text-muted">No Buffer profiles found via REST API.</p>
+      )}
+      {data && data.profiles.map((profile) => {
+        const posts = data.postsByProfile[profile.id] ?? [];
+        const ch = channels.find((c) => c.service === profile.service);
+        return (
+          <div key={profile.id} className="rounded-xl border border-border bg-elevated overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
+              <ServiceIcon service={profile.service} />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-text-primary truncate">
+                  {profile.service_username || ch?.name || profile.service}
+                </p>
+                <p className="text-xs text-text-muted">{serviceName(profile.service)}</p>
+              </div>
+              {profile.statistics.followers != null && (
+                <span className="ml-auto text-xs text-text-muted shrink-0">
+                  {profile.statistics.followers.toLocaleString()} followers
+                </span>
+              )}
+            </div>
+            {posts.length === 0 ? (
+              <p className="text-xs text-text-muted px-4 py-3">No sent posts found.</p>
+            ) : (
+              <div className="divide-y divide-border">
+                {posts.slice(0, 5).map((post) => {
+                  const s = post.statistics;
+                  const stats = [
+                    { label: "Impressions", value: s.impressions },
+                    { label: "Reach",       value: s.reach },
+                    { label: "Reactions",   value: s.likes ?? s.favorites },
+                    { label: "Comments",    value: s.comments },
+                    { label: "Clicks",      value: s.clicks },
+                  ].filter((e): e is { label: string; value: number } => !!e.value);
+
+                  return (
+                    <div key={post.id} className="px-4 py-3 space-y-2">
+                      <p className="text-xs text-text-secondary line-clamp-2">{post.text}</p>
+                      {stats.length > 0 ? (
+                        <div className="flex flex-wrap gap-4">
+                          {stats.map((e) => (
+                            <div key={e.label} className="text-center">
+                              <p className="text-sm font-bold text-text-primary">{e.value.toLocaleString()}</p>
+                              <p className="text-[10px] text-text-muted">{e.label}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-text-muted">No engagement data for this platform.</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -408,6 +474,46 @@ interface Props {
   initialContent: MktContent[];
 }
 
+// ── Refresh research button ───────────────────────────────────────────────────
+
+/**
+ * Re-scrapes all reference sources saved on the Positioning page via Apify and
+ * caches the digests. Slow (runs rarely) — the AI Draft then reads the cache.
+ */
+function RefreshResearchButton({ projectId }: { projectId: string }) {
+  const [pending, setPending] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function run() {
+    setPending(true);
+    setMsg(null);
+    const r = await refreshResearchCache(projectId);
+    setPending(false);
+    if (r.error) { setMsg(r.error); return; }
+    const okCount = (r.results ?? []).filter((x) => x.ok).length;
+    const total = (r.results ?? []).length;
+    setMsg(total === 0 ? "No reference sources saved yet." : `Refreshed ${okCount}/${total} sources.`);
+    setTimeout(() => setMsg(null), 5000);
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {msg && <span className="text-xs text-text-muted max-w-[200px] truncate" title={msg}>{msg}</span>}
+      <button
+        onClick={run}
+        disabled={pending}
+        title="Re-scrape the reference sources saved on the Positioning page"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border border-border text-text-secondary hover:text-text-primary hover:border-accent transition-colors disabled:opacity-50"
+      >
+        <svg className={["w-3.5 h-3.5", pending ? "animate-spin" : ""].join(" ")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356M3.985 14.652H-.007v4.992M4.06 9.348a8 8 0 0 1 13.357-3.02L20.015 9M19.94 14.652a8 8 0 0 1-13.357 3.02L3.985 15" />
+        </svg>
+        {pending ? "Researching…" : "Refresh research"}
+      </button>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ContentStudio({ projectId, channels, channelsError, initialContent }: Props) {
@@ -416,6 +522,13 @@ export default function ContentStudio({ projectId, channels, channelsError, init
   const [composerOpen, setComposerOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<MktContent | null>(null);
   const [detailPost, setDetailPost] = useState<MktContent | null>(null);
+
+  // Analytics — fetched once on mount, passed to AnalyticsPanel and PostDetail
+  const [analytics, setAnalytics] = useState<ContentAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  useEffect(() => {
+    fetchAnalytics(projectId).then((d) => { setAnalytics(d); setAnalyticsLoading(false); });
+  }, [projectId]);
 
   const today = ymd(new Date());
   const grid = useMemo(() => monthGrid(cursor), [cursor]);
@@ -486,10 +599,16 @@ export default function ContentStudio({ projectId, channels, channelsError, init
             Today
           </button>
         </div>
-        <Button leadingIcon={<AddIcon className="w-4 h-4" strokeWidth={2} />} onClick={() => openNew()}>
-          New post
-        </Button>
+        <div className="flex items-center gap-2">
+          <RefreshResearchButton projectId={projectId} />
+          <Button leadingIcon={<AddIcon className="w-4 h-4" strokeWidth={2} />} onClick={() => openNew()}>
+            New post
+          </Button>
+        </div>
       </div>
+
+      {/* Analytics — always visible, auto-loaded on mount */}
+      <AnalyticsPanel data={analytics} loading={analyticsLoading} channels={channels} />
 
       {/* Channel pills */}
       {channelsError ? (
@@ -578,9 +697,9 @@ export default function ContentStudio({ projectId, channels, channelsError, init
                 className="text-left max-w-[200px] border border-border rounded-xl px-3 py-2 bg-elevated hover:border-accent transition-colors cursor-grab active:cursor-grabbing"
                 title="Drag onto a day to schedule"
               >
-                {p.media_url && (
+                {(p.media_urls?.[0] ?? p.media_url) && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.media_url} alt="" className="w-full h-16 object-cover rounded-lg mb-2" />
+                  <img src={p.media_urls?.[0] ?? p.media_url!} alt="" className="w-full h-16 object-cover rounded-lg mb-2" />
                 )}
                 <div className="flex items-center gap-1.5 mb-1">
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[p.status]}`} />
@@ -593,8 +712,7 @@ export default function ContentStudio({ projectId, channels, channelsError, init
         </div>
       )}
 
-      {/* Analytics section */}
-      <AnalyticsPanel projectId={projectId} channels={channels} />
+      {/* (Analytics is rendered above the calendar) */}
 
       {/* Composer */}
       {composerOpen && (
@@ -610,7 +728,7 @@ export default function ContentStudio({ projectId, channels, channelsError, init
 
       {/* Sent/failed detail */}
       {detailPost && (
-        <PostDetail post={detailPost} channels={channels} onClose={() => setDetailPost(null)} />
+        <PostDetail post={detailPost} channels={channels} analytics={analytics} onClose={() => setDetailPost(null)} />
       )}
     </div>
   );
@@ -631,10 +749,13 @@ function PostChip({ post, onClick }: { post: MktContent; onClick: (e: React.Mous
       className="flex items-center gap-1 rounded-md px-1.5 py-1 bg-elevated border border-border text-[11px] cursor-pointer hover:border-accent transition-colors group"
     >
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[post.status]}`} />
-      {post.media_url && (
-        <svg className="w-2.5 h-2.5 text-text-muted shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3 16.5V18A2.25 2.25 0 0 0 5.25 20.25h13.5A2.25 2.25 0 0 0 21 18v-1.5" />
-        </svg>
+      {(post.media_urls?.length ?? 0) > 0 && (
+        <span className="inline-flex items-center gap-0.5 text-text-muted shrink-0">
+          <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3 16.5V18A2.25 2.25 0 0 0 5.25 20.25h13.5A2.25 2.25 0 0 0 21 18v-1.5" />
+          </svg>
+          {post.media_urls!.length > 1 && <span className="text-[9px]">{post.media_urls!.length}</span>}
+        </span>
       )}
       {time && <span className="text-text-muted shrink-0">{time}</span>}
       <span className="truncate text-text-secondary">{post.body || "(empty)"}</span>
@@ -644,19 +765,57 @@ function PostChip({ post, onClick }: { post: MktContent; onClick: (e: React.Mous
 
 // ── Post Detail popup ─────────────────────────────────────────────────────────
 
-function PostDetail({ post, channels, onClose }: { post: MktContent; channels: BufferChannel[]; onClose: () => void }) {
+function PostDetail({
+  post,
+  channels,
+  analytics,
+  onClose,
+}: {
+  post: MktContent;
+  channels: BufferChannel[];
+  analytics: ContentAnalytics | null;
+  onClose: () => void;
+}) {
   const ids = (post.external_post_ids ?? {}) as Record<string, unknown>;
   const externalLinks = (ids.external_links ?? {}) as Record<string, string>;
+  const bufferIds = (ids.bufferIds ?? {}) as Record<string, string>;
+
+  // Match each channel to its Buffer REST analytics stats
+  const metricsByChannel = useMemo(() => {
+    const result: Record<string, { label: string; value: number }[]> = {};
+    for (const [channelId, bufferId] of Object.entries(bufferIds)) {
+      const ch = channels.find((c) => c.id === channelId);
+      if (!ch || !analytics) continue;
+      const profile = analytics.profiles.find((p) => p.service === ch.service);
+      if (!profile) continue;
+      const bufPost = (analytics.postsByProfile[profile.id] ?? []).find((p) => p.id === bufferId);
+      if (!bufPost) continue;
+      const s = bufPost.statistics;
+      result[channelId] = [
+        { label: "Reactions",   value: s.likes ?? s.favorites ?? 0 },
+        { label: "Comments",    value: s.comments ?? 0 },
+        { label: "Eng. Rate",   value: s.impressions
+            ? parseFloat((((( s.likes ?? 0) + (s.comments ?? 0)) / s.impressions) * 100).toFixed(1))
+            : 0 },
+        { label: "Impressions", value: s.impressions ?? s.reach ?? 0 },
+        { label: "Reach",       value: s.reach ?? 0 },
+      ];
+    }
+    return result;
+  }, [bufferIds, channels, analytics]);
+
+  const hasAnyMetrics = Object.keys(metricsByChannel).length > 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="bg-elevated border border-border rounded-2xl max-w-md w-full p-6 space-y-4 overflow-y-auto max-h-[90vh] shadow-2xl"
+        className="bg-elevated border border-border rounded-2xl max-w-lg w-full overflow-y-auto max-h-[90vh] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-border">
           <div>
-            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full mb-2 ${
+            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
               post.status === "posted"
                 ? "bg-[color:var(--success-strong)]/10 text-[color:var(--success-strong)]"
                 : "bg-red-500/10 text-red-400"
@@ -665,8 +824,8 @@ function PostDetail({ post, channels, onClose }: { post: MktContent; channels: B
               {post.status === "posted" ? "Posted" : "Failed"}
             </span>
             {post.posted_at && (
-              <p className="text-sm text-text-primary font-medium">
-                {new Date(post.posted_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
+              <p className="text-sm text-text-primary font-medium mt-1.5">
+                Published on {new Date(post.posted_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}
               </p>
             )}
           </div>
@@ -675,53 +834,89 @@ function PostDetail({ post, channels, onClose }: { post: MktContent; channels: B
           </button>
         </div>
 
-        {post.media_url && (
-          <div className="rounded-xl overflow-hidden border border-border">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={post.media_url} alt="Post media" className="w-full max-h-48 object-cover" />
-          </div>
-        )}
-
-        <div className="rounded-xl bg-surface border border-border p-3">
-          <p className="text-sm text-text-primary whitespace-pre-wrap">{post.body || "(empty)"}</p>
-        </div>
-
-        {(post.channels ?? []).length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Platforms</p>
-            {(post.channels ?? []).map((id) => {
-              const ch = channels.find((c) => c.id === id);
-              const link = externalLinks[id];
-              return (
-                <div key={id} className="flex items-center justify-between gap-2 rounded-xl bg-surface border border-border px-3 py-2.5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {ch && <ServiceIcon service={ch.service} />}
-                    <div className="min-w-0">
-                      <p className="text-sm text-text-primary font-medium truncate">{ch?.name ?? id}</p>
-                      <p className="text-xs text-text-muted">{ch ? serviceName(ch.service) : "Unknown"}</p>
+        <div className="px-6 py-4 space-y-4">
+          {/* Images */}
+          {(post.media_urls?.length ?? 0) > 0 && (
+            <div className={post.media_urls!.length === 1 ? "" : "grid grid-cols-2 gap-1"}>
+              {post.media_urls!.slice(0, 4).map((url, i) => (
+                <div key={url} className="rounded-xl overflow-hidden border border-border relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={url} alt={`Image ${i + 1}`} className={["w-full object-cover", post.media_urls!.length === 1 ? "max-h-52" : "h-28"].join(" ")} />
+                  {i === 3 && post.media_urls!.length > 4 && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white font-bold text-lg rounded-xl">
+                      +{post.media_urls!.length - 4}
                     </div>
-                  </div>
-                  {link ? (
-                    <a
-                      href={link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-accent hover:underline shrink-0"
-                    >
-                      <ExternalLinkIcon className="w-3 h-3" strokeWidth={2} />
-                      View post
-                    </a>
-                  ) : (
-                    <span className="text-xs text-text-muted shrink-0">No link</span>
                   )}
                 </div>
-              );
-            })}
+              ))}
+            </div>
+          )}
+
+          {/* Post body */}
+          <div className="rounded-xl bg-surface border border-border p-3">
+            <p className="text-sm text-text-primary whitespace-pre-wrap">{post.body || "(empty)"}</p>
           </div>
-        )}
-        <p className="text-xs text-text-muted">
-          Detailed analytics (impressions, likes) are available in the Analytics section below the calendar.
-        </p>
+
+          {/* Per-channel metrics + platform links */}
+          {(post.channels ?? []).length > 0 && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-text-muted uppercase tracking-wide">Platforms</p>
+              {(post.channels ?? []).map((channelId) => {
+                const ch = channels.find((c) => c.id === channelId);
+                const link = externalLinks[channelId];
+                const metrics = metricsByChannel[channelId];
+
+                return (
+                  <div key={channelId} className="rounded-xl bg-surface border border-border overflow-hidden">
+                    {/* Channel header row */}
+                    <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+                      {ch && <ServiceIcon service={ch.service} />}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-text-primary font-medium truncate">{ch?.name ?? channelId}</p>
+                        <p className="text-xs text-text-muted">{ch ? serviceName(ch.service) : "Unknown"}</p>
+                      </div>
+                      {link && (
+                        <a
+                          href={link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border border-border text-text-secondary hover:text-accent hover:border-accent transition-colors shrink-0"
+                        >
+                          <ExternalLinkIcon className="w-3 h-3" strokeWidth={2} />
+                          View post
+                        </a>
+                      )}
+                    </div>
+
+                    {/* Metrics grid (like the screenshot) */}
+                    {metrics && metrics.length > 0 ? (
+                      <div className="grid grid-cols-5 divide-x divide-border">
+                        {metrics.map(({ label, value }) => (
+                          <div key={label} className="px-2 py-3 text-center">
+                            <p className="text-base font-bold text-text-primary">
+                              {label === "Eng. Rate" ? `${value}%` : value.toLocaleString()}
+                            </p>
+                            <p className="text-[10px] text-text-muted mt-0.5 leading-tight">{label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-text-muted px-3 py-2">
+                        {link ? "Metrics not yet available." : "No platform link available."}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {!hasAnyMetrics && post.status === "posted" && (
+            <p className="text-xs text-text-muted">
+              Metrics will appear here once Buffer indexes the post (usually within a few hours).
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -729,7 +924,7 @@ function PostDetail({ post, channels, onClose }: { post: MktContent; channels: B
 
 // ── Full-screen Post Composer ─────────────────────────────────────────────────
 
-type ScheduleMode = "now" | "queue" | "custom";
+type ScheduleMode = "draft" | "custom" | "now";
 
 function PostComposer({
   projectId,
@@ -748,6 +943,8 @@ function PostComposer({
 }) {
   const [isPending, start] = useTransition();
   const [aiPending, setAiPending] = useState(false);
+  const [aiStage, setAiStage] = useState(0);
+  const [agentLog, setAgentLog] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [topic, setTopic] = useState("");
   const [showPreview, setShowPreview] = useState(true);
@@ -761,9 +958,9 @@ function PostComposer({
     editPost?.channels ?? channels.map((c) => c.id)
   );
   const [body, setBody] = useState(editPost?.body ?? "");
-  const [mediaUrl, setMediaUrl] = useState<string | null>(editPost?.media_url ?? null);
+  const [mediaUrls, setMediaUrls] = useState<string[]>(editPost?.media_urls ?? []);
   const [mode, setMode] = useState<ScheduleMode>(
-    editPost?.status === "scheduled" ? "custom" : "queue"
+    editPost?.status === "scheduled" ? "custom" : "draft"
   );
   const [date, setDate] = useState(ymd(initDate));
   const [time, setTime] = useState(
@@ -800,12 +997,22 @@ function PostComposer({
 
   async function aiDraft() {
     setAiPending(true);
+    setAiStage(0);
+    setAgentLog(null);
     setError(null);
+    // Approximate staged progress while the server runs the 5-agent pipeline.
+    const timer = setInterval(() => setAiStage((s) => Math.min(s + 1, AI_STAGES.length - 1)), 12_000);
     const services = channels.filter((c) => selectedChannels.includes(c.id)).map((c) => c.service);
-    const r = await generateContentDraft(projectId, topic, services);
-    setAiPending(false);
-    if (r.error) setError(r.error);
-    else if (r.text) setBody(r.text);
+    try {
+      const r = await generateContentDraft(projectId, topic, services);
+      if (r.error) { setError(r.error); return; }
+      if (r.text) setBody(r.text);
+      if (r.imageUrls?.length) setMediaUrls((prev) => [...prev, ...r.imageUrls!]);
+      if (r.agentLog) setAgentLog(r.agentLog);
+    } finally {
+      clearInterval(timer);
+      setAiPending(false);
+    }
   }
 
   function saveDraft() {
@@ -817,7 +1024,7 @@ function PostComposer({
         body,
         scheduled_at: null,
         status: "draft",
-        media_url: mediaUrl,
+        media_urls: mediaUrls,
       });
       if (r.error) { setError(r.error); return; }
       onSaved();
@@ -835,7 +1042,7 @@ function PostComposer({
           channels: selectedChannels, body,
           scheduled_at: new Date().toISOString(),
           status: "draft",
-          media_url: mediaUrl,
+          media_urls: mediaUrls,
         });
         if (saved.error) { setError(saved.error); return; }
         contentId = saved.id;
@@ -849,6 +1056,7 @@ function PostComposer({
 
   function doSchedule() {
     setError(null);
+    if (mode === "draft") { saveDraft(); return; }
     if (!body.trim()) { setError("Write some content first."); return; }
     if (selectedChannels.length === 0) { setError("Select at least one channel."); return; }
     if (mode === "now") { doPublishNow(); return; }
@@ -865,24 +1073,14 @@ function PostComposer({
         const saved = await saveContent(projectId, {
           channels: selectedChannels, body,
           scheduled_at: iso, status: "scheduled",
-          media_url: mediaUrl,
+          media_urls: mediaUrls,
         });
         if (saved.error) { setError(saved.error); return; }
         contentId = saved.id;
       }
       if (!contentId) { setError("Failed to save."); return; }
-
-      if (mode === "queue") {
-        const r = await saveContent(projectId, {
-          id: contentId, channels: selectedChannels, body,
-          scheduled_at: iso, status: "scheduled",
-          media_url: mediaUrl,
-        });
-        if (r.error) { setError(r.error); return; }
-      } else {
-        const r = await scheduleWithBuffer(projectId, contentId, selectedChannels, iso!);
-        if (r.error) { setError(r.error); return; }
-      }
+      const r = await scheduleWithBuffer(projectId, contentId, selectedChannels, iso!);
+      if (r.error) { setError(r.error); return; }
       onSaved();
     });
   }
@@ -896,12 +1094,10 @@ function PostComposer({
   }
 
   const modeLabel: Record<ScheduleMode, string> = {
-    queue: "Schedule",
+    draft: "Save draft",
     now: "Post now",
     custom: "Set time",
   };
-
-  const onImageChange = useCallback((url: string | null) => setMediaUrl(url), []);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-start justify-center overflow-y-auto py-6 px-4">
@@ -986,6 +1182,7 @@ function PostComposer({
                   placeholder="Topic or angle for AI draft (optional)"
                   className="flex-1 py-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
                   onKeyDown={(e) => e.key === "Enter" && aiDraft()}
+                  disabled={aiPending}
                 />
                 <button
                   onClick={aiDraft}
@@ -995,6 +1192,32 @@ function PostComposer({
                   {aiPending ? "Drafting…" : "✦ Draft"}
                 </button>
               </div>
+
+              {/* Staged squad progress while the pipeline runs */}
+              {aiPending && (
+                <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                  {AI_STAGES.map((label, i) => (
+                    <span
+                      key={label}
+                      className={[
+                        "text-[10px] px-2 py-0.5 rounded-full border transition-colors",
+                        i < aiStage
+                          ? "border-accent/40 text-accent bg-accent/5"
+                          : i === aiStage
+                          ? "border-accent text-accent bg-accent/10 animate-pulse"
+                          : "border-border text-text-muted",
+                      ].join(" ")}
+                    >
+                      {i < aiStage ? "✓ " : ""}{label}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Pipeline summary after completion */}
+              {!aiPending && agentLog && (
+                <p className="mt-2 text-[11px] text-text-muted">{agentLog}</p>
+              )}
             </div>
 
             {/* Text editor */}
@@ -1010,10 +1233,10 @@ function PostComposer({
 
             {/* Image upload */}
             <div className="px-5 pb-4">
-              <ImageDropzone
+              <ImageUploader
                 projectId={projectId}
-                value={mediaUrl}
-                onChange={onImageChange}
+                values={mediaUrls}
+                onChange={setMediaUrls}
               />
             </div>
 
@@ -1075,67 +1298,57 @@ function PostComposer({
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={saveDraft}
-                  disabled={isPending}
-                  className="text-sm px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-muted transition-colors disabled:opacity-50"
-                >
-                  Save draft
-                </button>
-
-                {/* Split schedule button */}
-                <div className="relative">
-                  <div className="flex rounded-lg overflow-hidden border border-accent">
-                    <button
-                      onClick={doSchedule}
-                      disabled={isPending || overLimit}
-                      className="px-4 py-2 bg-accent text-white text-sm font-semibold hover:bg-accent/90 transition-colors disabled:opacity-50"
-                    >
-                      {isPending ? "Posting…" : modeLabel[mode]}
-                    </button>
-                    <button
-                      onClick={() => setShowScheduleDropdown(!showScheduleDropdown)}
-                      className="px-2 py-2 bg-accent text-white border-l border-white/20 hover:bg-accent/90 transition-colors"
-                      aria-label="Scheduling options"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
-                      </svg>
-                    </button>
-                  </div>
-
-                  {showScheduleDropdown && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowScheduleDropdown(false)} />
-                      <div className="absolute bottom-full right-0 mb-2 w-56 bg-elevated border border-border rounded-xl shadow-2xl overflow-hidden z-20">
-                        {([
-                          { key: "queue", label: "Schedule", desc: "Add to Buffer queue" },
-                          { key: "custom", label: "Set date & time", desc: "Choose a specific slot" },
-                          { key: "now", label: "Post now", desc: "Publish immediately" },
-                        ] as { key: ScheduleMode; label: string; desc: string }[]).map((opt) => (
-                          <button
-                            key={opt.key}
-                            onClick={() => { setMode(opt.key); setShowScheduleDropdown(false); }}
-                            className={[
-                              "w-full text-left px-4 py-3 text-sm hover:bg-muted transition-colors",
-                              mode === opt.key ? "text-accent" : "text-text-primary",
-                            ].join(" ")}
-                          >
-                            <span className="flex items-center gap-2 font-medium">
-                              {mode === opt.key
-                                ? <CheckIcon className="w-3.5 h-3.5 text-accent" strokeWidth={3} />
-                                : <span className="w-3.5" />
-                              }
-                              {opt.label}
-                            </span>
-                            <span className="text-xs text-text-muted mt-0.5 ml-5 block">{opt.desc}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
+              {/* Split action button — default is Save draft */}
+              <div className="relative">
+                <div className="flex rounded-lg overflow-hidden border border-accent">
+                  <button
+                    onClick={doSchedule}
+                    disabled={isPending || (mode !== "draft" && overLimit)}
+                    className="px-4 py-2 bg-accent text-white text-sm font-semibold hover:bg-accent/90 transition-colors disabled:opacity-50"
+                  >
+                    {isPending ? "Saving…" : modeLabel[mode]}
+                  </button>
+                  <button
+                    onClick={() => setShowScheduleDropdown(!showScheduleDropdown)}
+                    className="px-2 py-2 bg-accent text-white border-l border-white/20 hover:bg-accent/90 transition-colors"
+                    aria-label="More options"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+                    </svg>
+                  </button>
                 </div>
+
+                {showScheduleDropdown && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowScheduleDropdown(false)} />
+                    <div className="absolute bottom-full right-0 mb-2 w-56 bg-elevated border border-border rounded-xl shadow-2xl overflow-hidden z-20">
+                      {([
+                        { key: "draft",  label: "Save draft",      desc: "Save without publishing" },
+                        { key: "custom", label: "Set date & time", desc: "Schedule for a specific slot" },
+                        { key: "now",    label: "Post now",         desc: "Publish immediately" },
+                      ] as { key: ScheduleMode; label: string; desc: string }[]).map((opt) => (
+                        <button
+                          key={opt.key}
+                          onClick={() => { setMode(opt.key); setShowScheduleDropdown(false); }}
+                          className={[
+                            "w-full text-left px-4 py-3 text-sm hover:bg-muted transition-colors",
+                            mode === opt.key ? "text-accent" : "text-text-primary",
+                          ].join(" ")}
+                        >
+                          <span className="flex items-center gap-2 font-medium">
+                            {mode === opt.key
+                              ? <CheckIcon className="w-3.5 h-3.5 text-accent" strokeWidth={3} />
+                              : <span className="w-3.5" />
+                            }
+                            {opt.label}
+                          </span>
+                          <span className="text-xs text-text-muted mt-0.5 ml-5 block">{opt.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -1165,7 +1378,7 @@ function PostComposer({
                 )}
               </div>
               <div className="flex-1 p-4 overflow-y-auto">
-                <PlatformPreview channel={previewCh} text={body} imageUrl={mediaUrl} />
+                <PlatformPreview channel={previewCh} text={body} imageUrls={mediaUrls} />
               </div>
             </div>
           )}

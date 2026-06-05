@@ -176,6 +176,32 @@ export async function resolveAiConfig(
 }
 
 /**
+ * Resolve provider-specific image-generation keys (Gemini + OpenAI),
+ * independent of the active TEXT service. Image generation needs a specific
+ * provider, so we surface both keys when available.
+ *
+ * Order per provider: personal key → agency key → env var.
+ */
+export async function resolveImageKeys(
+  supabase: AnySupabaseClient,
+  userId: string
+): Promise<{ gemini: string | null; openai: string | null }> {
+  const { data: userData } = await supabase
+    .from("user_ai_settings")
+    .select("gemini_api_key, openai_api_key, use_agency_settings")
+    .eq("owner_id", userId)
+    .maybeSingle();
+  const personal = (userData ?? null) as { gemini_api_key: string | null; openai_api_key: string | null } | null;
+
+  const agency = await loadAgencyAiSettings();
+
+  return {
+    gemini: personal?.gemini_api_key ?? agency?.gemini_api_key ?? process.env.GEMINI_API_KEY ?? null,
+    openai: personal?.openai_api_key ?? agency?.openai_api_key ?? process.env.OPENAI_API_KEY ?? null,
+  };
+}
+
+/**
  * Server-action helper: enforce that referrer / lead profiles can never
  * flip `use_agency_settings` to TRUE. Used by `saveAiSettings` so a
  * crafted client-side request can't bypass the UI gate.

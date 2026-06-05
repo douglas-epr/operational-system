@@ -177,3 +177,80 @@ export async function generateGeminiJsonResponse<T = unknown>(
     };
   }
 }
+
+// ── Image generation ──────────────────────────────────────────────────────────
+
+/**
+ * Gemini image-generation models ("Nano Banana" family), tried in order.
+ * These use :generateContent with inline image output. Names verified against
+ * the live ListModels response — older "*-preview"/"*-image-generation"
+ * aliases are NOT exposed on standard keys.
+ */
+const GEMINI_IMAGE_MODELS = [
+  "gemini-2.5-flash-image",
+  "gemini-3.1-flash-image",
+];
+
+export interface GeneratedImage {
+  /** Raw image bytes. */
+  bytes: Buffer;
+  /** MIME type, e.g. "image/png". */
+  mimeType: string;
+}
+
+/** Try a single Gemini image model. */
+async function tryGeminiImageModel(
+  model: string,
+  prompt: string,
+  key: string
+): Promise<{ image?: GeneratedImage; error?: string }> {
+  const url = `${GEMINI_BASE_URL}/${model}:generateContent?key=${key}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
+      }),
+      signal: AbortSignal.timeout(AI_FETCH_TIMEOUT_MS),
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "network error" };
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return { error: `${model}: ${(err as { error?: { message?: string } }).error?.message ?? res.statusText}` };
+  }
+
+  const data = (await res.json()) as {
+    candidates?: { content?: { parts?: { inlineData?: { data: string; mimeType: string } }[] } }[];
+  };
+  const parts = data.candidates?.[0]?.content?.parts ?? [];
+  const inline = parts.find((p) => p.inlineData)?.inlineData;
+  if (!inline?.data) return { error: `${model}: no image data returned` };
+
+  return { image: { bytes: Buffer.from(inline.data, "base64"), mimeType: inline.mimeType || "image/png" } };
+}
+
+/**
+ * Generate an image from a text prompt using Gemini's image-generation model.
+ * Tries each model in GEMINI_IMAGE_MODELS until one succeeds.
+ */
+export async function generateGeminiImage(
+  prompt: string,
+  apiKey?: string
+): Promise<{ image?: GeneratedImage; returned_an_error: boolean; error?: string }> {
+  const key = apiKey ?? process.env.GEMINI_API_KEY;
+  if (!key) return { returned_an_error: true, error: "Missing Gemini API key" };
+
+  const errors: string[] = [];
+  for (const model of GEMINI_IMAGE_MODELS) {
+    const r = await tryGeminiImageModel(model, prompt, key);
+    if (r.image) return { returned_an_error: false, image: r.image };
+    if (r.error) errors.push(r.error);
+  }
+  return { returned_an_error: true, error: errors.join(" | ") || "Gemini image generation failed" };
+}

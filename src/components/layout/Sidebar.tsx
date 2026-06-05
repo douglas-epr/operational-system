@@ -19,6 +19,7 @@ import {
   ChartIcon,
   UserIcon,
   IdeaIcon,
+  MegaphoneIcon,
   SettingsIcon,
   ChevronUpIcon,
   LogoutIcon,
@@ -43,6 +44,7 @@ const IconUsers      = UsersIcon;
 const IconChart      = ChartIcon;
 const IconPerson     = UserIcon;
 const IconLightbulb  = IdeaIcon;
+const IconMegaphone  = MegaphoneIcon;
 const IconStarFilled = StarIcon;
 const IconPrompt     = DocumentIcon;
 const IconSettings   = SettingsIcon;
@@ -93,6 +95,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: "SOPs",                 href: "/sops",                 icon: IconDocument,   roles: ALL_STAFF_AND_CLIENTS,                 group: "operations" },
   { label: "Talent Pool",          href: "/talent-pool",          icon: IconUsers,      roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
   { label: "Leads",                href: "/leads",                icon: IconChart,      roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
+  { label: "Marketing",            href: "/marketing",            icon: IconMegaphone,  roles: ADMIN_MANAGER,                         group: "operations" },
 
   // Administration
   { label: "Users",                href: "/users",                icon: IconPerson,     roles: ADMIN_MANAGER,                         group: "administration" },

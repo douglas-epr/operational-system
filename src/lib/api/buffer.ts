@@ -56,7 +56,7 @@ export interface BufferPost {
   channelService: string;
   shareMode: string | null;
   externalLink: string | null; // live URL on the social platform
-  error: string | null;
+  error: { message: string; supportUrl?: string | null; rawError?: string | null } | null;
 }
 
 export interface CreatePostResult {
@@ -135,7 +135,7 @@ export async function listSentPosts(limit = 50): Promise<BufferPost[]> {
           channelService: string;
           shareMode: string | null;
           externalLink: string | null;
-          error: string | null;
+          error: { message: string; supportUrl?: string | null | undefined; rawError?: string | null | undefined } | null;
         };
       }[];
     };
@@ -145,7 +145,7 @@ export async function listSentPosts(limit = 50): Promise<BufferPost[]> {
         edges {
           node {
             id status text dueAt sentAt createdAt channelId channelService
-            shareMode externalLink error
+            shareMode externalLink error { message supportUrl rawError }
           }
         }
       }
@@ -170,8 +170,8 @@ export interface ScheduleInput {
   /** "now" = shareNow, "schedule" = customScheduled (requires dueAt). */
   mode: "now" | "schedule";
   dueAt?: string; // ISO 8601, required for "schedule"
-  /** Public URL of an image to attach (uploaded to Supabase Storage first). */
-  imageUrl?: string;
+  /** Public URLs of images to attach (uploaded to Supabase Storage first). */
+  imageUrls?: string[];
 }
 
 /**
@@ -188,16 +188,16 @@ export async function createPost(input: ScheduleInput): Promise<CreatePostResult
       schedulingType: "automatic",
       mode,
       ...(mode === "customScheduled" && input.dueAt ? { dueAt: input.dueAt } : {}),
-      assets: input.imageUrl
-        ? [{ image: { url: input.imageUrl, metadata: { altText: "" } } }]
-        : [],
+      assets: (input.imageUrls ?? []).map((url) => ({
+        image: { url, metadata: { altText: "" } },
+      })),
     },
   };
 
   // createPost returns a union: PostActionSuccess | error types
   type PostActionResult = {
     createPost:
-      | { __typename: "PostActionSuccess"; post: { id: string; status: string; text: string | null; dueAt: string | null; sentAt: string | null; createdAt: string; channelId: string; channelService: string; shareMode: string | null; externalLink: string | null; error: string | null } }
+      | { __typename: "PostActionSuccess"; post: { id: string; status: string; text: string | null; dueAt: string | null; sentAt: string | null; createdAt: string; channelId: string; channelService: string; shareMode: string | null; externalLink: string | null; error: { message: string; supportUrl?: string | null; rawError?: string | null } | null } }
       | { __typename: string; message: string };
   };
 
@@ -209,7 +209,7 @@ export async function createPost(input: ScheduleInput): Promise<CreatePostResult
           ... on PostActionSuccess {
             post {
               id status text dueAt sentAt createdAt channelId channelService
-              shareMode externalLink error
+              shareMode externalLink error { message supportUrl rawError }
             }
           }
           ... on NotFoundError { message }
@@ -228,7 +228,7 @@ export async function createPost(input: ScheduleInput): Promise<CreatePostResult
       return { returned_an_error: true, error: (result as { message: string }).message ?? result.__typename };
     }
 
-    const post = (result as { __typename: "PostActionSuccess"; post: { id: string; status: string; text: string | null; dueAt: string | null; sentAt: string | null; createdAt: string; channelId: string; channelService: string; shareMode: string | null; externalLink: string | null; error: string | null } }).post;
+    const post = (result as { __typename: "PostActionSuccess"; post: { id: string; status: string; text: string | null; dueAt: string | null; sentAt: string | null; createdAt: string; channelId: string; channelService: string; shareMode: string | null; externalLink: string | null; error: { message: string; supportUrl?: string | null; rawError?: string | null } | null } }).post;
     return {
       returned_an_error: false,
       post: { ...post, status: post.status as BufferPost["status"] },

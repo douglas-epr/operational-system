@@ -15,8 +15,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { resolveAiConfig } from "@/lib/api/ai-config";
+import { resolveAiConfig, resolveImageKeys } from "@/lib/api/ai-config";
 import { generateAiJsonResponse } from "@/lib/api/ai-dispatcher";
+import { generateGeminiImage } from "@/lib/api/gemini";
+import { generateOpenAIImage } from "@/lib/api/openai";
 import {
   listChannels,
   createPost,
@@ -26,8 +28,10 @@ import {
   type BufferRestProfile,
   type BufferPostStats,
 } from "@/lib/api/buffer";
+import { scrapeReferenceSource, apifyConfigured } from "@/lib/api/apify";
 import type { BufferChannel } from "@/lib/api/buffer-labels";
-import type { MktContent } from "@/types/marketing";
+import type { MktContent, ReferenceSources, ReferenceSourceKey } from "@/types/marketing";
+import { REFERENCE_SOURCE_GROUPS } from "@/types/marketing";
 
 const STAFF = ["admin", "manager"] as const;
 
@@ -87,6 +91,7 @@ export interface ContentInput {
   status: "draft" | "scheduled";
   ai_generated?: boolean;
   media_url?: string | null;
+  media_urls?: string[];
 }
 
 /** Upload an image file to Supabase Storage and return its public URL. */
@@ -180,6 +185,7 @@ export async function saveContent(
     scheduled_at: input.scheduled_at,
     ai_generated: input.ai_generated ?? false,
     media_url: input.media_url ?? null,
+    media_urls: input.media_urls ?? [],
   };
 
   let res;
@@ -298,34 +304,11 @@ function getPlatformRules(services: string[]): string {
   return rules || "General social media: punchy, specific, first person, genuine CTA.";
 }
 
-// ── OpenSquad multi-agent pipeline ────────────────────────────────────────────
-
-interface StrategyOutput {
-  awareness_level: string;
-  market_sophistication: string;
-  big_idea: { enemy: string; new_mechanism: string; unique_promise: string };
-  psychological_driver: string;
-  framework: string;
-  platform_angle: string;
-  hook_direction: string;
-}
-
-interface CopywriterOutput {
-  hooks: { text: string; driver: string; structure: string; rationale: string }[];
-  selected_hook_index: number;
-  selection_reason: string;
-  post_content: string;
-  framework_used: string;
-  char_count: number;
-}
-
-interface ReviewerOutput {
-  scores: Record<string, { score: number; reason: string }>;
-  overall_score: number;
-  verdict: "APPROVE" | "REJECT";
-  required_changes: string[];
-  revised_post: string | null;
-}
+// ════════════════════════════════════════════════════════════════════════════
+// OpenSquad 5-agent pipeline:
+//   Researcher → Copywriter → Image Designer → Reviewer → Publisher
+// Grounded in the Positioning statement + Brand DNA + cached reference research.
+// ════════════════════════════════════════════════════════════════════════════
 
 function fillTemplate(template: string, vars: Record<string, string>): string {
   let result = template;
@@ -335,118 +318,309 @@ function fillTemplate(template: string, vars: Record<string, string>): string {
   return result;
 }
 
+interface ResearcherBrief {
+  themes: string[];
+  winning_hook_patterns: string[];
+  recommended_angle: string;
+  key_message: string;
+  tone_cues: string[];
+  visual_cues: string[];
+  audience_insight: string;
+  rationale: string;
+}
+interface CopywriterSquadOutput {
+  hooks: string[];
+  selected_hook_index: number;
+  selection_reason: string;
+  post_content: string;
+  hashtags: string[];
+  char_count: number;
+}
+interface ImageDesignerOutput {
+  image_prompt: string;
+  aspect_ratio: string;
+  alt_text: string;
+  style_notes: string;
+}
+interface ReviewerSquadOutput {
+  scores: Record<string, number>;
+  overall_score: number;
+  verdict: "APPROVE" | "REJECT";
+  required_changes: string[];
+  revised_post: string | null;
+}
+interface PublisherOutput {
+  final_post: string;
+  recommended_channels: string[];
+  recommended_time: string;
+  summary: string;
+}
+
+// ── Research cache (Apify scrape → digest, cached per source list) ─────────────
+
+const RESEARCH_TABLE = "mkt_research_cache";
+
+/** All reference-source keys (kept in sync with REFERENCE_SOURCE_GROUPS). */
+function allReferenceKeys(): ReferenceSourceKey[] {
+  return REFERENCE_SOURCE_GROUPS.flatMap((g) => g.lists.map((l) => l.key));
+}
+
 /**
- * OpenSquad 3-agent pipeline for social post generation.
- * Agent 1 (Strategist) → Agent 2 (Copywriter) → Agent 3 (Reviewer)
- * Returns { text, agentLog } where text is the final approved post.
+ * Re-scrape every non-empty reference source list via Apify and upsert the
+ * resulting digests into mkt_research_cache. Slow (runs rarely). Returns a
+ * per-source status summary.
+ */
+export async function refreshResearchCache(
+  projectId: string
+): Promise<{ error?: string; results?: { source: string; ok: boolean; items: number; error?: string }[] }> {
+  const ctx = await getAdminClient();
+  if ("error" in ctx) return { error: ctx.error };
+  if (!apifyConfigured()) return { error: "Apify is not configured (set APIFY_TOKEN)." };
+
+  const { data: v } = await ctx.supabase
+    .from("mkt_validation" as never)
+    .select("reference_sources")
+    .eq("project_id", projectId)
+    .maybeSingle();
+  const refs = ((v as { reference_sources: ReferenceSources } | null)?.reference_sources ?? {}) as ReferenceSources;
+
+  const results: { source: string; ok: boolean; items: number; error?: string }[] = [];
+
+  for (const key of allReferenceKeys()) {
+    const urls = (refs[key] ?? []).filter(Boolean);
+    if (urls.length === 0) continue;
+
+    const r = await scrapeReferenceSource(key, urls);
+    results.push({ source: key, ok: r.ok, items: r.digest ? r.digest.split("\n").length : 0, error: r.error });
+
+    if (r.ok && r.digest) {
+      await ctx.supabase
+        .from(RESEARCH_TABLE as never)
+        .upsert(
+          {
+            project_id: projectId,
+            source_key: key,
+            digest: r.digest,
+            raw: r.raw ?? {},
+            scraped_at: new Date().toISOString(),
+          } as never,
+          { onConflict: "project_id,source_key" }
+        );
+    }
+  }
+
+  rp(projectId);
+  return { results };
+}
+
+/**
+ * Build the {{research_digest}} string the Researcher reads. Prefers cached
+ * scrape digests; falls back to listing the raw saved URLs so the pipeline
+ * still works before any scrape has run.
+ */
+type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
+
+async function getResearchDigest(
+  supabase: SupabaseClient,
+  projectId: string,
+  refs: ReferenceSources
+): Promise<string> {
+  const { data: rows } = await supabase
+    .from(RESEARCH_TABLE as never)
+    .select("source_key, digest")
+    .eq("project_id", projectId);
+  const cached = (rows ?? []) as { source_key: string; digest: string }[];
+
+  const sections: string[] = [];
+  const cachedKeys = new Set(cached.map((r) => r.source_key));
+
+  for (const row of cached) {
+    if (row.digest?.trim()) sections.push(`### ${row.source_key.replace(/_/g, " ")}\n${row.digest}`);
+  }
+  // Surface any saved URLs not yet scraped, so the LLM still sees references.
+  for (const key of allReferenceKeys()) {
+    if (cachedKeys.has(key)) continue;
+    const urls = (refs[key] ?? []).filter(Boolean);
+    if (urls.length) sections.push(`### ${key.replace(/_/g, " ")} (not yet scraped)\n` + urls.map((u) => `- ${u}`).join("\n"));
+  }
+
+  return sections.join("\n\n").slice(0, 6000); // keep prompt size sane
+}
+
+// ── Image generation (Gemini → OpenAI fallback) → upload to mkt-media ─────────
+
+async function generatePostImage(
+  supabase: SupabaseClient,
+  projectId: string,
+  imagePrompt: string,
+  keys: { gemini: string | null; openai: string | null }
+): Promise<{ url?: string; error?: string }> {
+  let bytes: Buffer | null = null;
+  let mime = "image/png";
+  const errors: string[] = [];
+
+  // 1. Gemini first
+  if (keys.gemini) {
+    const g = await generateGeminiImage(imagePrompt, keys.gemini);
+    if (!g.returned_an_error && g.image) { bytes = g.image.bytes; mime = g.image.mimeType; }
+    else if (g.error) errors.push(`Gemini: ${g.error}`);
+  }
+  // 2. OpenAI fallback
+  if (!bytes && keys.openai) {
+    const o = await generateOpenAIImage(imagePrompt, keys.openai);
+    if (!o.returned_an_error && o.image) { bytes = o.image.bytes; mime = o.image.mimeType; }
+    else if (o.error) errors.push(`OpenAI: ${o.error}`);
+  }
+
+  if (!bytes) return { error: errors.join(" | ") || "No image provider configured." };
+
+  const ext = mime.includes("jpeg") ? "jpg" : "png";
+  const path = `${projectId}/ai-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const { error } = await supabase.storage
+    .from("mkt-media")
+    .upload(path, bytes, { contentType: mime, upsert: false });
+  if (error) return { error: `Upload failed: ${error.message}` };
+
+  const { data } = supabase.storage.from("mkt-media").getPublicUrl(path);
+  return { url: data.publicUrl };
+}
+
+/**
+ * OpenSquad 5-agent pipeline. Consumes cached reference research (fast — no
+ * live scraping here). Returns the final post text + any generated image URL.
  */
 export async function generateContentDraft(
   projectId: string,
   topic: string,
   channelServices: string[]
-): Promise<{ error?: string; text?: string; agentLog?: string }> {
+): Promise<{ error?: string; text?: string; imageUrls?: string[]; agentLog?: string }> {
   const ctx = await getAdminClient();
   if ("error" in ctx) return { error: ctx.error };
 
   const cfg = await resolveAiConfig(ctx.supabase, ctx.user.id);
   if (!cfg) return { error: "No AI service configured (Settings → AI)." };
+  const call = (prompt: string) =>
+    generateAiJsonResponse({ service: cfg.service, apiKey: cfg.apiKey, model: cfg.model, prompt });
 
-  // 1. Load project context (positioning + brand DNA)
+  // 1. Load project context (positioning + brand DNA + reference sources)
   const { data: v } = await ctx.supabase
     .from("mkt_validation" as never)
-    .select("positioning, icp_definition")
+    .select("positioning, icp_definition, reference_sources")
     .eq("project_id", projectId)
     .maybeSingle();
-
-  const validation = v as { positioning: string | null; icp_definition: Record<string, unknown> | null } | null;
+  const validation = v as {
+    positioning: string | null;
+    icp_definition: Record<string, unknown> | null;
+    reference_sources: ReferenceSources | null;
+  } | null;
   const positioning = validation?.positioning ?? "";
   const dna = (validation?.icp_definition ?? {}) as Record<string, string>;
+  const refs = (validation?.reference_sources ?? {}) as ReferenceSources;
 
-  // 2. Load prompts from DB
+  // 2. Load the 5 OpenSquad prompts
   const { data: promptRows } = await ctx.supabase
     .from("prompt")
     .select("name, description")
-    .in("name", ["Social Post Strategist", "Social Post Copywriter", "Social Post Reviewer"]);
-
-  const promptMap: Record<string, string> = {};
-  for (const row of ((promptRows ?? []) as { name: string; description: string }[])) {
-    promptMap[row.name] = row.description;
+    .in("name", [
+      "Social Post Researcher",
+      "Social Post Copywriter (Squad)",
+      "Social Post Image Designer",
+      "Social Post Reviewer (Squad)",
+      "Social Post Publisher",
+    ]);
+  const P: Record<string, string> = {};
+  for (const row of ((promptRows ?? []) as { name: string; description: string }[])) P[row.name] = row.description;
+  for (const name of ["Social Post Researcher", "Social Post Copywriter (Squad)", "Social Post Image Designer", "Social Post Reviewer (Squad)", "Social Post Publisher"]) {
+    if (!P[name]) return { error: `Prompt "${name}" not found in database.` };
   }
 
-  const strategistTemplate = promptMap["Social Post Strategist"];
-  const copywriterTemplate = promptMap["Social Post Copywriter"];
-  const reviewerTemplate = promptMap["Social Post Reviewer"];
-
-  if (!strategistTemplate || !copywriterTemplate || !reviewerTemplate) {
-    return { error: "OpenSquad prompts not found in database." };
-  }
-
-  const platform = channelServices[0] ?? "linkedin";
+  const platform = channelServices.join(", ") || "social media";
   const platformRules = getPlatformRules(channelServices);
+  const researchDigest = await getResearchDigest(ctx.supabase, projectId, refs);
 
-  const baseVars = {
-    platform: channelServices.join(", ") || "social media",
+  const baseVars: Record<string, string> = {
+    platform,
+    platform_rules: platformRules,
     topic: topic || "introduce the product and invite interest",
     positioning,
     description: dna.description ?? "",
     target_audience: dna.target_audience ?? "",
     communication_style: dna.communication_style ?? "",
     content_audience_loves: dna.content_audience_loves ?? "",
-    platform_rules: platformRules,
+    research_digest: researchDigest || "(no reference research available)",
   };
 
-  // ── Agent 1: Strategist ──────────────────────────────────────────────────
-  const strategistPrompt = fillTemplate(strategistTemplate, baseVars);
-  const s1 = await generateAiJsonResponse<StrategyOutput>({
-    service: cfg.service, apiKey: cfg.apiKey, model: cfg.model,
-    prompt: strategistPrompt,
-  });
-  if (s1.returned_an_error || !s1.data) {
-    return { error: `Strategist agent failed: ${s1.error ?? "unknown error"}` };
-  }
-  const strategy = s1.data;
+  // ── Agent 1: Researcher ───────────────────────────────────────────────────
+  const r1 = await call(fillTemplate(P["Social Post Researcher"], baseVars));
+  if (r1.returned_an_error || !r1.data) return { error: `Researcher failed: ${r1.error ?? "unknown"}` };
+  const brief = r1.data as ResearcherBrief;
+  const briefJson = JSON.stringify(brief, null, 2);
 
-  // ── Agent 2: Copywriter ──────────────────────────────────────────────────
-  const copywriterPrompt = fillTemplate(copywriterTemplate, {
+  // ── Agent 2: Copywriter ───────────────────────────────────────────────────
+  const r2 = await call(fillTemplate(P["Social Post Copywriter (Squad)"], { ...baseVars, research_brief_json: briefJson }));
+  if (r2.returned_an_error || !r2.data) return { error: `Copywriter failed: ${r2.error ?? "unknown"}` };
+  const copy = r2.data as CopywriterSquadOutput;
+  const draftPost = (copy.post_content ?? "").trim();
+  if (!draftPost) return { error: "Copywriter returned an empty post." };
+
+  // ── Agent 3: Image Designer (best-effort) ────────────────────────────────
+  let imageUrl: string | undefined;
+  let imageBrief = "(no image)";
+  let imageError: string | undefined;
+  const r3 = await call(fillTemplate(P["Social Post Image Designer"], {
     ...baseVars,
-    strategy_json: JSON.stringify(strategy, null, 2),
-  });
-  const s2 = await generateAiJsonResponse<CopywriterOutput>({
-    service: cfg.service, apiKey: cfg.apiKey, model: cfg.model,
-    prompt: copywriterPrompt,
-  });
-  if (s2.returned_an_error || !s2.data) {
-    return { error: `Copywriter agent failed: ${s2.error ?? "unknown error"}` };
+    post_content: draftPost,
+    research_brief_json: briefJson,
+  }));
+  if (!r3.returned_an_error && r3.data) {
+    const design = r3.data as ImageDesignerOutput;
+    imageBrief = design.image_prompt ?? "";
+    if (imageBrief) {
+      const keys = await resolveImageKeys(ctx.supabase, ctx.user.id);
+      const img = await generatePostImage(ctx.supabase, projectId, imageBrief, keys);
+      if (img.url) imageUrl = img.url;
+      else imageError = img.error;
+    }
+  } else {
+    imageError = r3.error;
   }
-  const copy = s2.data;
-  const draftPost = copy.post_content?.trim() ?? "";
-  if (!draftPost) return { error: "Copywriter agent returned empty post." };
 
-  // ── Agent 3: Reviewer ────────────────────────────────────────────────────
-  const reviewerPrompt = fillTemplate(reviewerTemplate, {
-    platform: baseVars.platform,
+  // ── Agent 4: Reviewer ─────────────────────────────────────────────────────
+  let reviewedPost = draftPost;
+  let reviewVerdict = "SKIPPED";
+  let reviewScore = 0;
+  const r4 = await call(fillTemplate(P["Social Post Reviewer (Squad)"], {
+    platform,
     positioning,
     communication_style: dna.communication_style ?? "",
     post_content: draftPost,
-  });
-  const s3 = await generateAiJsonResponse<ReviewerOutput>({
-    service: cfg.service, apiKey: cfg.apiKey, model: cfg.model,
-    prompt: reviewerPrompt,
-  });
-  if (s3.returned_an_error || !s3.data) {
-    // Reviewer failed — return copywriter draft as fallback
-    return { text: draftPost };
+    image_brief: imageBrief,
+  }));
+  if (!r4.returned_an_error && r4.data) {
+    const review = r4.data as ReviewerSquadOutput;
+    reviewVerdict = review.verdict;
+    reviewScore = review.overall_score ?? 0;
+    if (review.verdict === "REJECT" && review.revised_post?.trim()) {
+      reviewedPost = review.revised_post.trim();
+    }
   }
-  const review = s3.data;
 
-  // Use reviewer's revised_post if it was rejected, otherwise use the original
-  const finalPost = (review.verdict === "REJECT" && review.revised_post)
-    ? review.revised_post.trim()
-    : draftPost;
+  // ── Agent 5: Publisher (finalize for review — no auto-publish) ────────────
+  let finalPost = reviewedPost;
+  const r5 = await call(fillTemplate(P["Social Post Publisher"], {
+    platform,
+    review_json: JSON.stringify({ verdict: reviewVerdict, overall_score: reviewScore }),
+    post_content: reviewedPost,
+  }));
+  if (!r5.returned_an_error && r5.data) {
+    const pub = r5.data as PublisherOutput;
+    if (pub.final_post?.trim()) finalPost = pub.final_post.trim();
+  }
 
-  const agentLog = `Strategy: ${strategy.framework} / ${strategy.psychological_driver} | Review: ${review.verdict} (${review.overall_score}/10)`;
+  const imgStatus = imageUrl ? " ✓" : imageError ? ` (skipped: ${imageError.slice(0, 400)})` : " (skipped)";
+  const agentLog = `Researcher → Copywriter → Image Designer${imgStatus} → Reviewer (${reviewVerdict}${reviewScore ? ` ${reviewScore}/10` : ""}) → Publisher`;
 
-  return { text: finalPost, agentLog };
+  return { text: finalPost, imageUrls: imageUrl ? [imageUrl] : [], agentLog };
 }
 
 /**
@@ -479,11 +653,12 @@ export async function publishNow(
   const errors: string[] = [];
 
   for (const channelId of ids) {
+    const imageUrls = (content.media_urls ?? []).filter(Boolean);
     const r = await createPost({
       channelId,
       text: content.body,
       mode: "now",
-      imageUrl: content.media_url ?? undefined,
+      imageUrls,
     });
     if (r.returned_an_error) {
       errors.push(`Channel ${channelId}: ${r.error}`);
@@ -541,12 +716,13 @@ export async function scheduleWithBuffer(
   const errors: string[] = [];
 
   for (const channelId of ids) {
+    const imageUrls = (content.media_urls ?? []).filter(Boolean);
     const r = await createPost({
       channelId,
       text: content.body,
       mode: "schedule",
       dueAt,
-      imageUrl: content.media_url ?? undefined,
+      imageUrls,
     });
     if (r.returned_an_error) {
       errors.push(`Channel ${channelId}: ${r.error}`);

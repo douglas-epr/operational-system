@@ -3,6 +3,114 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-05] — Social Discovery Pipeline (multi-platform Apify orchestration)
+
+6-platform email discovery pipeline that searches creator bios and posts on LinkedIn, Instagram, Facebook, YouTube, Twitter/X, and TikTok, then extracts emails through a 3-stage async state machine.
+
+- **DB** — Migration `20260606000000_add_social_discovery_channel.sql`: `ALTER TYPE mkt_channel ADD VALUE IF NOT EXISTS 'social_discovery'`. Updated `MktChannel` type and `CHANNEL_LABELS` in `src/types/marketing.ts`.
+- **`src/lib/api/apify.ts`** — `buildLocationKeywords` helper (location injected into search terms for actors without native location support); `SocialPlatform`/`DiscoveryMode`/`SocialActorRun`/`NormalizedSocialProfile` types; 14 actor fire functions (6 Path A bio, 6 Path B content, LinkedIn enrichment, website email extraction); 7 result normalisers (one per platform, handles both path outputs).
+- **`src/app/marketing/[projectId]/sourcing/actions.ts`** — `startSocialDiscovery` action: reads `mkt_validation.reference_sources` for Stage 0 priority seeds, fires Stage 0 + Stage 1 actors in parallel, writes full pipeline state as JSONB to `mkt_source_run.query`.
+- **`src/lib/marketing/sourcing.ts`** — `importOne()` now dispatches on `channel === 'social_discovery'` before the single-run path. Full 4-stage state machine: `advanceFromStage1` (polls all Stage 0+1 actors, extracts LinkedIn/website URLs, fires Stage 2 if needed), `advanceFromStage2` (LinkedIn enrichment polling), `advanceFromStage3` (website email extraction), `importSocialProfiles` (imports sorted priority-first, tagged `social_discovery_<platform>`).
+- **`SourcingShell.tsx`** — Social Discovery section below the existing two-column layout: 6 platform checkboxes (2×3 grid), Bio/Posts/Both discovery mode toggle, keywords textarea, location input with native/injected tooltip, max-per-platform slider (10–100), submit button, stage label in run cards (`social` badge, stage 1/3 → 2/3 → 3/3 → Done).
+- **ContentStudio.tsx** — `AI_STAGES` labels updated to match actual 3-agent OpenSquad pipeline ("Strategist analysing…" / "Copywriter writing…" / "Reviewer checking…").
+- **Verified:** `tsc` 0 errors; migration applied to remote DB.
+
+## [2026-06-03] — Sourcing: B2B people search via Apify (Apollo-alternative)
+
+Replaces the paused Apollo card with a working people-search source — bypasses the gated Apollo free-plan API by using an Apollo-alternative actor on Apify (`code_crafter/leads-finder`, 250M+ contact DB, ~$1/1k). Reuses the existing start→poll→import pipeline.
+
+- **`src/lib/api/apify.ts`** — `LEADS_ACTOR`, `buildLeadsInput` (job titles, seniority, location, company keywords, fetch_count, email_status=validated), `mapLeadToProspect` (mapped against the actor's real output schema: full_name/email/job_title/company_name/company_website/linkedin). Added `title` to `NormalizedProspect`.
+- **`src/lib/marketing/sourcing.ts`** — importer now branches on `run.channel`: `google_maps` → place mapper (`apify_google_maps`), else → people mapper (`apify_leads`); writes `title`. Source-run selects include `channel`.
+- **`src/app/marketing/[projectId]/sourcing/actions.ts`** — `startLeadsSourcing` (tags run `channel='linkedin'`, no migration needed). Detects the actor's one-time "full-permission" approval 403 and returns a friendly message + approval link.
+- **`SourcingShell.tsx`** — paused Apollo card replaced with a real **People search** form (titles/keywords/location/seniority/max); runs list labels people-search runs.
+- **Importer hardening (`sourcing.ts`)** — skips actor `{error}`/identity-less records and marks such runs `failed` (never creates blank prospects).
+- **Verified end-to-end in browser:** after approving the actor, a run started → polled → Sync → imported through the real pipeline. Discovered `code_crafter/leads-finder` **blocks API runs on the Apify free plan** (returns an `{error}` record; runs only via Apify's UI on free tier). Google Maps (standard actor) is unaffected and works on free-plan API. **Decision:** people-search works as-built once on a **paid Apify plan** (no code change); Google Maps + manual/CSV cover the free tier.
+
+## [2026-06-02] — Marketing Validation Engine — UX pass (clarity)
+
+Driven through the full pipeline live (Playwright) on the VirtueBud project; fixed clarity issues found.
+
+- **Stale copy fixed** — dashboard hint and Outreach prospects note no longer claim sourcing/outreach/content are "future phases" (they're built).
+- **Funnel-ordered nav** — `MarketingProjectNav` reordered to Dashboard · Sourcing · Outreach · Content · Landing · Signals; now takes `funnelMode`.
+- **Mode-tailored workspace** — in Consumer Capture mode the B2B tabs (Sourcing, Outreach) are dimmed + tagged "B2B"; the dashboard hides the Outreach funnel and omits B2B steps from the getting-started guide. All 6 project pages pass `funnelMode`.
+- **Getting-started guide** — new `PipelineGuide` on the dashboard: numbered steps with done/next state + links, tailored to funnel mode (`getOnboardingExtras` adds published-landing + content-count checks).
+- **Visual funnel** — new `FunnelView` replaces the flat KPI grids with proportional bars + stage-to-stage conversion %.
+- **Verified:** `tsc` 0 errors; confirmed live in-browser (capture → signal flowed; AI draft generated a real post from positioning).
+
+## [2026-06-02] — Marketing Validation Engine — Phase 2 (Sourcing, Apify)
+
+Lead sourcing into `mkt_prospect` via the Apify Google Maps scraper (`compass/crawler-google-places`, id `nwua9Gu5YrADL7ZDj`; input schema introspected live). Async pattern (start run → poll → import) so long scrapes don't hit serverless limits.
+
+- **`src/lib/api/apify.ts`** — `startActorRun`, `getRun`, `getDatasetItems`, `buildGoogleMapsInput` (searchStringsArray/locationQuery/maxCrawledPlacesPerSearch/scrapeContacts/website), `mapPlaceToProspect` (place → company/email/phone/website/linkedin + raw enrichment).
+- **`src/lib/marketing/sourcing.ts`** — `importSourceRun` (manual) + `importDueSourceRuns` (cron): poll Apify run, on SUCCEEDED ingest dataset into `mkt_prospect` deduped by project+email.
+- **`src/app/marketing/[projectId]/sourcing/`** — `SourcingShell.tsx` (Google Maps form: terms/location/max/enrich, runs table with status + Sync) + `actions.ts` (`listSourceRuns`, `startGoogleMapsSourcing`, `syncSourcingRun`). Apollo shown as **paused** (free-plan 403).
+- **`/api/mkt/cron/sync-sourcing`** — auto-imports finished runs (every 5 min in `vercel.json`). Sourcing tab promoted to ready.
+- **Verified:** `tsc` 0 errors; `npm run build` ✓ (all marketing + cron routes present); `mkt_source_run` DB round-trip (running → done + result_count). Did **not** run a live scrape (it spends Apify credits) — start/poll/import paths build against the introspected schema.
+
+**All six phases (0–5) of the Marketing Validation Engine are now built.**
+
+## [2026-06-02] — Marketing Validation Engine — Phase 4 (Content studio, Postiz)
+
+Calendar-first (Buffer-style) social scheduler. Switched provider Ayrshare → **Postiz** (cheaper). Postiz REST verified live: base `https://api.postiz.com/public/v1`, auth header is the **raw API key** in `Authorization` (no Bearer).
+
+- **`src/lib/api/postiz.ts`** — `listChannels()` (GET /integrations) + `schedulePost()` (POST /posts; per-channel `settings.__type`).
+- **`src/app/marketing/[projectId]/content/`** — `ContentStudio.tsx` (month calendar with **drag-to-reschedule**, drafts tray, composer drawer with channel chips, **AI drafting** off project positioning, schedule/publish-now) + `actions.ts` (`getChannels`, `listContent`, `saveContent`, `rescheduleContent`, `deleteContent`, `generateContentDraft`, `publishNow`).
+- **`src/lib/marketing/content.ts`** + **`/api/mkt/cron/process-content`** — worker publishes due scheduled posts via Postiz, stores ids in `external_post_ids`. Added to `vercel.json` crons (every 15 min).
+- **Content** tab promoted to ready in the project nav.
+- **Verified:** `tsc` 0 errors; `npm run build` ✓; Postiz `/integrations` live = `200 []` (auth good, no channels connected yet); `mkt_content` DB round-trip (schedule → posted + `external_post_ids` → cleanup).
+- **Note:** posting needs at least one channel connected in the Postiz dashboard. Apollo REST key is valid (`auth/health` 200) but **search is gated on Apollo's free plan (403)** — Apollo auto-sourcing in Phase 2 needs a paid plan; Apify + manual/CSV are unaffected.
+
+## [2026-06-02] — Marketing Validation Engine — Phase 5 (Validation dashboard)
+
+Makes the capture (Phase 1) + outreach (Phase 3) data actionable. No external keys needed.
+
+- **`src/lib/marketing/admin.ts`** — `getPortfolioMetricsMap(projectIds)` rolls up funnel metrics across projects (accurate count queries per project).
+- **`/marketing`** — portfolio summary strip (views / captures / prospects / replies across all validating projects) + per-card mini-stats. `MktProjectListItem` gained an optional `metrics` field.
+- **`/marketing/[projectId]`** — `ValidationSettings` card: funnel mode, the **kill / double-down decision** (`mkt_validation.status`), and positioning (which feeds AI-personalised outreach), saved via `updateValidation`.
+- **Verified:** `tsc` 0 errors; `npm run build` ✓.
+
+## [2026-06-02] — Marketing Validation Engine — Phase 3 (Outreach engine)
+
+Built before Phase 2 (sourcing) so it's usable now — Brevo was already wired and needs no new keys. Includes a manual/CSV prospect entry so sequences can run today; Apollo/Apify auto-sourcing (Phase 2) will fill the same `mkt_prospect` table later.
+
+- **Core (`src/lib/marketing/outreach.ts`):** `renderTemplate` (`{{first_name}}` etc.), `prospectVars`, signed `unsubscribeToken`/`verifyUnsubscribeToken`/`unsubscribeUrl` (HMAC), suppression check, and `processDueOutreach()` — the worker that sends due steps via Brevo, honours suppression + paused campaigns, optionally AI-personalises the `{{ai_opening}}` line (via `resolveAiConfig` on the campaign's `created_by`), then schedules the next step.
+- **Brevo (`src/lib/api/brevo.ts`):** added `sendRawEmail()` (subject + HTML, env `BREVO_FROM_*` fallback, reply-to + tags).
+- **Actions (`outreach/actions.ts`):** prospects (`listProspects`, `addProspect`, `importProspects`, `deleteProspect`), campaigns (`listCampaigns`, `createCampaign`, `setCampaignStatus`), steps (`listSteps`, `saveStep`, `deleteStep`), `enrollProspects`, `listOutreach`, `markReplied`, and admin `runOutreachNow` (trigger the worker immediately).
+- **UI:** `/marketing/[projectId]/outreach` (campaigns + prospects with CSV import) and `/outreach/[campaignId]` (sequence editor, prospect enrollment, send-status table, pause/resume, run-now). Outreach tab promoted to ready in the project nav.
+- **API routes:** `GET/POST /api/mkt/cron/process-outreach` (CRON_SECRET-guarded), `POST /api/webhooks/brevo` (opened/bounced/unsubscribed → outreach + suppression), `GET /api/m/unsubscribe` (signed one-click unsubscribe + halts queued steps). `vercel.json` cron every 15 min.
+- **Env:** added `CRON_SECRET`; documented Apollo/Apify/Ayrshare/Stripe keys for later phases.
+- **Verified:** `tsc` 0 errors; `npm run build` ✓; live DB round-trip across `mkt_prospect`/`mkt_campaign`/`mkt_sequence_step`/`mkt_outreach`/`mkt_suppression` incl. status transition + case-insensitive dedupe, then cleanup.
+
+## [2026-06-02] — Marketing Validation Engine — Phase 1 (Landing + staged capture)
+
+The highest-leverage slice: any project can now collect real demand signals. Pre-order is stubbed (Stripe deferred per decision); quiz + waitlist are live.
+
+- **Public zone (anonymous, service-role writes):**
+  - `src/app/m/[slug]/page.tsx` — SSR landing page (hero + sections), `noindex`, served via the `/m` middleware allowlist.
+  - `src/app/m/[slug]/_components/CaptureForm.tsx` — staged capture widget (quiz/waitlist; pre-order shows a disabled "coming soon"). UTM passthrough.
+  - `src/app/m/[slug]/_components/ViewBeacon.tsx` — one-shot view event with per-tab session id.
+  - `src/app/api/m/[slug]/capture/route.ts` + `src/app/api/m/event/route.ts` — public POST endpoints.
+  - `src/lib/marketing/public.ts` — `getPublishedLanding`, `recordSignal` (validates stage enabled; hard-rejects unpaid `preorder`), `recordEvent`. All via service-role client.
+- **Admin zone (admin/manager):**
+  - `src/app/marketing/[projectId]/page.tsx` — per-project dashboard (capture funnel + outreach KPIs).
+  - `src/app/marketing/[projectId]/landing/` — builder (`LandingBuilder.tsx`) + actions (`getLanding`, `saveLanding`, `setLandingPublished`); hero, capture stages, content sections (text/features/faq/quiz), publish + public URL/preview.
+  - `src/app/marketing/[projectId]/signals/` — signals table with search/filter/CSV export.
+  - `src/app/marketing/[projectId]/_components/MarketingProjectNav.tsx` — pipeline sub-nav (later tabs marked "soon").
+  - `src/lib/marketing/admin.ts` — `getProjectContext`, `getFunnelMetrics`.
+  - `src/lib/marketing/slug.ts` — shared `slugify` (extracted so it isn't a `"use server"` export).
+- **Verified:** `tsc` 0 errors; `npm run build` ✓ (all `/m` + `/marketing` + `/api/m` routes present); live DB round-trip (landing → signal → event → read-back → cleanup) against the applied schema.
+
+## [2026-06-01] — Marketing Validation Engine — Phase 0 (Foundations)
+
+**New domain (not a Bubble replication).** A generic, project-agnostic demand-validation pipeline (Source → Outreach → Content → Capture → Measure) that attaches to any `public.project`. Documented in `docs/marketing/README.md`.
+
+- **Migration `20260601000000_marketing_validation_engine.sql`** — 6 enums (`mkt_funnel_mode`, `mkt_validation_status`, `mkt_channel`, `mkt_outreach_status`, `mkt_signal_type`, `mkt_content_status`) + 11 tables (`mkt_validation`, `mkt_prospect`, `mkt_source_run`, `mkt_campaign`, `mkt_sequence_step`, `mkt_outreach`, `mkt_content`, `mkt_landing`, `mkt_signal`, `mkt_event`, `mkt_suppression`). Every table FK'd to `public.project(id) ON DELETE CASCADE`; RLS on all (admin/manager full + project-member full); `updated_at` triggers; dedupe + due-work indexes.
+- **`src/types/marketing.ts`** — enums, labels, row interfaces, and composite view types.
+- **`/marketing` admin zone** — `page.tsx` (gated admin/manager), `actions.ts` (`listProjectsWithValidation`, `getValidation`, `enableValidation`, `updateValidation`), `_components/MarketingShell.tsx` (project list + enable-validation).
+- **Sidebar** — added "Marketing" nav (Operations group, admin/manager) + `MegaphoneIcon`/`RocketIcon`/`GlobeIcon` to the icon catalog.
+- **Middleware (`src/proxy.ts`)** — added `/m` public-zone allowlist so landing pages render for anonymous prospects while `/marketing` stays gated.
+- Public capture/landing reads will use the service-role client server-side — no anon RLS policies exposed.
+
 ## [2026-05-04] — Delete version button on SOPs and Docs/Playbook
 
 **SOPs page (`SopEditor.tsx`, `sops/actions.ts`, `types/sops.ts`, `sops/page.tsx`)**
