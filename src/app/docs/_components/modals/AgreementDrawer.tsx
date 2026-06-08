@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -92,7 +92,7 @@ export default function AgreementDrawer({
         (displayContent || "<p><em>(empty)</em></p>");
       document.body.appendChild(container);
 
-      const { exportElementToPdf } = await import("../../../sandbox-planner/_lib/exportPdf");
+      const { exportElementToPdf } = await import("../../../idea-refiner/_lib/exportPdf");
       try {
         await exportElementToPdf({
           source: container,

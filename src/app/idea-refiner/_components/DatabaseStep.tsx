@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 8 — Database.
  * Three editable rich-text sections: Tables & Schema, Relationships, Important Notes.
  * Supports AI regeneration and manual save.
@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { IdeaFull } from "@/types/sandbox-planner";
+import type { IdeaFull } from "@/types/idea-refiner";
 import { saveDatabase, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";

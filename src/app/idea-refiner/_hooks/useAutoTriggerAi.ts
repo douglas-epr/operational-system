@@ -14,9 +14,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { triggerAiGeneration } from "@/app/sandbox-planner/actions";
+import { triggerAiGeneration } from "@/app/idea-refiner/actions";
 import { runAiWithTimeout } from "./useAiWithTimeout";
-import type { IdeaBlock } from "@/types/sandbox-planner";
+import type { IdeaBlock } from "@/types/idea-refiner";
 
 const REALTIME_DELAY_MS = 1_000; // 1 s — ensures Realtime channel is subscribed
 

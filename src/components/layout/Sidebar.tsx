@@ -88,13 +88,13 @@ const NAV_ITEMS: readonly NavItem[] = [
   // Collaboration
   { label: "Chat",                 href: "/chat",                 icon: IconChatBubble, roles: ALL_STAFF_AND_CLIENTS,                 group: "collaboration" },
   { label: "Docs",                 href: "/docs",                 icon: IconBook,       roles: ALL_STAFF_AND_CLIENTS,                 group: "collaboration" },
-  { label: "Sandbox Planner",      href: "/sandbox-planner",      icon: IconLightbulb,  roles: ["admin","manager","operational","developer","client","lead"] as const, group: "collaboration" },
 
   // Operations
   { label: "OKRs",                 href: "/okrs",                 icon: IconTarget,     roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
   { label: "SOPs",                 href: "/sops",                 icon: IconDocument,   roles: ALL_STAFF_AND_CLIENTS,                 group: "operations" },
   { label: "Talent Pool",          href: "/talent-pool",          icon: IconUsers,      roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
   { label: "Leads",                href: "/leads",                icon: IconChart,      roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
+  { label: "Idea Refiner",         href: "/idea-refiner",         icon: IconLightbulb,  roles: ["admin","manager","operational","developer","client","lead"] as const, group: "operations" },
   { label: "Marketing",            href: "/marketing",            icon: IconMegaphone,  roles: ADMIN_MANAGER,                         group: "operations" },
 
   // Administration

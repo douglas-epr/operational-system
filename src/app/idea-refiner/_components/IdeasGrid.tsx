@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 1 — Ideas Grid.
  * Displays all user ideas as cards with a project filter sidebar,
  * header with user name and create button.
@@ -7,7 +7,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { Idea, ProjectOption } from "@/types/sandbox-planner";
+import type { Idea, ProjectOption } from "@/types/idea-refiner";
 import type { UserAiSettingsClient } from "@/types/settings";
 import { cn } from "@/lib/utils";
 import CreateIdeaModal from "./CreateIdeaModal";
@@ -89,7 +89,7 @@ export default function IdeasGrid({
     params.delete("idea");
     params.delete("tab");
     const qs = params.toString();
-    router.push(`/sandbox-planner${qs ? `?${qs}` : ""}`);
+    router.push(`/idea-refiner${qs ? `?${qs}` : ""}`);
   }
 
   // Determine defaultProjectId for the Create Idea modal
@@ -139,7 +139,7 @@ export default function IdeasGrid({
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <h1 className="text-xl font-bold text-text-primary">
-            SandBox Planner
+            Idea Refiner
           </h1>
           <div className="flex items-center gap-4">
             <button

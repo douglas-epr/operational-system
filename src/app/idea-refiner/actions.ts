@@ -11,8 +11,8 @@ import type {
   IdeaBlock,
   IdeaChatbotMessage,
   IdeaFull,
-} from "@/types/sandbox-planner";
-import { IDEA_BLOCK_LABELS } from "@/types/sandbox-planner";
+} from "@/types/idea-refiner";
+import { IDEA_BLOCK_LABELS } from "@/types/idea-refiner";
 import { generateAiJsonResponse } from "@/lib/api/ai-dispatcher";
 import { loadIdeaFull } from "./_lib/loadIdeaFull";
 import type {
@@ -30,7 +30,7 @@ import type {
   ReportPenaltyOutput,
 } from "@/lib/api/json-converters";
 
-const PATH = "/sandbox-planner";
+const PATH = "/idea-refiner";
 
 // ── Idea CRUD ────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 5 — Benchmarking.
  * Four editable rich-text sections: Overview, Comparison Table,
  * Possible Business Models, Key Takeaways.
@@ -7,7 +7,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { IdeaFull } from "@/types/sandbox-planner";
+import type { IdeaFull } from "@/types/idea-refiner";
 import { saveBenchmarking, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";

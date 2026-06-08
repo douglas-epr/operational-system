@@ -24,7 +24,7 @@ import type {
   IdeaStyles,
   IdeaMilestonesAndTasks,
   IdeaReport,
-} from "@/types/sandbox-planner";
+} from "@/types/idea-refiner";
 
 // Matches the existing pattern in actions.ts: the generated Database type
 // doesn't yet include the newer sandbox-planner tables, so we type the

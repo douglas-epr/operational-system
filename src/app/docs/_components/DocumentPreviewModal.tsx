@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * Reusable white-paper preview modal with PDF + DOCX export.
@@ -13,7 +13,7 @@
 import { useRef, useState } from "react";
 import Modal from "@/app/projects/_components/modals/Modal";
 import { cn } from "@/lib/utils";
-import { exportElementToPdf } from "../../sandbox-planner/_lib/exportPdf";
+import { exportElementToPdf } from "../../idea-refiner/_lib/exportPdf";
 import type { UserProfile } from "@/types/projects";
 import type { AgreementVersion } from "@/types/docs";
 

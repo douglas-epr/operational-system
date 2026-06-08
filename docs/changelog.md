@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-06] — Prompt group cleanup + Idea Refiner rename
+
+- **DB** — Migration `add_marketing_post_creation_group`: Created `Marketing - Post Creation` prompt group; moved 5 pipeline prompts from `Marketing` group and renamed with step numbers (`1. Social Post Strategist` … `5. Social Post Publisher`); deleted duplicate `Social Post Copywriter (Squad)` and `Social Post Reviewer (Squad)`.
+- **Content** — `src/app/marketing/[projectId]/content/actions.ts`: Updated all prompt name references in the OpenSquad pipeline to match new numbered names.
+- **Idea Refiner** — Renamed `src/app/sandbox-planner/` → `src/app/idea-refiner/`; renamed `src/types/sandbox-planner.ts` → `src/types/idea-refiner.ts`; updated all internal imports, route strings (`/idea-refiner`), and the `lead` ROLE_FALLBACK in `src/lib/auth/page-gate.ts`.
+- **Sidebar** — Renamed "Sandbox Planner" → "Idea Refiner"; moved from COLLABORATION group to OPERATIONS group above Marketing.
+- **CLAUDE.md** — Updated `### Sandbox Planner` section heading to `### Idea Refiner`.
+
 ## [2026-06-05] — Social Discovery Pipeline (multi-platform Apify orchestration)
 
 6-platform email discovery pipeline that searches creator bios and posts on LinkedIn, Instagram, Facebook, YouTube, Twitter/X, and TikTok, then extracts emails through a 3-stage async state machine.

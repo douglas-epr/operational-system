@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+﻿import { redirect } from "next/navigation";
 
 /**
  * Root route — redirect authenticated users to Sandbox Planner.
@@ -6,5 +6,5 @@ import { redirect } from "next/navigation";
  * before this component is ever rendered.
  */
 export default function RootPage() {
-  redirect("/sandbox-planner");
+  redirect("/idea-refiner");
 }

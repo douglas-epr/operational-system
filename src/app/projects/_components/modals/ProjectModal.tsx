@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useTransition, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -17,7 +17,7 @@ import {
   type ProjectInput,
 } from "../../actions";
 import CreateTalentModal from "./CreateTalentModal";
-import RichTextEditor from "@/app/sandbox-planner/_components/RichTextEditor";
+import RichTextEditor from "@/app/idea-refiner/_components/RichTextEditor";
 import { UserMultiSelect } from "@/components/ui";
 
 type TaskProgress = { totalEst: number; doneOrQaEst: number; doneEst: number };

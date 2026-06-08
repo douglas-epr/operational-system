@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 7 — PRD (Product Requirements Document).
  * Nine editable rich-text sections in collapsible cards.
  * Supports AI regeneration and manual save.
@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { IdeaFull } from "@/types/sandbox-planner";
+import type { IdeaFull } from "@/types/idea-refiner";
 import { savePrd, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";

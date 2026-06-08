@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 2 — Structure & Align.
  * Two-column layout: left shows the idea overview (readonly),
  * right has editable textareas for Core Problem, Target Audience,
@@ -7,7 +7,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { IdeaFull } from "@/types/sandbox-planner";
+import type { IdeaFull } from "@/types/idea-refiner";
 import { saveStructureAlign, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";

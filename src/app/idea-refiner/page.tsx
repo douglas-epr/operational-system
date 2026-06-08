@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Sandbox Planner page — server component.
  * Handles auth, data fetching, and renders the client shell.
  * Source: docs/reference_docs/paginas.md — sandbox-planner page
@@ -14,7 +14,7 @@ import type {
   IdeaBlock,
   IdeaFull,
   ProjectOption,
-} from "@/types/sandbox-planner";
+} from "@/types/idea-refiner";
 import type { AiService, UserAiSettingsClient } from "@/types/settings";
 
 interface PageProps {
@@ -130,7 +130,7 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
   if (ideaId) {
     ideaFull = await loadIdeaFull(supabase, ideaId);
     if (!ideaFull) {
-      redirect("/sandbox-planner");
+      redirect("/idea-refiner");
     }
   }
 

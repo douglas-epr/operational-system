@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 4 — Product Definition & Flows.
  * Left column: readonly idea context + product architecture notes.
  * Right column: rich text Product Summary + Feature List & Logic, with AI regeneration.
@@ -9,7 +9,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { IdeaFull } from "@/types/sandbox-planner";
+import type { IdeaFull } from "@/types/idea-refiner";
 import { saveProductDefinition, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import RichTextEditor from "./RichTextEditor";

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 6 — Strategic Frameworks.
  * Displays per-ICP framework cards: Value Proposition (2×2 grid), JTBD Synthesis,
  * ICP Architect (editable), NABC Pitch (2×2 grid), and Optimization Suggestions.
@@ -8,7 +8,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import type { IdeaFull, IdeaIcp, IdeaOptimizationSuggestion } from "@/types/sandbox-planner";
+import type { IdeaFull, IdeaIcp, IdeaOptimizationSuggestion } from "@/types/idea-refiner";
 import { triggerAiGeneration, saveStrategicFramework } from "../actions";
 import { cn } from "@/lib/utils";
 import IcpPillSelector from "./IcpPillSelector";

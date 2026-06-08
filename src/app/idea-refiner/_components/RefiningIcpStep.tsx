@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 3 — Refining ICPs.
  * Shows ICP pills at top with add/edit/delete actions.
  * Per-ICP editable fields: Description, Day in the Life, Pain Points,
@@ -9,7 +9,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { IdeaIcp, IdeaFull } from "@/types/sandbox-planner";
+import type { IdeaIcp, IdeaFull } from "@/types/idea-refiner";
 import { saveIcpProfile, triggerAiGeneration, createIcp, deleteIcp } from "../actions";
 import { cn } from "@/lib/utils";
 import IcpPillSelector from "./IcpPillSelector";

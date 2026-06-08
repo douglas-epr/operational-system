@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -21,7 +21,7 @@ import {
   getTaskTimeEntries,
   type TaskInput,
 } from "../../actions";
-import RichTextEditor from "@/app/sandbox-planner/_components/RichTextEditor";
+import RichTextEditor from "@/app/idea-refiner/_components/RichTextEditor";
 import UserPicker from "@/components/UserPicker";
 import TaskChat from "./TaskChat";
 

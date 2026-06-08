@@ -1,11 +1,11 @@
-/**
+﻿/**
  * ICP Pill Selector.
  * Horizontal scrollable row of selectable ICP tabs.
  * When edit/delete/add callbacks are provided, shows action icons per tab.
  */
 "use client";
 
-import type { IdeaIcp } from "@/types/sandbox-planner";
+import type { IdeaIcp } from "@/types/idea-refiner";
 import { cn } from "@/lib/utils";
 
 interface IcpPillSelectorProps {

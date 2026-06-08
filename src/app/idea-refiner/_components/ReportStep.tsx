@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 11 — Report.
  * Final readiness dashboard: donut score, 6-area weighted summary, automatic
  * penalties, threshold guide, and a Live Preview opening the full Playbook.
@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { IdeaFull, IdeaReportArea, IdeaReportPenalty } from "@/types/sandbox-planner";
+import type { IdeaFull, IdeaReportArea, IdeaReportPenalty } from "@/types/idea-refiner";
 import { saveReport, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";

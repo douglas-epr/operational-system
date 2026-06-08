@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 9 — Visual Styles / Design System.
  * Multi-section design system view: brand identity, color system, typography,
  * spacing & layout, elevation, and motion/iconography.
@@ -13,7 +13,7 @@ import type {
   SpacingSystem,
   BorderRadiusSystem,
   ShadowToken,
-} from "@/types/sandbox-planner";
+} from "@/types/idea-refiner";
 import { saveStyles, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";

@@ -8,8 +8,8 @@ import type {
   OsAgreementStatus,
   PlaybookCommentStatus,
 } from "@/types/docs";
-import type { IdeaFull } from "@/types/sandbox-planner";
-import { loadIdeaFull } from "@/app/sandbox-planner/_lib/loadIdeaFull";
+import type { IdeaFull } from "@/types/idea-refiner";
+import { loadIdeaFull } from "@/app/idea-refiner/_lib/loadIdeaFull";
 import { resolveAiConfig } from "@/lib/api/ai-config";
 import { generateAiTextResponse } from "@/lib/api/ai-dispatcher";
 

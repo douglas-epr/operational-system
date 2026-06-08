@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Full-Playbook preview modal for the Sandbox Planner Report step.
  *
  * Renders the AI-generated `playbook_html` on a printable document surface
@@ -11,7 +11,7 @@
 import { useRef, useState } from "react";
 import Modal from "@/app/projects/_components/modals/Modal";
 import { cn } from "@/lib/utils";
-import type { IdeaReport } from "@/types/sandbox-planner";
+import type { IdeaReport } from "@/types/idea-refiner";
 import { exportElementToPdf } from "../_lib/exportPdf";
 
 interface ReportPreviewModalProps {

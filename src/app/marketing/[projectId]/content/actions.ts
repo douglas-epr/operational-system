@@ -522,15 +522,15 @@ export async function generateContentDraft(
     .from("prompt")
     .select("name, description")
     .in("name", [
-      "Social Post Researcher",
-      "Social Post Copywriter (Squad)",
-      "Social Post Image Designer",
-      "Social Post Reviewer (Squad)",
-      "Social Post Publisher",
+      "1. Social Post Strategist",
+      "2. Social Post Copywriter",
+      "3. Social Post Image Designer",
+      "4. Social Post Reviewer",
+      "5. Social Post Publisher",
     ]);
   const P: Record<string, string> = {};
   for (const row of ((promptRows ?? []) as { name: string; description: string }[])) P[row.name] = row.description;
-  for (const name of ["Social Post Researcher", "Social Post Copywriter (Squad)", "Social Post Image Designer", "Social Post Reviewer (Squad)", "Social Post Publisher"]) {
+  for (const name of ["1. Social Post Strategist", "2. Social Post Copywriter", "3. Social Post Image Designer", "4. Social Post Reviewer", "5. Social Post Publisher"]) {
     if (!P[name]) return { error: `Prompt "${name}" not found in database.` };
   }
 
@@ -550,14 +550,14 @@ export async function generateContentDraft(
     research_digest: researchDigest || "(no reference research available)",
   };
 
-  // ── Agent 1: Researcher ───────────────────────────────────────────────────
-  const r1 = await call(fillTemplate(P["Social Post Researcher"], baseVars));
+  // ── Agent 1: Strategist ───────────────────────────────────────────────────
+  const r1 = await call(fillTemplate(P["1. Social Post Strategist"], baseVars));
   if (r1.returned_an_error || !r1.data) return { error: `Researcher failed: ${r1.error ?? "unknown"}` };
   const brief = r1.data as ResearcherBrief;
   const briefJson = JSON.stringify(brief, null, 2);
 
   // ── Agent 2: Copywriter ───────────────────────────────────────────────────
-  const r2 = await call(fillTemplate(P["Social Post Copywriter (Squad)"], { ...baseVars, research_brief_json: briefJson }));
+  const r2 = await call(fillTemplate(P["2. Social Post Copywriter"], { ...baseVars, research_brief_json: briefJson }));
   if (r2.returned_an_error || !r2.data) return { error: `Copywriter failed: ${r2.error ?? "unknown"}` };
   const copy = r2.data as CopywriterSquadOutput;
   const draftPost = (copy.post_content ?? "").trim();
@@ -567,7 +567,7 @@ export async function generateContentDraft(
   let imageUrl: string | undefined;
   let imageBrief = "(no image)";
   let imageError: string | undefined;
-  const r3 = await call(fillTemplate(P["Social Post Image Designer"], {
+  const r3 = await call(fillTemplate(P["3. Social Post Image Designer"], {
     ...baseVars,
     post_content: draftPost,
     research_brief_json: briefJson,
@@ -589,7 +589,7 @@ export async function generateContentDraft(
   let reviewedPost = draftPost;
   let reviewVerdict = "SKIPPED";
   let reviewScore = 0;
-  const r4 = await call(fillTemplate(P["Social Post Reviewer (Squad)"], {
+  const r4 = await call(fillTemplate(P["4. Social Post Reviewer"], {
     platform,
     positioning,
     communication_style: dna.communication_style ?? "",
@@ -607,7 +607,7 @@ export async function generateContentDraft(
 
   // ── Agent 5: Publisher (finalize for review — no auto-publish) ────────────
   let finalPost = reviewedPost;
-  const r5 = await call(fillTemplate(P["Social Post Publisher"], {
+  const r5 = await call(fillTemplate(P["5. Social Post Publisher"], {
     platform,
     review_json: JSON.stringify({ verdict: reviewVerdict, overall_score: reviewScore }),
     post_content: reviewedPost,

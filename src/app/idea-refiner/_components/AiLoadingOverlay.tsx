@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AI Loading Overlay.
  * Displays a centered spinner with messaging while AI generates content.
  * Shows a green success banner at the top when AI has just finished.
@@ -12,8 +12,8 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import type { IdeaBlock } from "@/types/sandbox-planner";
-import { IDEA_BLOCK_LABELS } from "@/types/sandbox-planner";
+import type { IdeaBlock } from "@/types/idea-refiner";
+import { IDEA_BLOCK_LABELS } from "@/types/idea-refiner";
 import { clearAiWorking } from "../actions";
 
 const STUCK_TIMEOUT_MS = 270_000; // 270 s — slightly past the 240 s client timeout

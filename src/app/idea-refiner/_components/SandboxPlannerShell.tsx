@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Client shell for the Sandbox Planner.
  * Manages tab navigation, idea selection state, and renders the appropriate
  * step component based on the active tab.
@@ -8,9 +8,9 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Idea, IdeaBlock, IdeaFull, ProjectOption } from "@/types/sandbox-planner";
+import type { Idea, IdeaBlock, IdeaFull, ProjectOption } from "@/types/idea-refiner";
 import type { UserAiSettingsClient } from "@/types/settings";
-import { IDEA_BLOCK_LABELS, IDEA_BLOCKS_ORDERED, IDEA_BLOCK_STEPS } from "@/types/sandbox-planner";
+import { IDEA_BLOCK_LABELS, IDEA_BLOCKS_ORDERED, IDEA_BLOCK_STEPS } from "@/types/idea-refiner";
 import { cn } from "@/lib/utils";
 import { saveAiSettings } from "@/app/settings/actions";
 import { registerOpenAiConfigModal } from "../_hooks/aiConfigModalStore";
@@ -184,9 +184,9 @@ export default function SandboxPlannerShell({
       const projectId = searchParams.get("project");
       const projectSuffix = projectId ? `&project=${projectId}` : "";
       if (tab === "ideas") {
-        router.push(`/sandbox-planner${projectId ? `?project=${projectId}` : ""}`);
+        router.push(`/idea-refiner${projectId ? `?project=${projectId}` : ""}`);
       } else if (ideaId) {
-        router.push(`/sandbox-planner?idea=${ideaId}&tab=${tab}${projectSuffix}`);
+        router.push(`/idea-refiner?idea=${ideaId}&tab=${tab}${projectSuffix}`);
       }
     },
     [router, searchParams]
@@ -197,7 +197,7 @@ export default function SandboxPlannerShell({
     (ideaId: string) => {
       const projectId = searchParams.get("project");
       const projectSuffix = projectId ? `&project=${projectId}` : "";
-      router.push(`/sandbox-planner?idea=${ideaId}&tab=structure_align${projectSuffix}`);
+      router.push(`/idea-refiner?idea=${ideaId}&tab=structure_align${projectSuffix}`);
     },
     [router, searchParams]
   );

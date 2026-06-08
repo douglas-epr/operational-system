@@ -1,4 +1,4 @@
-/**
+﻿/**
  * PromptsShell — client component for managing AI prompt templates.
  * Each prompt_group is shown as a card with an editable group name.
  * Inside the card, each prompt has an editable name and description textarea.
@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import RichTextEditor from "@/app/sandbox-planner/_components/RichTextEditor";
+import RichTextEditor from "@/app/idea-refiner/_components/RichTextEditor";
 import {
   updatePromptGroupName,
   updatePromptName,

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Step 10 — Project Milestones & Tasks.
  * Single editable rich-text section for milestones with tasks and time estimates.
  * Supports AI regeneration (with Bubble / Claude Code platform picker) and manual save.
@@ -6,7 +6,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { IdeaFull } from "@/types/sandbox-planner";
+import type { IdeaFull } from "@/types/idea-refiner";
 import { saveMilestonesAndTasks, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";

@@ -128,7 +128,7 @@ export async function saveAiSettings(
   }
 
   revalidatePath(PATH);
-  revalidatePath("/sandbox-planner");
+  revalidatePath("/idea-refiner");
   return {};
 }
 
@@ -358,7 +358,7 @@ export async function saveAgencyAiSettings(
   }
 
   revalidatePath(PATH);
-  revalidatePath("/sandbox-planner");
+  revalidatePath("/idea-refiner");
   return {};
 }
 

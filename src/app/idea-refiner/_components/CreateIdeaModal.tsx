@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Create / Edit Idea modal.
  * Collects name (required), description (required), and optional project,
  * then calls the createIdea or updateIdea server action depending on mode.
@@ -10,7 +10,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "@/app/projects/_components/modals/Modal";
-import type { Idea, ProjectOption } from "@/types/sandbox-planner";
+import type { Idea, ProjectOption } from "@/types/idea-refiner";
 import { createIdea, updateIdea } from "../actions";
 import { cn } from "@/lib/utils";
 import RichTextEditor from "./RichTextEditor";

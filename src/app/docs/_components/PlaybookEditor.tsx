@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useRef, useState, useTransition, useMemo, useCallback, useEffect, useLayoutEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -109,7 +109,7 @@ export default function PlaybookEditor({
       });
       document.body.appendChild(container);
 
-      const { exportElementToPdf } = await import("../../sandbox-planner/_lib/exportPdf");
+      const { exportElementToPdf } = await import("../../idea-refiner/_lib/exportPdf");
       try {
         await exportElementToPdf({
           source: container,

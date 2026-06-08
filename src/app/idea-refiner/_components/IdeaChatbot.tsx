@@ -1,4 +1,4 @@
-/**
+﻿/**
  * IdeaChatbot
  * ------------------------------------------------------------------
  * Floating chat widget mounted on every Sandbox Planner step (except the
@@ -20,7 +20,7 @@ import {
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import type { IdeaBlock, IdeaChatbotMessage } from "@/types/sandbox-planner";
+import type { IdeaBlock, IdeaChatbotMessage } from "@/types/idea-refiner";
 import { loadChatHistory, sendChatMessage } from "../actions";
 
 interface IdeaChatbotProps {
