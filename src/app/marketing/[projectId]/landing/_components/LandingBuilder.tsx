@@ -2,29 +2,22 @@
 
 /**
  * LandingBuilder — configure a project's public landing page.
- * Edits hero, capture stages (quiz/waitlist; pre-order deferred), and content
- * sections, then saves + publishes. Shows the public URL + live preview link.
+ *
+ * The landing page is now a single full HTML document (`code_html`), generated
+ * in Claude Code or by "Build with AI", and rendered on /m/[slug] inside a
+ * sandboxed iframe. Three groups: Build with AI, Public URL, and Code.
  */
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type {
-  MktLanding,
-  MktLandingSection,
-} from "@/types/marketing";
+import type { MktLanding } from "@/types/marketing";
 import { saveLanding, generateLandingPage } from "../actions";
 import { slugify } from "@/lib/marketing/slug";
 import Button from "@/components/ui/Button";
-import {
-  AddIcon,
-  DeleteIcon,
-  ExternalLinkIcon,
-  LinkIcon,
-  SparkleIcon,
-} from "@/components/ui/icons";
+import { ExternalLinkIcon, LinkIcon, SparkleIcon } from "@/components/ui/icons";
 
 /** Staged progress labels for the LP generation pipeline. */
-const LP_AI_STAGES = ["Researching", "Writing copy", "Designing UI", "Reviewing", "Finalising"];
+const LP_AI_STAGES = ["Researching", "Writing copy", "Designing UI", "Reviewing"];
 
 interface Props {
   projectId: string;
@@ -32,21 +25,8 @@ interface Props {
   defaultSlug: string;
 }
 
-type SectionType = MktLandingSection["type"];
-
 const CODE_CLS =
   "w-full px-3 py-2 bg-[#0d0d0d] border border-border rounded-md text-xs text-green-300 font-mono placeholder:text-text-muted focus:outline-none focus:border-accent resize-y";
-
-const SECTION_TYPES: { value: SectionType; label: string; itemised: boolean }[] = [
-  { value: "text", label: "Text block", itemised: false },
-  { value: "features", label: "Features grid", itemised: true },
-  { value: "faq", label: "FAQ", itemised: true },
-  { value: "quiz", label: "Quiz questions", itemised: true },
-  { value: "custom_html", label: "Custom HTML", itemised: false },
-];
-
-const inputCls =
-  "w-full px-3 py-2 bg-elevated border border-border rounded-md text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent";
 
 export default function LandingBuilder({
   projectId,
@@ -61,19 +41,8 @@ export default function LandingBuilder({
   );
 
   const [id] = useState(initialLanding?.id);
-  const [slug, setSlug] = useState(initialLanding?.slug ?? slugify(defaultSlug));
-  const [title, setTitle] = useState(initialLanding?.title ?? "");
-  const [headline, setHeadline] = useState(initialLanding?.hero?.headline ?? "");
-  const [subheadline, setSubheadline] = useState(
-    initialLanding?.hero?.subheadline ?? ""
-  );
-  const [ctaLabel, setCtaLabel] = useState(initialLanding?.hero?.cta_label ?? "");
-  const [stages, setStages] = useState<string[]>(
-    initialLanding?.capture_stages ?? ["waitlist"]
-  );
-  const [sections, setSections] = useState<MktLandingSection[]>(
-    initialLanding?.sections ?? []
-  );
+  const [slug] = useState(initialLanding?.slug ?? slugify(defaultSlug));
+  const [code, setCode] = useState(initialLanding?.code_html ?? "");
   const [published, setPublished] = useState(initialLanding?.published ?? false);
 
   // AI generation state
@@ -87,37 +56,6 @@ export default function LandingBuilder({
     (typeof window !== "undefined" ? window.location.origin : "");
   const publicUrl = savedSlug ? `${appUrl}/m/${savedSlug}` : null;
 
-  function toggleStage(stage: string) {
-    setStages((prev) =>
-      prev.includes(stage) ? prev.filter((s) => s !== stage) : [...prev, stage]
-    );
-  }
-
-  function addSection(type: SectionType) {
-    setSections((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        type,
-        heading: "",
-        body: "",
-        items: SECTION_TYPES.find((t) => t.value === type)?.itemised
-          ? [{ title: "", body: "" }]
-          : undefined,
-      },
-    ]);
-  }
-
-  function updateSection(sid: string, patch: Partial<MktLandingSection>) {
-    setSections((prev) =>
-      prev.map((s) => (s.id === sid ? { ...s, ...patch } : s))
-    );
-  }
-
-  function removeSection(sid: string) {
-    setSections((prev) => prev.filter((s) => s.id !== sid));
-  }
-
   async function buildWithAI() {
     setAiPending(true);
     setAiStage(0);
@@ -129,13 +67,12 @@ export default function LandingBuilder({
     );
     try {
       const r = await generateLandingPage(projectId);
-      if (r.error) { setAiError(r.error); return; }
-      if (r.title)              setTitle(r.title);
-      if (r.hero?.headline)     setHeadline(r.hero.headline);
-      if (r.hero?.subheadline)  setSubheadline(r.hero.subheadline);
-      if (r.hero?.cta_label)    setCtaLabel(r.hero.cta_label);
-      if (r.sections)           setSections(r.sections);
-      if (r.agentLog)           setAiLog(r.agentLog);
+      if (r.error) {
+        setAiError(r.error);
+        return;
+      }
+      if (r.code_html) setCode(r.code_html);
+      if (r.agentLog) setAiLog(r.agentLog);
     } finally {
       clearInterval(timer);
       setAiPending(false);
@@ -148,14 +85,7 @@ export default function LandingBuilder({
       const r = await saveLanding(projectId, {
         id,
         slug,
-        title: title || null,
-        hero: {
-          headline: headline || undefined,
-          subheadline: subheadline || undefined,
-          cta_label: ctaLabel || undefined,
-        },
-        sections,
-        capture_stages: stages,
+        code_html: code,
         published,
       });
       if (r.error) {
@@ -169,8 +99,7 @@ export default function LandingBuilder({
 
   return (
     <div className="max-w-3xl space-y-8">
-
-      {/* ── AI Build button ────────────────────────────────────────────── */}
+      {/* ── Build with AI ──────────────────────────────────────────────────── */}
       <section className="card space-y-3">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -179,7 +108,9 @@ export default function LandingBuilder({
               Build with AI
             </h2>
             <p className="text-xs text-text-muted mt-1">
-              Generate the complete landing page — hero, sections, and branded HTML — from your project's idea, positioning statement, and brand DNA.
+              Generate a complete, self-contained landing page — full HTML, CSS, and
+              an email capture form — from your project&apos;s idea, positioning, and
+              brand DNA. The result drops into the Code field below.
             </p>
           </div>
           <button
@@ -207,7 +138,8 @@ export default function LandingBuilder({
                     : "border-border text-text-muted",
                 ].join(" ")}
               >
-                {i < aiStage ? "✓ " : ""}{label}
+                {i < aiStage ? "✓ " : ""}
+                {label}
               </span>
             ))}
           </div>
@@ -217,7 +149,7 @@ export default function LandingBuilder({
         {!aiPending && aiLog && <p className="text-[11px] text-text-muted">{aiLog}</p>}
       </section>
 
-      {/* Public URL banner */}
+      {/* ── Public URL ─────────────────────────────────────────────────────── */}
       {publicUrl && (
         <div className="card flex items-center justify-between gap-3 flex-wrap">
           <div className="min-w-0">
@@ -243,317 +175,47 @@ export default function LandingBuilder({
         </div>
       )}
 
-      {/* Basics */}
-      <section className="space-y-4">
-        <h2 className="text-heading-3 text-text-primary">Basics</h2>
-        <Field label="URL slug" hint="Lowercase letters, numbers, hyphens. Forms the /m/<slug> address.">
-          <input
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            onBlur={() => setSlug((s) => slugify(s))}
-            className={inputCls}
-            placeholder="my-product"
-          />
-        </Field>
-        <Field label="Internal title" hint="Shown in the browser tab; not on the page hero.">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className={inputCls}
-            placeholder="My Product — Waitlist"
-          />
-        </Field>
-      </section>
-
-      {/* Hero */}
-      <section className="space-y-4">
-        <h2 className="text-heading-3 text-text-primary">Hero</h2>
-        <Field label="Headline">
-          <input
-            value={headline}
-            onChange={(e) => setHeadline(e.target.value)}
-            className={inputCls}
-            placeholder="The fastest way to…"
-          />
-        </Field>
-        <Field label="Subheadline">
-          <textarea
-            value={subheadline}
-            onChange={(e) => setSubheadline(e.target.value)}
-            rows={2}
-            className={inputCls}
-            placeholder="One or two sentences on the value and who it's for."
-          />
-        </Field>
-        <Field label="Call-to-action label">
-          <input
-            value={ctaLabel}
-            onChange={(e) => setCtaLabel(e.target.value)}
-            className={inputCls}
-            placeholder="Join the waitlist"
-          />
-        </Field>
-      </section>
-
-      {/* Capture stages */}
-      <section className="space-y-3">
-        <h2 className="text-heading-3 text-text-primary">Capture stages</h2>
-        <p className="text-xs text-text-muted">
-          Escalating demand signals. Pre-order needs Stripe and is deferred.
-        </p>
-        <div className="space-y-2">
-          <StageToggle
-            label="Quiz"
-            desc="Qualifying questions + email. Add a “Quiz questions” section below."
-            checked={stages.includes("quiz")}
-            onChange={() => toggleStage("quiz")}
-          />
-          <StageToggle
-            label="Waitlist"
-            desc="Email capture — the simplest intent signal."
-            checked={stages.includes("waitlist")}
-            onChange={() => toggleStage("waitlist")}
-          />
-          <StageToggle
-            label="Pre-order / deposit"
-            desc="Strongest signal (money). Enabled once Stripe is connected."
-            checked={stages.includes("preorder")}
-            disabled
-            onChange={() => {}}
-          />
-        </div>
-      </section>
-
-      {/* Sections */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-heading-3 text-text-primary">Content sections</h2>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {SECTION_TYPES.map((t) => (
-              <button
-                key={t.value}
-                onClick={() => addSection(t.value)}
-                className="btn btn-tertiary btn-sm"
-              >
-                <AddIcon className="w-3.5 h-3.5" strokeWidth={2} /> {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {sections.length === 0 ? (
-          <p className="text-sm text-text-muted">
-            No sections yet. Add a text block, features grid, FAQ, or quiz.
+      {/* ── Code ───────────────────────────────────────────────────────────── */}
+      <section className="card space-y-3">
+        <div>
+          <h2 className="text-heading-3 text-text-primary">Code</h2>
+          <p className="text-xs text-text-muted mt-1">
+            The complete landing page as a single HTML document (with inline CSS and
+            optional JS). Rendered in a sandboxed iframe on the public page. To capture
+            emails, include a form that posts to{" "}
+            <code className="text-green-300">window.__MKT_CAPTURE_URL__</code> with{" "}
+            <code className="text-green-300">{`{ type: "waitlist", email }`}</code>.
           </p>
-        ) : (
-          <div className="space-y-4">
-            {sections.map((s) => (
-              <SectionEditor
-                key={s.id}
-                section={s}
-                onChange={(patch) => updateSection(s.id, patch)}
-                onRemove={() => removeSection(s.id)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Publish + save */}
-      <section className="card flex items-center justify-between gap-4 flex-wrap">
-        <label className="flex items-center gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={published}
-            onChange={(e) => setPublished(e.target.checked)}
-            className="w-4 h-4 accent-[color:var(--accent)]"
-          />
-          <span className="text-sm text-text-primary font-medium">
-            Published
-            <span className="text-text-muted font-normal">
-              {" "}
-              — live and accepting submissions
-            </span>
-          </span>
-        </label>
-        <div className="flex items-center gap-3">
-          {error && <span className="text-sm text-red-400">{error}</span>}
-          <Button onClick={save} loading={isPending}>
-            Save landing page
-          </Button>
         </div>
-      </section>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-text-primary mb-1.5">
-        {label}
-      </label>
-      {children}
-      {hint && <p className="text-xs text-text-muted mt-1">{hint}</p>}
-    </div>
-  );
-}
-
-function StageToggle({
-  label,
-  desc,
-  checked,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  desc: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange: () => void;
-}) {
-  return (
-    <label
-      className={`flex items-start gap-3 p-3 rounded-md border ${
-        checked ? "border-accent bg-accent-subtle" : "border-border"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-    >
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={onChange}
-        className="mt-0.5 w-4 h-4 accent-[color:var(--accent)]"
-      />
-      <span className="min-w-0">
-        <span className="block text-sm font-medium text-text-primary">{label}</span>
-        <span className="block text-xs text-text-muted">{desc}</span>
-      </span>
-    </label>
-  );
-}
-
-function SectionEditor({
-  section,
-  onChange,
-  onRemove,
-}: {
-  section: MktLandingSection;
-  onChange: (patch: Partial<MktLandingSection>) => void;
-  onRemove: () => void;
-}) {
-  const meta = SECTION_TYPES.find((t) => t.value === section.type);
-  const items = section.items ?? [];
-
-  function updateItem(idx: number, patch: { title?: string; body?: string }) {
-    const next = items.map((it, i) => (i === idx ? { ...it, ...patch } : it));
-    onChange({ items: next });
-  }
-  function addItem() {
-    onChange({ items: [...items, { title: "", body: "" }] });
-  }
-  function removeItem(idx: number) {
-    onChange({ items: items.filter((_, i) => i !== idx) });
-  }
-
-  const isQuiz = section.type === "quiz";
-  const isCustomHtml = section.type === "custom_html";
-
-  return (
-    <div className="card space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wide text-text-muted font-semibold">
-          {meta?.label ?? section.type}
-        </span>
-        <button
-          onClick={onRemove}
-          aria-label="Remove section"
-          className="p-1 text-text-muted hover:text-red-400 rounded transition-colors"
-        >
-          <DeleteIcon className="w-4 h-4" strokeWidth={1.8} />
-        </button>
-      </div>
-
-      {isCustomHtml ? (
-        <div className="space-y-2">
-          <p className="text-xs text-text-muted">
-            Raw HTML/CSS injected directly into the public page. Use standard HTML tags and inline
-            styles or a &lt;style&gt; block. Visible to visitors as-is.
-          </p>
-          <textarea
-            value={section.html ?? ""}
-            onChange={(e) => onChange({ html: e.target.value })}
-            rows={10}
-            spellCheck={false}
-            className={CODE_CLS}
-            placeholder={"<section style=\"padding: 2rem; text-align: center;\">\n  <h2>Your custom section</h2>\n  <p>Add any HTML here.</p>\n</section>"}
-          />
-        </div>
-      ) : (
-        <>
-          {!isQuiz && (
+        <textarea
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          rows={22}
+          spellCheck={false}
+          className={CODE_CLS}
+          placeholder={"<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <style>/* your styles */</style>\n</head>\n<body>\n  <!-- your landing page -->\n</body>\n</html>"}
+        />
+        <div className="flex items-center justify-between gap-4 flex-wrap pt-1">
+          <label className="flex items-center gap-2.5 cursor-pointer">
             <input
-              value={section.heading ?? ""}
-              onChange={(e) => onChange({ heading: e.target.value })}
-              className={inputCls}
-              placeholder="Section heading"
+              type="checkbox"
+              checked={published}
+              onChange={(e) => setPublished(e.target.checked)}
+              className="w-4 h-4 accent-[color:var(--accent)]"
             />
-          )}
-
-          {meta?.itemised ? (
-            <div className="space-y-2">
-              {items.map((it, i) => (
-                <div key={i} className="flex gap-2 items-start">
-                  <div className="flex-1 space-y-2">
-                    <input
-                      value={it.title ?? ""}
-                      onChange={(e) => updateItem(i, { title: e.target.value })}
-                      className={inputCls}
-                      placeholder={isQuiz ? "Question" : "Title"}
-                    />
-                    {!isQuiz && (
-                      <textarea
-                        value={it.body ?? ""}
-                        onChange={(e) => updateItem(i, { body: e.target.value })}
-                        rows={2}
-                        className={inputCls}
-                        placeholder="Body"
-                      />
-                    )}
-                  </div>
-                  <button
-                    onClick={() => removeItem(i)}
-                    aria-label="Remove item"
-                    className="p-1.5 text-text-muted hover:text-red-400 rounded transition-colors mt-1"
-                  >
-                    <DeleteIcon className="w-4 h-4" strokeWidth={1.8} />
-                  </button>
-                </div>
-              ))}
-              <button onClick={addItem} className="btn btn-tertiary btn-sm">
-                <AddIcon className="w-3.5 h-3.5" strokeWidth={2} />{" "}
-                {isQuiz ? "Add question" : "Add item"}
-              </button>
-            </div>
-          ) : (
-            <textarea
-              value={section.body ?? ""}
-              onChange={(e) => onChange({ body: e.target.value })}
-              rows={3}
-              className={inputCls}
-              placeholder="Body text"
-            />
-          )}
-        </>
-      )}
+            <span className="text-sm text-text-primary font-medium">
+              Published
+              <span className="text-text-muted font-normal"> — live at the public URL</span>
+            </span>
+          </label>
+          <div className="flex items-center gap-3">
+            {error && <span className="text-sm text-red-400">{error}</span>}
+            <Button onClick={save} loading={isPending}>
+              Save landing page
+            </Button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

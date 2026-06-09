@@ -276,35 +276,15 @@ export interface MktContent {
   updated_at: string;
 }
 
-/** Hero block of a landing page. */
-export interface MktLandingHero {
-  headline?: string;
-  subheadline?: string;
-  cta_label?: string;
-  image_url?: string;
-}
-
-/** A free-form content section of a landing page. */
-export interface MktLandingSection {
-  id: string;
-  type: "text" | "features" | "quiz" | "faq" | "custom_html";
-  heading?: string;
-  body?: string;
-  /** Raw HTML/CSS injected verbatim on the public page (custom_html type). */
-  html?: string;
-  items?: { title?: string; body?: string }[];
-}
-
 /** Landing page config (public slug). */
 export interface MktLanding {
   id: string;
   project_id: string;
   slug: string;
   title: string | null;
-  hero: MktLandingHero;
-  sections: MktLandingSection[];
+  /** Full self-contained HTML document, rendered in a sandboxed iframe on /m/[slug]. */
+  code_html: string | null;
   capture_stages: string[];
-  stripe_price_id: string | null;
   published: boolean;
   created_by: string | null;
   created_at: string;
