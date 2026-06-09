@@ -218,9 +218,10 @@ Import from `@/components/ui/icons` — never write inline `<svg>` in component 
 - Use **per-block** refresh ticks, not a global tick (avoids re-fetching all lists on conversation select)
 - Use `hasFetched` ref pattern: show loading spinner only on first fetch, not on background polls
 
-### Sandbox Planner
+### Idea Refiner
 
-- 11 steps: ideas → structure_align → refining_icp → product_definition_flows → benchmarking → strategic_frameworks → prd → database → visual_styles → milestones_and_tasks → report
+- 11 steps: ideas → structure_align → refining_icp → product_definition_flows → benchmarking → strategic_frameworks → report → prd → database → visual_styles → milestones_and_tasks
+- **Report is a pre-build go/no-go gate** (Step 7, before PRD). It scores ONLY discovery-phase evidence (idea, structure, ICPs, product definition, benchmarking, strategic frameworks) — never PRD/Database/Visual/Milestones, which come after it. Verdict buckets: `build` (≥75) | `refine` (≥60) | `kill` (<60). Uses Critical Thought Partner / Devil's Advocate methodology.
 - Guard stale AI writes with `isRequestActive(supabase, ideaId, requestId)` before every DB write inside a generation function
 - `idea_styles` JSONB columns: `color_tokens`, `typography`, `spacing`, `border_radius`, `shadows`
 - `idea_styles` narrative columns: `brand_voice`, `iconography_style`, `motion_principles` (plus legacy `logo_branding`, `color_palette`, `product_feeling`)

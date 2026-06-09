@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-08] — Idea Refiner: Report becomes a pre-build Devil's Advocate go/no-go gate
+
+Moved the Report step from last (Step 11) to Step 7 — immediately after Strategic Frameworks and before PRD. Rationale: PRD → Database → Visual Styles → Project Milestones only make sense once the team has decided to build. Report is now the explicit "should we build this at all?" gate, so it scores only discovery-phase evidence.
+
+- **Order** — `src/types/idea-refiner.ts`: reordered `IDEA_BLOCKS_ORDERED` (report → index 6) and renumbered `IDEA_BLOCK_STEPS` (report 7, prd 8, database 9, visual_styles 10, milestones 11). New report subtitle: "Go/no-go verdict before committing to the build."
+- **Unlock chain** — `SandboxPlannerShell.tsx` `computeUnlockedSteps`: Report unlocks after Strategic Frameworks; PRD unlocks after Report has content; Milestones is now terminal.
+- **Rubric redesign** — `actions.ts` `generateReport`: now reads ONLY discovery evidence (idea, structure, ICPs incl. strategic-frameworks value-props, product definition, benchmarking). Dropped all PRD/Database/Visual/Milestones fetches and template vars. New 6 areas: problem_reality (25), customer_clarity (15), competitive_honesty (15), strategic_positioning (20), demand_evidence (15), assumption_risk (10). New pre-build penalties (no competitors, no measurable metrics, single-ICP, vague audience, unvalidated assumption). Built on the Critical Thought Partner / Devil's Advocate methodology: epistemic labels, anti-sycophancy ("Yes, but"), strongest counter-argument, kill-criteria.
+- **Verdict** — buckets changed `ready/refine/risk` → `build` (≥75) | `refine` (≥60) | `kill` (<60). Updated `IdeaReport`/`ReportOutput` types and `ReportStep.tsx` UI (Go/No-Go Report header, Verdict Guide, "Proceed to Build (PRD)" CTA). Legacy buckets still render on old rows.
+- **Prompt** — Migration `20260608000000_report_prompt_devils_advocate.sql` rewrites the Report prompt (id `e1f6cb88…`). NOTE: `getPromptTemplate` runs `stripHtml` on stored prompts, so the prompt describes output structure in words ("h2 element", "p element") rather than literal tags, which were being silently deleted before reaching the model.
+
 ## [2026-06-06] — Prompt group cleanup + Idea Refiner rename
 
 - **DB** — Migration `add_marketing_post_creation_group`: Created `Marketing - Post Creation` prompt group; moved 5 pipeline prompts from `Marketing` group and renamed with step numbers (`1. Social Post Strategist` … `5. Social Post Publisher`); deleted duplicate `Social Post Copywriter (Squad)` and `Social Post Reviewer (Squad)`.

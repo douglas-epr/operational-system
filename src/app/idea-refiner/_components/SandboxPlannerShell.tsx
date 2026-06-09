@@ -72,16 +72,24 @@ function computeUnlockedSteps(ideaFull: IdeaFull): Set<IdeaBlock> {
     !!ideaFull.benchmarking?.comparison?.trim();
   if (benchmarkingDone) unlocked.add("strategic_frameworks");
 
-  // PRD unlocks after Strategic Frameworks has content OR if PRD already has its own data
+  // Report (now Step 7) is a pre-build go/no-go gate. It unlocks once
+  // Strategic Frameworks has content OR if a report already exists.
   // (Regenerating an upstream step — e.g. Refining ICP — must NOT lock a downstream step
   // that has already been generated and saved to its own table.)
   const strategicDone = icps.some(
     (i) => !!i.value_proposition_icp_pains?.trim() || !!i.jtbd?.trim()
   );
+  const reportHasContent =
+    ideaFull.report?.final_score != null ||
+    !!ideaFull.report?.summary?.trim();
+  if (strategicDone || reportHasContent) unlocked.add("report");
+
+  // PRD (now Step 8) is the first build-phase step. It unlocks once the Report
+  // verdict exists OR if PRD already has its own data.
   const prdHasContent =
     !!ideaFull.prd?.app_overview?.trim() ||
     !!ideaFull.prd?.essential_features?.trim();
-  if (strategicDone || prdHasContent) unlocked.add("prd");
+  if (reportHasContent || prdHasContent) unlocked.add("prd");
 
   const prdDone =
     !!ideaFull.prd?.app_overview?.trim() &&
@@ -93,16 +101,10 @@ function computeUnlockedSteps(ideaFull: IdeaFull): Set<IdeaBlock> {
   const stylesHasContent = !!ideaFull.styles?.color_palette?.trim();
   if (databaseDone || stylesHasContent) unlocked.add("visual_styles");
 
+  // Project Milestones & Tasks is now the terminal step (Step 11).
   const stylesDone = !!ideaFull.styles?.color_palette?.trim();
   const milestonesHasContent = !!ideaFull.milestonesAndTasks?.content?.trim();
   if (stylesDone || milestonesHasContent) unlocked.add("milestones_and_tasks");
-
-  // Report unlocks once milestones have any content OR if a report already exists
-  const milestonesDone = !!ideaFull.milestonesAndTasks?.content?.trim();
-  const reportHasContent =
-    ideaFull.report?.final_score != null ||
-    !!ideaFull.report?.summary?.trim();
-  if (milestonesDone || reportHasContent) unlocked.add("report");
 
   return unlocked;
 }

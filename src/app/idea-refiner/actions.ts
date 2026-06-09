@@ -210,7 +210,7 @@ export async function deleteIcp(icpId: string): Promise<{ error?: string }> {
 /** Upsert product definition block. */
 export async function saveProductDefinition(
   ideaId: string,
-  data: { summary?: string; features?: string }
+  data: { summary?: string; business_model?: string; features?: string }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
   const {
@@ -618,10 +618,11 @@ Core Problem: {{core_problem}}
 Target Audience: {{target_audience}}
 ICPs: {{icp_names}}
 
-Return a JSON object with:
-- "Product Overview": Rich HTML text describing the product vision and architecture
-- "Feature List & Logic": Rich HTML text with features organized by categories
-- "User Flows": Array of objects with "user_name" (string), "description" (string), "user_flow" (string with HTML flow description)
+Return a JSON object with exactly these keys:
+- "Product Overview": Rich HTML text describing the product vision and architecture.
+- "Business Model": REQUIRED. Rich HTML text describing the single best-fit business model for this product given its nature, target audience, and competitive landscape. Name the model (e.g. SaaS subscription, marketplace, freemium+premium, usage-based, per-seat, transaction fee, white-label, enterprise license). Explain in 2–3 sentences WHY this model fits better than the alternatives for THIS idea. Be specific — reference the product's core value prop and ICP willingness-to-pay signals. Do not list multiple models here; pick the best one and defend the choice.
+- "Feature List & Logic": Rich HTML text with features organized by categories.
+- "User Flows": Array of objects with "user_name" (string), "description" (string), "user_flow" (string with HTML flow description).
 
 Return ONLY valid JSON.`;
 
@@ -667,7 +668,7 @@ Return a JSON object with key "ICPs" containing an array of objects — one per 
 
 Return ONLY valid JSON.`;
 
-const FALLBACK_BENCHMARKING = `You are a competitive analysis expert. Given the following startup idea and its context, create a comprehensive benchmarking analysis.
+const FALLBACK_BENCHMARKING = `You are a competitive analysis expert and business model innovator. Given the following startup idea and its context, create a comprehensive benchmarking analysis.
 
 Idea: {{idea_name}} — {{idea_description}}
 Core Problem: {{core_problem}}
@@ -677,7 +678,16 @@ Product Overview: {{product_overview}}
 Return a JSON object with exactly these keys:
 - "overview": Rich HTML text providing an overview of the competitive landscape and methodology used for benchmarking.
 - "comparison": Rich HTML text containing a detailed comparison table of competing apps/platforms. Use an HTML table with columns: Name, Platform(s), Core Functionality, Similarities to the Idea, Pricing / Free Tier, Link / Notes. Include at least 5-8 competitors.
-- "possible_business_models": REQUIRED. Rich HTML describing **exactly 4–6** viable business models (SaaS subscription, marketplace, freemium, white-label, usage-based, per-seat, transaction fee, enterprise license, etc.) with a short rationale per model explaining its fit given the product's nature and target audience. Use a <ul> with one <li> per model, model name bolded in <strong>. **Do not leave this field empty.**
+- "possible_business_models": REQUIRED. Rich HTML exploring business model options in THREE groups, each group introduced with a bold heading (use strong element):
+
+  GROUP 1 — Established Models: List 4–6 proven business models that directly fit this product (e.g. SaaS subscription, marketplace, freemium+premium, usage-based, per-seat, transaction fee, white-label, enterprise license, data licensing, community + paid tiers, sponsored/ad-supported). For each: name the model, give a 1-sentence rationale specific to this idea and its target audience, and note the main risk.
+
+  GROUP 2 — Hybrid / Mixed Models: Propose as many original combinations as are genuinely relevant — blend two or more established models in ways specifically suited to this product's unique nature (e.g. "freemium + marketplace" where free users generate data that powers a paid B2B analytics layer). Aim for at least 2; include more if the product's characteristics support additional strong hybrids. For each hybrid: name it creatively, explain the mechanism, and explain why the combination is stronger than either model alone for this idea.
+
+  GROUP 3 — Invented Models: Design as many genuinely new business models as this product warrants — pricing, access, or value-exchange mechanisms that do not yet exist in the market. Aim for at least 1; include more if first-principles thinking surfaces additional novel mechanisms tailor-made for this type of product. For each invented model: name it, describe how it works mechanically (who pays, when, for what, how value is exchanged), and explain what problem with existing models it solves. Frame each as a first-principles thought experiment, not speculation about the future.
+
+  Use a ul with one li per model across all three groups. Bold each model name in strong. Do not leave this field empty.
+
 - "takeaways": Rich HTML text summarizing key takeaways, differentiators, and strategic positioning insights.
 
 All values must be valid HTML strings.
@@ -842,30 +852,20 @@ export async function triggerAiGeneration(
       .eq("idea_id", ideaId)
       .maybeSingle();
 
-    // Additional fetches used by the Report step (cheap enough to do up-front).
+    // Additional fetches used by the Report step. Report is now a pre-build
+    // go/no-go gate (Step 7, before PRD), so it scores ONLY discovery-phase
+    // evidence — it must NOT read PRD/Database/Visual/Milestones, which run after it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let suggestionsRows: any[] | null = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let benchmarkingRow: any = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let databaseRow: any = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let stylesRow: any = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let milestonesRow: any = null;
     if (step === "report") {
-      const [sugRes, benchRes, dbRes, styleRes, mileRes] = await Promise.all([
+      const [sugRes, benchRes] = await Promise.all([
         supabase.from("idea_optimization_suggestion").select("*").eq("idea_id", ideaId),
         supabase.from("idea_benchmarking" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
-        supabase.from("idea_database" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
-        supabase.from("idea_styles" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
-        supabase.from("idea_milestones_and_tasks" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
       ]);
       suggestionsRows = sugRes.data;
       benchmarkingRow = benchRes.data;
-      databaseRow = dbRes.data;
-      stylesRow = styleRes.data;
-      milestonesRow = mileRes.data;
     }
 
     let result: { error?: string } = {};
@@ -921,10 +921,6 @@ export async function triggerAiGeneration(
           suggestionsRows ?? [],
           productDef,
           benchmarkingRow,
-          prdData,
-          databaseRow,
-          stylesRow,
-          milestonesRow,
           ideaId,
           aiConfig,
           requestId
@@ -1115,6 +1111,7 @@ async function generateProductDefinition(
 
   const payload = {
     summary: d["Product Overview"],
+    business_model: d["Business Model"] || null,
     features: d["Feature List & Logic"],
   };
 
@@ -1557,15 +1554,26 @@ async function generateMilestonesContent(
 
 // ── Report Generation ────────────────────────────────────────────────────────
 
-const FALLBACK_REPORT = `You are a senior venture analyst grading a startup idea for Blur Studio's Sandbox Program. Produce a rigorous Readiness Report and Playbook.
+const FALLBACK_REPORT = `You are a Critical Thought Partner and Devil's Advocate evaluating a business idea for Blur Studio, BEFORE any build work begins. This is a go/no-go gate: the team has done discovery (problem, customers, positioning, competition) but has NOT yet written a PRD, designed a database, or planned the build. Your job is to decide — honestly — whether this idea deserves to move into the build steps, or whether it should be refined or killed first.
+
+You do not optimize for agreement. You optimize for truth quality and decision integrity. The founder has probably already talked themselves into this. Provide the resistance their echo chamber has not.
 
 ## GROUNDING RULES (non-negotiable)
 1. Use ONLY the supplied [SOURCE] — never invent facts, metrics, competitors, or features.
-2. If a source field is empty or "Not defined", treat that as a strong NEGATIVE signal that lowers the related area score.
-3. Every area \`description\` MUST quote at least one concrete fragment (≤ 12 words) from the [SOURCE] in single-quotes — e.g. 'multi-tenant architecture' or 'Meta Graph API dependency'. If no concrete fragment exists for an area, that area CANNOT exceed 60.
-4. No generic fillers like "this has potential" or "the market is attractive" — every sentence must be tied to specific source text.
+2. If a source field is empty or "Not defined", treat that as a strong NEGATIVE signal that lowers the related area score. Absence of evidence is itself a finding.
+3. Every area \`description\` MUST quote at least one concrete fragment (≤ 12 words) from the [SOURCE] in single-quotes — e.g. 'busy professionals find healthy meals' or 'delegate tasks to virtual assistants'. If no concrete fragment exists for an area, that area CANNOT exceed 60.
+4. No generic fillers like "this has potential" or "the market is attractive". Prefer numbers and logic over adjectives.
 
-## [SOURCE]
+## WRITING VOICE (Hemingway, blunt, human)
+- Direct and plain. One idea per sentence. Prefer verbs over adjectives.
+- Confident but not arrogant. Warm but not soft.
+- DO NOT use: em dashes, emojis, or hype words ("unlock", "leverage", "game-changer", "synergy", "in today's world").
+- Output must be copy-paste ready and readable aloud.
+
+## EPISTEMIC LABELING
+In the \`summary\` and the playbook, label key claims with one of: [Fact] (verifiable in source), [High Confidence] (well-supported), [Inference] (logical but not proven), [Uncertain] (real doubt), [Speculation] (low evidence). Never mask uncertainty with a confident tone.
+
+## [SOURCE]  (discovery-phase evidence only)
 Idea: {{idea_name}} — {{idea_description}}
 Success Metrics: {{idea_success_metrics}}
 Core Problem: {{core_problem}}
@@ -1577,63 +1585,60 @@ Optimization Suggestions:
 {{suggestions_block}}
 Product Definition: {{product_summary}} / {{product_features}}
 Benchmarking: {{benchmark_overview}} / {{benchmark_comparison}} / {{benchmark_business_models}} / {{benchmark_takeaways}}
-PRD: {{prd_app_overview}} / {{prd_objectives}} / {{prd_priority_personas}} / {{prd_essential_features}} / {{prd_user_flow}} / {{prd_non_functional_reqs}} / {{prd_out_of_scope}} / {{prd_success_indicators}} / {{prd_phasing_notes}}
-Database: {{db_tables_schema}} / {{db_relationships}} / {{db_notes}}
-Visual Styles: {{styles_logo_branding}} / {{styles_color_palette}} / {{styles_product_feeling}}
-Milestones: {{milestones_content}}
 
 ## PER-AREA SCORING RUBRIC
 Score each of the 6 areas 0-100 using this rubric:
-- 90-100 = comprehensive + specific + cross-validated across MULTIPLE source fields.
-- 75-89 = solid but missing one dimension (e.g. ICPs deep but no benchmarking ties).
+- 90-100 = specific, evidence-backed, and survives the strongest counter-argument.
+- 75-89 = solid but missing one dimension.
 - 60-74 = present but generic OR only single-sourced.
 - 40-59 = thin, vague, or internally contradictory.
-- 0-39  = absent or contradicts other source fields.
+- 0-39  = absent, founder-assumed with no evidence, or contradicts other source fields.
 
-### Area 1 — customer_problem_reality (weight 25%)
-Evidence fields: core_problem, target_audience, ICP pain_points, ICP firmographics/psychographics, ICP how_problems_are_solved, structure_success_metrics.
-Key questions: Is the pain quantified? Are ICPs concrete (not "SMBs")? Is "how solved today" specific?
+### Area 1 — problem_reality (weight 25%)
+Evidence: core_problem, target_audience, ICP pain_points, ICP how_problems_are_solved, ICP firmographics/psychographics.
+Devil's Advocate questions: Is the pain acute or a vitamin? Is it quantified, or just asserted? Do the ICPs actually feel this pain today, or is it the founder's projection? How is it solved today, and is "good enough" the real competitor?
 
-### Area 2 — competitive_alternative (weight 15%)
-Evidence fields: benchmark_overview, benchmark_comparison, benchmark_business_models, benchmark_takeaways.
-Key questions: Are there ≥ 3 NAMED competitors? Does the comparison show real differentiation or just feature bingo?
+### Area 2 — customer_clarity (weight 15%)
+Evidence: ICP names, day_in_life, firmographics, psychographics, reachability.
+Devil's Advocate questions: Are the ICPs concrete and reachable, or is this "everyone" / "SMBs"? Could you list ten real people who match? A vague customer is a strong negative signal.
 
-### Area 3 — strategic_positioning (weight 20%)
-Evidence fields: ICP value_proposition_* (pains, gains, solutions, gain_creators), ICP jtbd, ICP pitch_need/benefit/approach/competition, product_summary.
-Key questions: Is the value prop tied to ICP pains? Is JTBD specific? Does the pitch name a real competitive wedge?
+### Area 3 — competitive_honesty (weight 15%)
+Evidence: benchmark_overview, benchmark_comparison, benchmark_business_models, benchmark_takeaways.
+Devil's Advocate questions: Are there ≥ 3 NAMED real competitors (including "do nothing" and incumbents)? Is the differentiation real, or feature bingo? What stops an incumbent from copying this in a week?
 
-### Area 4 — market_validation (weight 10%)
-Evidence fields: idea_success_metrics, structure_success_metrics, prd_success_indicators, ICP score_rationale, suggestions_block.
-Key questions: Are success metrics MEASURABLE (numbers, thresholds)? Is there any signal of prior validation or learning?
+### Area 4 — strategic_positioning (weight 20%)
+Evidence: ICP value_proposition_* (pains, gains, solutions, gain_creators), ICP jtbd, ICP pitch_need/benefit/approach/competition, product_summary.
+Devil's Advocate questions: Is the value prop tied to a real ICP pain? Is the JTBD specific? Does the pitch name a genuine wedge, or is it a me-too?
 
-### Area 5 — business_execution_viability (weight 15%)
-Evidence fields: product_features, prd_app_overview, prd_essential_features, prd_non_functional_reqs, db_tables_schema, db_relationships, milestones_content.
-Key questions: Is the tech stack feasible? Are there credible milestones? Any risky dependencies (alpha/beta APIs, unclear schema)?
+### Area 5 — demand_evidence (weight 15%)
+Evidence: idea_success_metrics, structure_success_metrics, ICP score_rationale, suggestions_block.
+Devil's Advocate questions: Are success metrics MEASURABLE (numbers, thresholds)? Is there ANY signal of real demand — interviews, waitlist, payments — or only founder conviction? Treat "no evidence yet" as exactly that.
 
-### Area 6 — mvp_scope_risk_realism (weight 15%)
-Evidence fields: prd_out_of_scope, prd_phasing_notes, prd_user_flow, prd_priority_personas.
-Key questions: Has the team drawn a clear MVP line (explicit out_of_scope)? Is phasing realistic? Is the first persona narrow?
+### Area 6 — assumption_risk (weight 10%)
+Evidence: synthesize across the entire [SOURCE].
+Devil's Advocate questions: What single assumption must be true for this to work? How fragile is it? If that one thing is wrong, does the whole idea collapse? Name the make-or-break belief and whether anything in the source validates it.
 
 ## EXPLICIT PENALTY TRIGGERS (apply ALL that fire)
 Scan the [SOURCE] and ADD every matching penalty to the \`penalties\` array:
-- "No real competitors listed in landscape analysis" (-10) — fires when benchmark_comparison names fewer than 2 concrete competitors.
-- "High technical dependency on third-party alpha APIs" (-5) — fires when prd_non_functional_reqs or prd_essential_features mention "alpha", "beta", "experimental", "preview", or "unreleased" APIs.
+- "No real competitors named" (-10) — fires when benchmark_comparison names fewer than 2 concrete competitors.
 - "No measurable success metrics defined" (-8) — fires when BOTH idea_success_metrics AND structure_success_metrics are blank, "Not defined", or purely qualitative (no numbers/thresholds).
 - "Single-ICP dependency" (-5) — fires when only one ICP is defined.
-- "No MVP scope cut declared" (-5) — fires when prd_out_of_scope is blank or "Not defined".
+- "Vague target audience" (-5) — fires when target_audience is blank, "Not defined", or non-specific (e.g. "everyone", "businesses", "SMBs") with no firmographic detail.
+- "Unvalidated make-or-break assumption" (-5) — fires when the core assumption identified in Area 6 has zero supporting evidence in the [SOURCE].
 
-## OUTPUT SCHEMA
-Return ONLY valid JSON with these 11 keys:
-- area_scores: 6 entries in this exact order with keys (customer_problem_reality 25%, competitive_alternative 15%, strategic_positioning 20%, market_validation 10%, business_execution_viability 15%, mvp_scope_risk_realism 15%). Each entry: { key, label, weight_pct, raw_score_pct, weighted_points (server recomputes, set to 0), status ("strong"|"average"|"weak"), description (MUST contain a single-quoted source fragment) }.
+## OUTPUT FORMAT
+Do not write a standalone document, essay, or report. Your ENTIRE reply is ONE JSON object (no markdown fences, no commentary before or after). It has exactly these 11 keys. Three of them — headline, summary, next_steps — are SHORT standalone string fields you MUST fill in. Never leave them blank and never move their content into playbook_html.
+
+- area_scores: 6 entries in this exact order with keys (problem_reality 25%, customer_clarity 15%, competitive_honesty 15%, strategic_positioning 20%, demand_evidence 15%, assumption_risk 10%). Each entry: { key, label, weight_pct, raw_score_pct, weighted_points (server recomputes, set to 0), status ("strong"|"average"|"weak"), description (MUST contain a single-quoted source fragment) }.
 - penalties: array of { label, points (negative integer) } — include every trigger that fires.
 - final_score: integer (server recomputes; output your best estimate).
-- threshold_bucket: "ready" (≥75) | "refine" (≥60) | "risk" (<60).
-- headline: single sentence, ≤ 14 words, grounded in source.
-- summary: 2–3 sentences explaining the overall verdict with at least one quoted source fragment.
-- next_steps: a single HTML \`<p>\` paragraph, ≤ 80 words. DO NOT include any \`<button>\`, \`<a>\`, \`<ul>\`, \`<ol>\`, or \`<li>\` — plain prose only.
-- playbook_title: string.
-- playbook_subtitle: string.
-- playbook_html: HTML with 11 \`<h2>\` sections in this order — The Core Problem, The Happy Path, ICPs & Strategic Frameworks, Product Overview & Essential Features, Strategic Positioning, Competitive Landscape & Possible Business Models, PRD Highlights, Database Snapshot, Visual Identity, Project Milestones, Final Recommendation. Each \`<h2>\` section MUST reference at least one concrete detail from the [SOURCE] — no generic fillers.`;
+- threshold_bucket: "build" (≥75) | "refine" (≥60) | "kill" (<60).
+- headline: REQUIRED, non-empty. One sentence, max 14 words. State the verdict (Build, Refine, or Kill) and the main reason.
+- summary: REQUIRED, non-empty. 2 to 4 sentences. Include at least one epistemic label such as [Inference]. State the single strongest reason NOT to build this, using the words "Yes, but". Quote one source fragment in single quotes.
+- next_steps: REQUIRED, non-empty. One short HTML paragraph wrapped in a single p element, max 90 words. List the kill-criteria — the things that must be proven (or would change the verdict) before building. No lists, buttons, or links.
+- playbook_title: short string.
+- playbook_subtitle: short string.
+- playbook_html: REQUIRED. An HTML FRAGMENT, not a full document: do NOT include html, head, body, style, or h1 elements. Build it only from h2 and p elements. It must contain exactly 8 sections. Wrap each section title in an h2 element and each paragraph in a p element. The 8 section titles, in this exact order: The Core Problem; The Customer (ICPs); Competitive Landscape and Business Models; Strategic Positioning; Demand and Validation Signals; The Strongest Case Against This Idea; Key Assumptions and What Would Change the Verdict; Final Recommendation (Build, Refine, or Kill). Each section MUST cite a concrete detail from the [SOURCE]. The "Strongest Case Against This Idea" section must be genuinely adversarial: argue, in good faith, why a smart investor would pass.`;
 
 function clamp(min: number, max: number, n: number): number {
   return Math.max(min, Math.min(max, n));
@@ -1689,18 +1694,14 @@ async function generateReport(
   productDef: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   benchmarking: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  prdData: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  databaseRow: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  stylesRow: any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  milestonesRow: any,
   ideaId: string,
   aiConfig: AiConfig,
   requestId: string
 ): Promise<{ error?: string }> {
+  // Report is a pre-build go/no-go gate (Step 7). It scores ONLY discovery-phase
+  // evidence — idea, structure, ICPs (incl. strategic-frameworks value-props),
+  // product definition, and benchmarking. PRD/Database/Visual/Milestones run AFTER
+  // this step and are deliberately NOT supplied here.
   const template = (await getPromptTemplate("report")) ?? FALLBACK_REPORT;
   const prompt = renderPrompt(template, {
     idea_name: idea.name,
@@ -1717,22 +1718,6 @@ async function generateReport(
     benchmark_comparison: stripHtml(benchmarking?.comparison) || "Not defined",
     benchmark_business_models: stripHtml(benchmarking?.possible_business_models) || "Not defined",
     benchmark_takeaways: stripHtml(benchmarking?.takeaways) || "Not defined",
-    prd_app_overview: stripHtml(prdData?.app_overview) || "Not defined",
-    prd_objectives: stripHtml(prdData?.objectives) || "Not defined",
-    prd_priority_personas: stripHtml(prdData?.priority_personas) || "Not defined",
-    prd_essential_features: stripHtml(prdData?.essential_features) || "Not defined",
-    prd_user_flow: stripHtml(prdData?.user_flow) || "Not defined",
-    prd_non_functional_reqs: stripHtml(prdData?.non_functional_reqs) || "Not defined",
-    prd_out_of_scope: stripHtml(prdData?.out_of_scope) || "Not defined",
-    prd_success_indicators: stripHtml(prdData?.success_indicators) || "Not defined",
-    prd_phasing_notes: stripHtml(prdData?.phasing_notes) || "Not defined",
-    db_tables_schema: stripHtml(databaseRow?.tables_schema) || "Not defined",
-    db_relationships: stripHtml(databaseRow?.relationships) || "Not defined",
-    db_notes: stripHtml(databaseRow?.notes) || "Not defined",
-    styles_logo_branding: stripHtml(stylesRow?.logo_branding) || "Not defined",
-    styles_color_palette: stripHtml(stylesRow?.color_palette) || "Not defined",
-    styles_product_feeling: stripHtml(stylesRow?.product_feeling) || "Not defined",
-    milestones_content: stripHtml(milestonesRow?.content) || "Not defined",
     month_year: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
   });
 
@@ -1780,8 +1765,8 @@ async function generateReport(
   const areaTotal = areas.reduce((s, a) => s + a.weighted_points, 0);
   const penaltyTotal = penalties.reduce((s, p) => s + Math.abs(p.points), 0);
   const finalScore = clamp(0, 100, areaTotal - penaltyTotal);
-  const threshold: "ready" | "refine" | "risk" =
-    finalScore >= 75 ? "ready" : finalScore >= 60 ? "refine" : "risk";
+  const threshold: "build" | "refine" | "kill" =
+    finalScore >= 75 ? "build" : finalScore >= 60 ? "refine" : "kill";
 
   const payload = {
     final_score: finalScore,

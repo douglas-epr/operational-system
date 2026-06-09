@@ -26,6 +26,7 @@ export default function ProductDefinitionStep({ ideaFull }: ProductDefinitionSte
   const isAiWorking = idea.current_blocks_updating === "product_definition_flows";
 
   const [summary, setSummary] = useState(productDefinition?.summary ?? "");
+  const [businessModel, setBusinessModel] = useState(productDefinition?.business_model ?? "");
   const [features, setFeatures] = useState(productDefinition?.features ?? "");
 
   const [isSaving, setIsSaving] = useState(false);
@@ -34,8 +35,9 @@ export default function ProductDefinitionStep({ ideaFull }: ProductDefinitionSte
 
   useEffect(() => {
     setSummary(productDefinition?.summary ?? "");
+    setBusinessModel(productDefinition?.business_model ?? "");
     setFeatures(productDefinition?.features ?? "");
-  }, [productDefinition?.summary, productDefinition?.features]);
+  }, [productDefinition?.summary, productDefinition?.business_model, productDefinition?.features]);
 
   const isEmpty =
     isBlankHtml(productDefinition?.summary) && isBlankHtml(productDefinition?.features);
@@ -52,7 +54,7 @@ export default function ProductDefinitionStep({ ideaFull }: ProductDefinitionSte
     setIsSaving(true);
     setError(null);
 
-    const result = await saveProductDefinition(idea.id, { summary, features });
+    const result = await saveProductDefinition(idea.id, { summary, business_model: businessModel, features });
     setIsSaving(false);
     if (result.error) setError(result.error);
   }
@@ -117,6 +119,16 @@ export default function ProductDefinitionStep({ ideaFull }: ProductDefinitionSte
               onChange={setSummary}
               editable={!isSaving && !isRegenerating}
               placeholder="Describe the product vision and architecture..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-text-primary">Business Model</label>
+            <RichTextEditor
+              content={businessModel}
+              onChange={setBusinessModel}
+              editable={!isSaving && !isRegenerating}
+              placeholder="The best-fit business model for this product (e.g. SaaS subscription, marketplace, freemium) and why it fits..."
             />
           </div>
 

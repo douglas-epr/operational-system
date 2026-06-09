@@ -79,25 +79,25 @@ export const IDEA_BLOCK_STEPS: Record<IdeaBlock, { step: number; subtitle: strin
     step: 6,
     subtitle: "Your Strategic Frameworks. Review the synthesis below.",
   },
-  prd: {
+  report: {
     step: 7,
+    subtitle: "Go/no-go verdict before committing to the build.",
+  },
+  prd: {
+    step: 8,
     subtitle: "Product Requirements Document.",
   },
   database: {
-    step: 8,
+    step: 9,
     subtitle: "Data model and schema design.",
   },
   visual_styles: {
-    step: 9,
+    step: 10,
     subtitle: "Visual identity and branding.",
   },
   milestones_and_tasks: {
-    step: 10,
-    subtitle: "Project milestones, tasks, and time estimates.",
-  },
-  report: {
     step: 11,
-    subtitle: "Final readiness score and downloadable playbook.",
+    subtitle: "Project milestones, tasks, and time estimates.",
   },
 };
 
@@ -109,11 +109,11 @@ export const IDEA_BLOCKS_ORDERED: IdeaBlock[] = [
   "product_definition_flows",
   "benchmarking",
   "strategic_frameworks",
+  "report",
   "prd",
   "database",
   "visual_styles",
   "milestones_and_tasks",
-  "report",
 ];
 
 // ── Database Row Interfaces ──────────────────────────────────────────────────
@@ -183,6 +183,7 @@ export interface IdeaBlockProductDefinition {
   idea_id: string | null;
   created_by: string | null;
   summary: string | null;
+  business_model: string | null;
   features: string | null;
   created_at: string;
 }
@@ -330,7 +331,7 @@ export interface IdeaReport {
   id: string;
   idea_id: string;
   final_score: number | null;
-  threshold_bucket: "ready" | "refine" | "risk" | null;
+  threshold_bucket: "build" | "refine" | "kill" | null;
   headline: string | null;
   summary: string | null;
   area_scores: IdeaReportArea[];

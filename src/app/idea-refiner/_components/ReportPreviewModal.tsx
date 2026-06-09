@@ -106,9 +106,14 @@ ${body}
   }
 
   const score = report?.final_score ?? 0;
-  const threshold = report?.threshold_bucket ?? null;
+  // Typed as string so legacy buckets ("ready"/"risk") on older reports still map.
+  const threshold: string | null = report?.threshold_bucket ?? null;
   const scoreColor =
-    threshold === "ready" ? "#16a34a" : threshold === "refine" ? "#d97706" : "#dc2626";
+    threshold === "build" || threshold === "ready"
+      ? "#16a34a"
+      : threshold === "refine"
+      ? "#d97706"
+      : "#dc2626";
   const title = report?.playbook_title ?? "Product Strategy Playbook";
   const subtitle = report?.playbook_subtitle ?? `Generated for ${ideaName}`;
 

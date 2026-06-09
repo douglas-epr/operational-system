@@ -18,14 +18,6 @@ interface ReportStepProps {
   ideaFull: IdeaFull;
 }
 
-// Uniform CTA button classes — keeps all four Next-Steps buttons visually identical.
-const CTA_BASE =
-  "w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors";
-const CTA_PRIMARY = `${CTA_BASE} bg-accent text-white hover:bg-accent/90`;
-const CTA_SECONDARY = `${CTA_BASE} bg-accent/15 text-accent hover:bg-accent/25`;
-const CTA_OUTLINE = `${CTA_BASE} border border-border bg-transparent text-text-primary hover:bg-white/5`;
-const CTA_PRIMARY_DISABLED = `${CTA_BASE} bg-accent/60 text-white/80 cursor-not-allowed`;
-
 const STATUS_LABEL: Record<IdeaReportArea["status"], string> = {
   strong: "STRONG",
   average: "AVERAGE",
@@ -116,21 +108,24 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
   }
 
   const score = report?.final_score ?? 0;
-  const threshold = report?.threshold_bucket ?? null;
+  // Typed as string so legacy buckets ("ready"/"risk") on older reports still map.
+  // "build"/"refine"/"kill" are the current buckets; "ready"/"risk" are legacy
+  // values kept readable so older reports still render correctly.
+  const threshold: string | null = report?.threshold_bucket ?? null;
   const thresholdLabel =
-    threshold === "ready"
-      ? "Ready for Sandbox"
+    threshold === "build" || threshold === "ready"
+      ? "Build"
       : threshold === "refine"
       ? "Needs Refinement"
-      : threshold === "risk"
-      ? "High Risk"
+      : threshold === "kill" || threshold === "risk"
+      ? "Kill — Don't Build"
       : "Pending";
   const thresholdColor =
-    threshold === "ready"
+    threshold === "build" || threshold === "ready"
       ? "#22c55e"
       : threshold === "refine"
       ? "#f59e0b"
-      : threshold === "risk"
+      : threshold === "kill" || threshold === "risk"
       ? "#ef4444"
       : "#6b7280";
 
@@ -142,9 +137,9 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
       {/* Header actions */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-text-primary">Readiness Report</h2>
+          <h2 className="text-lg font-semibold text-text-primary">Go / No-Go Report</h2>
           <p className="text-sm text-text-secondary">
-            Final weighted score, automatic penalties, and your downloadable playbook.
+            A Devil&apos;s Advocate verdict on whether to build, refine, or kill this idea — before any build work.
           </p>
         </div>
         <button
@@ -171,8 +166,8 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
 
       {!report ? (
         <div className="rounded-xl border border-border bg-surface p-8 text-center text-sm text-text-secondary">
-          No report generated yet. Click <span className="font-medium">Regenerate</span> to build
-          one from all prior steps.
+          No verdict generated yet. Click <span className="font-medium">Regenerate</span> to score
+          this idea from the discovery steps.
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -282,10 +277,14 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
               </div>
             </div>
 
-            {/* Playbook preview card */}
+          </div>
+
+          {/* RIGHT — 1/3 */}
+          <div className="space-y-6">
+            {/* Go/No-Go Evaluation (full playbook preview) */}
             <div className="rounded-xl border border-border bg-surface">
               <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-text-primary">Blur Studio Playbook</h3>
+                <h3 className="text-sm font-semibold text-text-primary">Go/No-Go Evaluation</h3>
                 <button
                   onClick={() => setIsPreviewOpen(true)}
                   className="text-xs px-3 py-1.5 rounded-md bg-accent text-white hover:bg-accent/90"
@@ -301,94 +300,44 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
                   <div className="mt-0.5 text-xs">{report.playbook_subtitle}</div>
                 )}
                 <p className="mt-2">
-                  Opens a paginated document that ties together every step of the sandbox for
+                  Opens a paginated document with the full go/no-go case for
                   download as PDF or DOCX.
                 </p>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT — 1/3 */}
-          <div className="space-y-6">
-            <div className="rounded-xl border border-border bg-surface p-6">
-              <div className="flex items-center gap-2 mb-3">
-                <svg className="w-5 h-5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                <h3 className="text-sm font-semibold text-text-primary">Next Steps</h3>
-              </div>
-              {report.next_steps ? (
-                <div
-                  className="text-sm text-text-secondary report-next-steps mb-4 [&_button]:hidden [&_a.btn]:hidden [&_a[role=button]]:hidden [&_ul]:hidden [&_ol]:hidden"
-                  dangerouslySetInnerHTML={{ __html: report.next_steps }}
-                />
-              ) : (
-                <p className="text-sm text-text-secondary mb-4">
-                  Your playbook is ready. Download it to share with the team, or initiate a sandbox
-                  review to take the next step.
-                </p>
-              )}
-              <div className="flex flex-col gap-2">
-                <button className={CTA_PRIMARY}>Schedule Follow-Up Meeting</button>
-                <button className={CTA_SECONDARY}>Refine Validation Strategy</button>
-                <button
-                  onClick={() => setIsPreviewOpen(true)}
-                  className={CTA_OUTLINE}
-                >
-                  Download Playbook (PDF)
-                </button>
-                <button
-                  disabled
-                  className={CTA_PRIMARY_DISABLED}
-                  title="Coming soon"
-                >
-                  Initiate Sandbox Review
-                </button>
+                {report.next_steps && (
+                  <div
+                    className="mt-3 text-xs text-text-secondary border-t border-border pt-3 [&_button]:hidden [&_a.btn]:hidden [&_a[role=button]]:hidden [&_ul]:hidden [&_ol]:hidden"
+                    dangerouslySetInnerHTML={{ __html: report.next_steps }}
+                  />
+                )}
               </div>
             </div>
 
-            {/* Threshold Guide */}
+            {/* Verdict Guide */}
             <div className="rounded-xl border border-border bg-surface p-6">
-              <h3 className="text-sm font-semibold text-text-primary mb-3">Threshold Guide</h3>
+              <h3 className="text-sm font-semibold text-text-primary mb-3">Verdict Guide</h3>
               <ul className="space-y-2 text-xs">
                 <li className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-block w-2 h-2 rounded-full" style={{ background: "#22c55e" }} />
-                    Ready for Sandbox
+                    Build
                   </span>
                   <span className="text-text-secondary">≥ 75</span>
                 </li>
                 <li className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-block w-2 h-2 rounded-full" style={{ background: "#f59e0b" }} />
-                    Needs Refinement
+                    Refine
                   </span>
                   <span className="text-text-secondary">60 – 74</span>
                 </li>
                 <li className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-block w-2 h-2 rounded-full" style={{ background: "#ef4444" }} />
-                    High Risk
+                    Kill — Don&apos;t Build
                   </span>
                   <span className="text-text-secondary">&lt; 60</span>
                 </li>
               </ul>
-            </div>
-
-            {/* Founders Program */}
-            <div
-              className="rounded-xl p-6 text-white"
-              style={{
-                background:
-                  "linear-gradient(135deg, rgba(139,92,246,0.35) 0%, rgba(236,72,153,0.25) 100%)",
-                border: "1px solid rgba(139,92,246,0.4)",
-              }}
-            >
-              <h3 className="text-sm font-semibold mb-1">Founders Program</h3>
-              <p className="text-xs opacity-90">
-                Qualified ideas can be fast-tracked into the Blur Studio Founders Program — ask your
-                account manager for details.
-              </p>
             </div>
           </div>
         </div>

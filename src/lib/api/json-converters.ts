@@ -118,6 +118,7 @@ export interface UserFlow {
 
 export interface ProductDefinitionOutput {
   "Product Overview": string;
+  "Business Model": string;
   "Feature List & Logic": string;
   "User Flows": UserFlow[];
 }
@@ -248,7 +249,7 @@ export interface ReportOutput {
   area_scores: ReportAreaOutput[];
   penalties: ReportPenaltyOutput[];
   final_score: number;
-  threshold_bucket: "ready" | "refine" | "risk";
+  threshold_bucket: "build" | "refine" | "kill";
   headline: string;
   summary: string;
   next_steps: string;
