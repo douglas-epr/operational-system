@@ -30,7 +30,7 @@ import type {
   ReportPenaltyOutput,
 } from "@/lib/api/json-converters";
 
-const PATH = "/idea-refiner";
+const PATH = "/ideas-refiner";
 
 // ── Idea CRUD ────────────────────────────────────────────────────────────────
 

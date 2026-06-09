@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import RichTextEditor from "@/app/idea-refiner/_components/RichTextEditor";
+import RichTextEditor from "@/app/ideas-refiner/_components/RichTextEditor";
 import {
   updatePromptGroupName,
   updatePromptName,

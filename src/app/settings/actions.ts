@@ -128,7 +128,7 @@ export async function saveAiSettings(
   }
 
   revalidatePath(PATH);
-  revalidatePath("/idea-refiner");
+  revalidatePath("/ideas-refiner");
   return {};
 }
 
@@ -358,7 +358,7 @@ export async function saveAgencyAiSettings(
   }
 
   revalidatePath(PATH);
-  revalidatePath("/idea-refiner");
+  revalidatePath("/ideas-refiner");
   return {};
 }
 

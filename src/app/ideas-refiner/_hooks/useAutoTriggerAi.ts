@@ -14,7 +14,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { triggerAiGeneration } from "@/app/idea-refiner/actions";
+import { triggerAiGeneration } from "@/app/ideas-refiner/actions";
 import { runAiWithTimeout } from "./useAiWithTimeout";
 import type { IdeaBlock } from "@/types/idea-refiner";
 

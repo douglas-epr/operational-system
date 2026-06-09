@@ -17,7 +17,7 @@ import {
   type ProjectInput,
 } from "../../actions";
 import CreateTalentModal from "./CreateTalentModal";
-import RichTextEditor from "@/app/idea-refiner/_components/RichTextEditor";
+import RichTextEditor from "@/app/ideas-refiner/_components/RichTextEditor";
 import { UserMultiSelect } from "@/components/ui";
 
 type TaskProgress = { totalEst: number; doneOrQaEst: number; doneEst: number };

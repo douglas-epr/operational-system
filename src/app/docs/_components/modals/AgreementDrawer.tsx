@@ -92,7 +92,7 @@ export default function AgreementDrawer({
         (displayContent || "<p><em>(empty)</em></p>");
       document.body.appendChild(container);
 
-      const { exportElementToPdf } = await import("../../../idea-refiner/_lib/exportPdf");
+      const { exportElementToPdf } = await import("../../../ideas-refiner/_lib/exportPdf");
       try {
         await exportElementToPdf({
           source: container,

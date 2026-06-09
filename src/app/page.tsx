@@ -6,5 +6,5 @@
  * before this component is ever rendered.
  */
 export default function RootPage() {
-  redirect("/idea-refiner");
+  redirect("/ideas-refiner");
 }

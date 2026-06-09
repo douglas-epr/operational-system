@@ -15,7 +15,7 @@
  *
  * Centralising the redirect chain in one place makes it the single
  * source of truth: whenever the spec says "if user is `lead`, send them
- * to `/idea-refiner`", that mapping lives only here. Every page that
+ * to `/ideas-refiner`", that mapping lives only here. Every page that
  * imports `requirePageAccess` automatically inherits the up-to-date
  * mapping; tightening or relaxing the spec touches one file.
  */
@@ -46,7 +46,7 @@ const ROLE_FALLBACK: Record<UserRole, string> = {
   client: "/projects",
   qa: "/projects",
   referrer: "/recommended-projects",
-  lead: "/idea-refiner",
+  lead: "/ideas-refiner",
 };
 
 /**

@@ -9,7 +9,7 @@ import type {
   PlaybookCommentStatus,
 } from "@/types/docs";
 import type { IdeaFull } from "@/types/idea-refiner";
-import { loadIdeaFull } from "@/app/idea-refiner/_lib/loadIdeaFull";
+import { loadIdeaFull } from "@/app/ideas-refiner/_lib/loadIdeaFull";
 import { resolveAiConfig } from "@/lib/api/ai-config";
 import { generateAiTextResponse } from "@/lib/api/ai-dispatcher";
 

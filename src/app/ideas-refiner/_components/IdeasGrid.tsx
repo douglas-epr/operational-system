@@ -139,7 +139,7 @@ export default function IdeasGrid({
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <h1 className="text-xl font-bold text-text-primary">
-            Idea Refiner
+            Ideas Refiner
           </h1>
           <div className="flex items-center gap-4">
             <button

@@ -21,7 +21,7 @@ import {
   getTaskTimeEntries,
   type TaskInput,
 } from "../../actions";
-import RichTextEditor from "@/app/idea-refiner/_components/RichTextEditor";
+import RichTextEditor from "@/app/ideas-refiner/_components/RichTextEditor";
 import UserPicker from "@/components/UserPicker";
 import TaskChat from "./TaskChat";
 
