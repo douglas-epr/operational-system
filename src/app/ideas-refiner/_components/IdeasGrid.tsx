@@ -89,7 +89,7 @@ export default function IdeasGrid({
     params.delete("idea");
     params.delete("tab");
     const qs = params.toString();
-    router.push(`/idea-refiner${qs ? `?${qs}` : ""}`);
+    router.push(`/ideas-refiner${qs ? `?${qs}` : ""}`);
   }
 
   // Determine defaultProjectId for the Create Idea modal

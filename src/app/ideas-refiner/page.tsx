@@ -130,7 +130,7 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
   if (ideaId) {
     ideaFull = await loadIdeaFull(supabase, ideaId);
     if (!ideaFull) {
-      redirect("/idea-refiner");
+      redirect("/ideas-refiner");
     }
   }
 

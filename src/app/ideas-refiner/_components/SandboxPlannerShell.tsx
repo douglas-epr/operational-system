@@ -186,9 +186,9 @@ export default function SandboxPlannerShell({
       const projectId = searchParams.get("project");
       const projectSuffix = projectId ? `&project=${projectId}` : "";
       if (tab === "ideas") {
-        router.push(`/idea-refiner${projectId ? `?project=${projectId}` : ""}`);
+        router.push(`/ideas-refiner${projectId ? `?project=${projectId}` : ""}`);
       } else if (ideaId) {
-        router.push(`/idea-refiner?idea=${ideaId}&tab=${tab}${projectSuffix}`);
+        router.push(`/ideas-refiner?idea=${ideaId}&tab=${tab}${projectSuffix}`);
       }
     },
     [router, searchParams]
@@ -199,7 +199,7 @@ export default function SandboxPlannerShell({
     (ideaId: string) => {
       const projectId = searchParams.get("project");
       const projectSuffix = projectId ? `&project=${projectId}` : "";
-      router.push(`/idea-refiner?idea=${ideaId}&tab=structure_align${projectSuffix}`);
+      router.push(`/ideas-refiner?idea=${ideaId}&tab=structure_align${projectSuffix}`);
     },
     [router, searchParams]
   );
