@@ -5,7 +5,7 @@
  *
  * Layout matches the Bubble page (docs/reference_docs/paginas.md L2319):
  *   - search box + filters row
- *   - 3 KPI cards (Blur Studio, Devs/Agency Owners + Clients, Projects)
+ *   - 3 KPI cards (Move37, Devs/Agency Owners + Clients, Projects)
  *   - project list (name | status | price | commission | provider revenue | profit)
  *
  * For referrer users, the "Devs/Agency Owners + Clients" card is replaced
@@ -85,7 +85,7 @@ export default function RecommendedProjectsShell({
 
   // ── KPIs ──────────────────────────────────────────────────────────────────
   // commission % is per-project; provider revenue = price * commission/100.
-  // Blur Studio revenue = price - provider revenue.
+  // Move37 revenue = price - provider revenue.
   // Profit (admin/manager view) mirrors revenue here since we don't have a
   // separate cost column — matches the Bubble dashboard.
   const kpis = useMemo(() => {
@@ -181,7 +181,7 @@ export default function RecommendedProjectsShell({
       <div className="flex-1 overflow-y-auto px-8 py-4 space-y-4">
         {/* KPI cards */}
         <div className="grid grid-cols-3 gap-4">
-          <KpiCard title="Blur Studio">
+          <KpiCard title="Move37">
             <KpiRow label="Revenue" value={fmtMoney(kpis.blurRevenue)} />
             {!isReferrer && (
               <KpiRow label="Profit" value={fmtMoney(kpis.blurProfit)} />

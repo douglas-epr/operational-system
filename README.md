@@ -1,4 +1,4 @@
-# Blur Studio — Internal Tools
+﻿# Move37 — Internal Tools
 
 A full-stack internal operations platform built with **Next.js 16, Supabase, and Tailwind CSS v4**, replicating the studio's legacy Bubble.io application with a modern, type-safe architecture.
 
@@ -23,7 +23,7 @@ A full-stack internal operations platform built with **Next.js 16, Supabase, and
 
 ## Overview
 
-Blur Studio Internal Tools is a role-gated SaaS platform that centralises:
+Move37 Operational System is a role-gated SaaS platform that centralises:
 
 - **Project management** — hierarchical tasks, kanban boards, QA tracking, and client-facing portals
 - **Team communication** — real-time chat with per-project tabs, threads, and file sharing
@@ -71,7 +71,7 @@ The codebase is a direct port of the studio's Bubble.io application. Every featu
 ```bash
 # 1. Clone the repository
 git clone <repo-url>
-cd blur-studio-internal-tools
+cd move37-operational-system
 
 # 2. Install dependencies
 npm install
@@ -108,7 +108,7 @@ npm run dev
 ## Project Structure
 
 ```
-blur-studio-internal-tools/
+move37-operational-system/
 ├── src/
 │   ├── app/                          # Next.js App Router
 │   │   ├── chat/                     # Real-time messaging

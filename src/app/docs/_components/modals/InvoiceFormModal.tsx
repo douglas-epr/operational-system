@@ -142,7 +142,7 @@ export default function InvoiceFormModal({ project, invoice, onClose }: Props) {
             <SectionTitle>Issuer (you)</SectionTitle>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Company or user name">
-                <TextInput value={companyOrUser} onChange={setCompanyOrUser} placeholder="Blur Studio LLC" />
+                <TextInput value={companyOrUser} onChange={setCompanyOrUser} placeholder="Move37 Ltd" />
               </Field>
               <Field label="Document number">
                 <TextInput value={documentNumber} onChange={setDocumentNumber} placeholder="EIN / CPF / VAT" />

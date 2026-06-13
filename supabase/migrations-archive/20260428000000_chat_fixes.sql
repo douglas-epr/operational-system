@@ -1,4 +1,4 @@
--- Chat: bug-fix + UX rework migration (2026-04-28)
+﻿-- Chat: bug-fix + UX rework migration (2026-04-28)
 -- Fixes shipped here (paired with the UI changes in the same dated PR):
 --   1. Realtime publication: enable Postgres logical-replication on all
 --      message + thread tables so `useRealtimeMessages` actually receives
@@ -69,7 +69,7 @@ INSERT INTO public.prompt ("group", name, description)
 SELECT
   (SELECT id FROM public.prompt_group WHERE name = 'Chat' LIMIT 1),
   'Chatbot prompt',
-  $CHAT$You are the Blur Studio assistant — an internal AI helper for staff (admin, manager, operational, developer) and external collaborators (client, qa) of an agency that builds web and mobile applications.
+  $CHAT$You are the Move37 assistant — an internal AI helper for staff (admin, manager, operational, developer) and external collaborators (client, qa) of an agency that builds web and mobile applications.
 
 Your job is to answer questions about projects, tasks, internal initiatives, ideas, talent, and people, by calling tools that hit the Supabase database.
 

@@ -1,4 +1,4 @@
-# RULES — Blur Studio Internal Tools
+﻿# RULES — Move37 Operational System
 
 > These rules are **non-negotiable**. Every pull request, every commit, every AI-assisted change must comply with all rules on this page. No exceptions. When in doubt, choose the stricter interpretation.
 

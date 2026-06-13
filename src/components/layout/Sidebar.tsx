@@ -244,12 +244,12 @@ export default function Sidebar({ profile }: { profile: UserProfile | null }) {
         ].join(" ")}
       >
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <div className="w-7 h-7 rounded-md bg-accent flex items-center justify-center text-white text-sm font-bold select-none leading-none font-display shrink-0">
-            b
+          <div className="w-7 h-7 rounded-md bg-[#FFB800] flex items-center justify-center text-[#0D0D1A] text-sm font-bold select-none leading-none font-display shrink-0">
+            M
           </div>
           {expanded && (
             <span className="text-[15px] font-semibold text-text-primary tracking-tight font-display truncate">
-              Blur Studio
+              Move37
             </span>
           )}
         </div>

@@ -33,8 +33,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Blur Studio",
-  description: "Blur Studio internal project management tool",
+  title: "Move37",
+  description: "Move37 internal project management tool",
 };
 
 export default function RootLayout({

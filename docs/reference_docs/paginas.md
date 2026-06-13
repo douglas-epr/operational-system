@@ -1,4 +1,4 @@
-# Páginas
+﻿# Páginas
 
 ## reset_pw
 
@@ -11,7 +11,7 @@ Esta página permite aos usuários redefinir suas senhas. Ela exibe um formulár
 *   **Popup general actions A** (CustomElement) - Wrapper customizado para ações gerais.
     *   **Group D** (Group) - Grupo principal de conteúdo da página.
         *   **Group A** (Group) - Wrapper para o logo.
-            *   **Image Logotype** (Text) - Exibe o texto "Blur Apps" como logomarca.
+            *   **Image Logotype** (Text) - Exibe o texto "Move37" como logomarca.
             *   **Group Logo Shadow 1** (Group) - Wrapper para a imagem do logomarca e sua sombra.
                 *   **Image Logomark** (Image) - Exibe a imagem do logomarca da aplicação.
                 *   **Group Logo Shadow 2** (Group) - Grupo para renderizar a sombra do logomarca.
@@ -95,7 +95,7 @@ Não há workflows associados a esta página.
 # index
 
 ## Summary
-Esta página exibe um anúncio sobre a mudança de nome da empresa de "Blur Apps" para "Blur Studio". O conteúdo é responsivo, com ajustes visuais para diferentes larguras de tela.
+Esta página exibe um anúncio sobre a mudança de nome da empresa de "Move37" para "Move37". O conteúdo é responsivo, com ajustes visuais para diferentes larguras de tela.
 
 ### UI
 * **Group OZZZZZZ** (Group) - Wrapper principal do conteúdo da página.
@@ -123,7 +123,7 @@ Não há workflows definidos diretamente nesta página.
 Este workflow é acionado quando um botão específico é clicado e tem como objetivo abrir uma URL externa no navegador.
 
 ## Actions
-1.  **Open external website** - Abre o link `https://blurstudio.ai` em uma nova aba do navegador.
+1.  **Open external website** - Abre o link `https://Move37.ai` em uma nova aba do navegador.
 
 #### Workflow bTWvN
 
@@ -132,7 +132,7 @@ Este workflow é acionado quando um botão específico é clicado e tem como obj
 **Trigger:** `PageLoaded`
 
 ## Summary
-Este workflow é executado quando a página é carregada e inicia uma sequência de pausas e atualizações de estado customizado, culminando no redirecionamento para o site blurstudio.ai.
+Este workflow é executado quando a página é carregada e inicia uma sequência de pausas e atualizações de estado customizado, culminando no redirecionamento para o site Move37.ai.
 
 ## Actions
 1.  **Pause until client side is ready** - Pausa a execução do workflow por 1000ms.
@@ -140,7 +140,7 @@ Este workflow é executado quando a página é carregada e inicia uma sequência
 3.  **Pause until client side is ready** - Pausa a execução do workflow por 1000ms.
 4.  **Set state of an element** - Define o estado customizado `redirecting_in_` do elemento `bTKJT` para o valor `1`.
 5.  **Pause until client side is ready** - Pausa a execução do workflow por 1000ms.
-6.  **Open external website** - Abre o URL `https://blurstudio.ai` em uma nova aba ou janela.
+6.  **Open external website** - Abre o URL `https://Move37.ai` em uma nova aba ou janela.
 
 #### Workflow length
 
@@ -1250,18 +1250,18 @@ Este workflow é acionado quando um botão é clicado. Ele tem como condição a
 # signin
 
 ## Summary
-Esta página é o formulário de login do aplicativo Blur Studio, permitindo que os usuários insiram suas credenciais. Inclui campos para email e senha, além de um botão de login e um link para redefinição de senha.
+Esta página é o formulário de login do aplicativo Move37, permitindo que os usuários insiram suas credenciais. Inclui campos para email e senha, além de um botão de login e um link para redefinição de senha.
 
 ### UI
 * **Group B** (Group) - Container principal da página.
   * **Group D** (Group) - Bloco superior, exibindo a imagem e o texto de boas-vindas.
     * **Group K** (Group) - Container para o conteúdo do topo da página.
-      * **Image B** (Image) - Logotipo ou imagem de destaque da Blur Studio.
-      * **Text H** (Text) - Saudação principal: "Welcome to Blur Studio!".
+      * **Image B** (Image) - Logotipo ou imagem de destaque da Move37.
+      * **Text H** (Text) - Saudação principal: "Welcome to Move37!".
       * **Text I** (Text) - Subtítulo com a proposta de valor: "Easily manage and track your projects all in one place.".
   * **Group G** (Group) - Bloco de login, contendo os campos de entrada e botões.
     * **Group C** (Group) - Container visível apenas na visualização de login.
-      * **Text B** (Text) - Instrução para o usuário: "Use the fields below to sign in to your Blur Apps account.".
+      * **Text B** (Text) - Instrução para o usuário: "Use the fields below to sign in to your Move37 account.".
       * **Group E** (Group) - Container para o campo de email e seu rótulo.
         * **Input email** (Input) - Campo para o email do usuário. Placeholder "johndoe@gmail.com".
         * **Text C** (Text) - Rótulo para o campo de email: "Email".
@@ -2231,7 +2231,7 @@ Este workflow é acionado ao clicar em um botão e tem como objetivo gerar um c�
 
 ## Actions
 1.  **Change Thing** - Atualiza o registro do talento com um novo código gerado aleatoriamente (`code_text`).
-2.  **Send Email** - Envia um e-mail para o talento com um link mágico contendo o código gerado, direcionando para a página `talent-pool` com o parâmetro `talent`. O e-mail é enviado pelo remetente "Blur Studio" com o assunto "Update Your Talent Profile – Magic Link Inside".
+2.  **Send Email** - Envia um e-mail para o talento com um link mágico contendo o código gerado, direcionando para a página `talent-pool` com o parâmetro `talent`. O e-mail é enviado pelo remetente "Move37" com o assunto "Update Your Talent Profile – Magic Link Inside".
 3.  **Schedule API Event** - Agenda o evento de API `bTaMF` (expiração do link) para 4 horas a partir da data/hora atual. Está associado ao parâmetro `_wf_param_talent`.
 4.  **Trigger Custom Event From Reusable** - Dispara o evento customizado `bTRlr` (provavelmente uma notificação de sucesso) no elemento `Popup general actions` (`bTRlq`), exibindo as mensagens "Success!" e "Magic Link sent by email. This link is valid for 4 hours.".
 ```
@@ -2275,7 +2275,7 @@ Esta página exibe o perfil de um talento, permitindo a criação ou edição de
   * **Text B** (Text) - Título da seção. Exibe "Create Talent Profile" ou "Edit Talent Profile" condicionalmente.
     * **Group create/edit talent A** (CustomElement) - Componente para criar ou editar dados do talento.
 * **Group Logo Wrap** (Group) - Container do logo da aplicação.
-  * **Text A** (Text) - Nome da empresa ("Blur Studio").
+  * **Text A** (Text) - Nome da empresa ("Move37").
   * **Group B** (Group) - Container para o logotipo e sua sombra.
     * **Image A** (Image) - Logotipo da aplicação.
     * **Group B** (Group) - Sombra do logotipo.
@@ -3154,7 +3154,7 @@ Este workflow é acionado quando um botão específico é clicado e verifica se 
 Este workflow envia um email de convite para um novo usuário e exibe uma notificação de sucesso.
 
 ## Actions
-1.  **Send password reset email** - Envia um email para o usuário com instruções para criar uma senha e acessar o Blur Studio.
+1.  **Send password reset email** - Envia um email para o usuário com instruções para criar uma senha e acessar o Move37.
 2.  **Trigger a custom event** (Elemento: **Popup general actions** - ID: `bTRlq`) - Dispara o evento customizado `bTRlr` para exibir uma notificação com o título "Success!" e a mensagem "Invitation sent.", com duração de 5000ms.
 
 #### Workflow bTSJx0

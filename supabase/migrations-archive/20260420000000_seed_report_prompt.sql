@@ -1,4 +1,4 @@
--- Migration: Seed the Report prompt row so it's editable from the /prompts UI.
+﻿-- Migration: Seed the Report prompt row so it's editable from the /prompts UI.
 -- The id matches PROMPT_ID_BY_STEP["report"] in src/app/sandbox-planner/actions.ts.
 -- Body mirrors FALLBACK_REPORT in that file — rigorous rubric + evidence-quoting
 -- rule + 5 explicit penalty triggers. Kept in sync via code review.
@@ -7,7 +7,7 @@ INSERT INTO public.prompt (id, name, description, "group")
 VALUES (
   'e1f6cb88-9a7e-4f5b-bb6c-1c0a8d2f3401',
   'Report Prompt',
-  $PROMPT$You are a senior venture analyst grading a startup idea for Blur Studio''s Sandbox Program. Produce a rigorous Readiness Report and Playbook.
+  $PROMPT$You are a senior venture analyst grading a startup idea for Move37''s Sandbox Program. Produce a rigorous Readiness Report and Playbook.
 
 ## GROUNDING RULES (non-negotiable)
 1. Use ONLY the supplied [SOURCE] — never invent facts, metrics, competitors, or features.

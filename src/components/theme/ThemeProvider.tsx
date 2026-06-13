@@ -8,7 +8,7 @@
  *   //  theme:         "light" | "dark" | "system"  — what the user picked
  *   //  resolvedTheme: "light" | "dark"             — what's actually applied
  *
- * Persistence is localStorage-only for v1 (key: "blur-theme"). The pre-paint
+ * Persistence is localStorage-only for v1 (key: "move37-theme"). The pre-paint
  * `ThemeScript` already applied the right class — this provider keeps it in
  * sync when the user toggles, and listens for OS theme changes when in
  * "system" mode.
@@ -34,7 +34,7 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-const STORAGE_KEY = "blur-theme";
+const STORAGE_KEY = "move37-theme";
 
 function readStored(): ThemeChoice {
   if (typeof window === "undefined") return "dark";

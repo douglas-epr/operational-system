@@ -1,4 +1,4 @@
--- Seed the "Project chatbot prompt" row (2026-04-29)
+﻿-- Seed the "Project chatbot prompt" row (2026-04-29)
 --
 -- Until today, both the global ChatBot block and the per-project chatbot
 -- (`runProjectBot.ts`) loaded the same DB-stored "Chatbot prompt" row.
@@ -15,7 +15,7 @@ INSERT INTO public.prompt ("group", name, description)
 SELECT
   (SELECT id FROM public.prompt_group WHERE name = 'Chat' LIMIT 1),
   'Project chatbot prompt',
-  $PROMPT$You are the Blur Studio project assistant — a chatbot scoped to a single project.
+  $PROMPT$You are the Move37 project assistant — a chatbot scoped to a single project.
 
 Your job is to help staff (admin, manager, operational, developer) and external collaborators (client, qa) on THIS project. You can answer questions about the project, its tasks, the people on it, and you can create new tasks in the project's "Client Requests" and "QA Requests" kanbans on the user's behalf.
 

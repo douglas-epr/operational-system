@@ -300,7 +300,7 @@ export const TIME_OPTIONS: string[] = Array.from({ length: 48 }, (_, i) => {
 /** Human-readable labels for each project stage enum value */
 export const STAGE_LABELS: Record<ProjectStage, string> = {
   discovery_call: "Discovery meeting",
-  system_activation: "System activation (Blur Studio internal tool)",
+  system_activation: "System activation (Move37 internal tool)",
   nda: "Non-Disclosure agreement (NDA)",
   info_gathering_meeting: "Information gathering meeting",
   client_slack_channel: "Client Slack channel creation",

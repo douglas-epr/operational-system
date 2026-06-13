@@ -1,4 +1,4 @@
-# Chamadas de API (API Connectors)
+﻿# Chamadas de API (API Connectors)
 
 ## Brevo
 
@@ -284,10 +284,10 @@ Este conector de API integra chamadas para verificação de talentos e clientes,
 
 | Call | Método | Path |
 |---|---|---|
-| Talent verification | GET | https://blurapps.com/version-test/api/1.1/wf/talent_verification |
-| Client verification | GET | https://blurapps.com/version-test/api/1.1/wf/client_verification |
-| Convert Structure & Align JSON Text | POST | https://blurapps.com/version-test/api/1.1/wf/convert_json_text_into_json_object |
-| Convert Refining ICP JSON Text | POST | https://blurapps.com/version-test/api/1.1/wf/convert_json_text_into_json_object |
+| Talent verification | GET | https://move37.fun/version-test/api/1.1/wf/talent_verification |
+| Client verification | GET | https://move37.fun/version-test/api/1.1/wf/client_verification |
+| Convert Structure & Align JSON Text | POST | https://move37.fun/version-test/api/1.1/wf/convert_json_text_into_json_object |
+| Convert Refining ICP JSON Text | POST | https://move37.fun/version-test/api/1.1/wf/convert_json_text_into_json_object |
 
 ### Chamadas
 

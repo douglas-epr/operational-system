@@ -87,7 +87,7 @@ export default function SettingsShell({
           <div className="mb-3">
             <h2 className="text-lg font-semibold text-text-primary">Agency</h2>
             <p className="text-sm text-text-muted mt-1">
-              The agency this Blur Studio install belongs to. Only admins can
+              The agency this Move37 install belongs to. Only admins can
               edit this.
             </p>
           </div>

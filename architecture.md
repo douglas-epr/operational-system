@@ -1,4 +1,4 @@
-# Architecture — Blur Studio Internal Tools
+﻿# Architecture — Move37 Operational System
 
 Last updated: 2026-05-01
 

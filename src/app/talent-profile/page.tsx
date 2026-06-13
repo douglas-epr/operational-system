@@ -31,11 +31,11 @@ export default async function TalentProfilePage({
     <div className="min-h-screen bg-base flex flex-col">
       <header className="px-6 py-4 border-b border-border flex items-center justify-between bg-elevated">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-md bg-accent flex items-center justify-center text-white text-sm font-bold">
-            B
+          <div className="w-8 h-8 rounded-md bg-[#FFB800] flex items-center justify-center text-[#0D0D1A] text-sm font-bold">
+            M
           </div>
           <span className="text-sm font-semibold text-text-primary tracking-tight">
-            Blur Studio
+            Move37
           </span>
         </div>
         <span className="text-xs text-text-muted">
@@ -68,7 +68,7 @@ function ExpiredCard({ message }: { message: string }) {
         </h1>
         <p className="text-sm text-text-secondary">{message}</p>
         <p className="text-xs text-text-muted mt-4">
-          Ask your contact at Blur Studio to send you a new link.
+          Ask your contact at Move37 to send you a new link.
         </p>
       </div>
     </div>

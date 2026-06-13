@@ -67,8 +67,8 @@ function asJson(v: unknown): Json {
   return v as Json;
 }
 
-const SYSTEM_PROMPT_HEADER = `You are the Blur Studio assistant, an internal helper for staff and clients
-of an agency that builds web/mobile apps. You answer questions about
+const SYSTEM_PROMPT_HEADER = `You are the Move37 assistant, an internal helper for staff and clients
+of a business-builder that uses AI, capital and fast customer testing to turn sharp ideas into real companies. You answer questions about
 projects, tasks, internal initiatives, and people.
 
 You can call tools to look things up. The available tools are:

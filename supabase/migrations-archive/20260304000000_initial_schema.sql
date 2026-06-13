@@ -1,5 +1,5 @@
--- ================================================================
--- BLUR STUDIO INTERNAL TOOLS — INITIAL SCHEMA MIGRATION
+﻿-- ================================================================
+-- Move37 INTERNAL TOOLS — INITIAL SCHEMA MIGRATION
 -- Generated : 2026-03-04
 -- Sources   : docs/reference_docs/tabelas.md
 --             docs/reference_docs/option-sets.md
@@ -306,6 +306,38 @@ CREATE TYPE public.os_tool AS ENUM (
 
 -- ────────────────────────────────────────────────────────────────
 -- SECTION 2 · HELPER FUNCTIONS FOR RLS
+-- Defined after public.profiles (SECTION 3) — see below.
+-- ────────────────────────────────────────────────────────────────
+
+
+-- ────────────────────────────────────────────────────────────────
+-- SECTION 3 · TABLES  (dependency order)
+-- Source: docs/reference_docs/tabelas.md
+--
+-- Convention:
+--   • "image" / "file" Bubble fields → TEXT (Supabase Storage URL)
+--   • "list of User" → UUID[] (authorized_users pattern)
+--   • "list of os_user_type" → os_user_type[]
+--   • Large option sets (country, time) → TEXT
+--   • Deleted fields are omitted
+-- ────────────────────────────────────────────────────────────────
+
+-- ── profiles (extends auth.users) ──────────────────────────────
+-- Bubble: User data type
+CREATE TABLE public.profiles (
+  id         UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  first_name TEXT,
+  last_name  TEXT,
+  picture    TEXT,                         -- Storage URL
+  signature  TEXT,                         -- Storage URL (file)
+  type       public.os_user_type,
+  country    TEXT,                         -- os_country: 137 values → text
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ────────────────────────────────────────────────────────────────
+-- SECTION 2 · HELPER FUNCTIONS FOR RLS (placed here so public.profiles exists)
 -- Called inside every policy; SECURITY DEFINER so they bypass RLS
 -- themselves and always query as the service role.
 -- ────────────────────────────────────────────────────────────────
@@ -339,33 +371,6 @@ AS $$
     false
   )
 $$;
-
-
--- ────────────────────────────────────────────────────────────────
--- SECTION 3 · TABLES  (dependency order)
--- Source: docs/reference_docs/tabelas.md
---
--- Convention:
---   • "image" / "file" Bubble fields → TEXT (Supabase Storage URL)
---   • "list of User" → UUID[] (authorized_users pattern)
---   • "list of os_user_type" → os_user_type[]
---   • Large option sets (country, time) → TEXT
---   • Deleted fields are omitted
--- ────────────────────────────────────────────────────────────────
-
--- ── profiles (extends auth.users) ──────────────────────────────
--- Bubble: User data type
-CREATE TABLE public.profiles (
-  id         UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  first_name TEXT,
-  last_name  TEXT,
-  picture    TEXT,                         -- Storage URL
-  signature  TEXT,                         -- Storage URL (file)
-  type       public.os_user_type,
-  country    TEXT,                         -- os_country: 137 values → text
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
 
 -- ── company ────────────────────────────────────────────────────
 -- Bubble: company data type

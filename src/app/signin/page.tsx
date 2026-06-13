@@ -19,11 +19,11 @@ export default function SignInPage() {
       <div className="flex flex-col bg-[#f5f5f7]">
         {/* Logo — top-left */}
         <div className="p-6 flex items-center gap-2">
-          <div className="w-6 h-6 rounded bg-accent flex items-center justify-center text-white text-xs font-bold leading-none select-none">
-            b
+          <div className="w-6 h-6 rounded bg-[#FFB800] flex items-center justify-center text-[#0D0D1A] text-xs font-bold leading-none select-none">
+            M
           </div>
           <span className="text-[13px] font-semibold text-[#1a1a1a]">
-            Blur Studio
+            Move37
           </span>
         </div>
 
@@ -49,7 +49,7 @@ export default function SignInPage() {
       {/* ── Right panel — branding ──────────────────────────────────── */}
       <div className="hidden lg:flex flex-col items-center justify-center bg-[#4338ca] px-12 text-white text-center">
         <h1 className="text-4xl font-bold leading-tight mb-3">
-          Welcome to Blur Studio!
+          Welcome to Move37!
         </h1>
         <p className="text-base text-white/80 mb-10">
           Easily manage and track your projects all in one place.
@@ -72,7 +72,7 @@ function SignInForm({ onForgotPassword }: { onForgotPassword: () => void }) {
     <form action={action} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
       <h2 className="text-2xl font-bold text-[#1a1a1a] mb-2">Sign In</h2>
       <p className="text-sm text-[#6b7280] mb-6">
-        Use the fields below to sign in to your Blur Apps account.
+        Use the fields below to sign in to your Move37 account.
       </p>
 
       {state?.error && (

@@ -1,4 +1,4 @@
-# Option Sets
+﻿# Option Sets
 
 ## os_tab
 
@@ -257,14 +257,14 @@ Este Option Set armazena nomes de países e seus respectivos valores de banco de
 # os_variable
 
 ## Summary
-Option Set para definir variáveis e seus valores, como "Stage position main" e "Blur Studio agenda".
+Option Set para definir variáveis e seus valores, como "Stage position main" e "Move37 agenda".
 
 ## Opções
 
 | Opção | Valor |
 |-------|-------|
 | Stage position main | 11 |
-| Blur Studio agenda | https://cal.com/blurstudio/strategy |
+| Move37 agenda | https://cal.com/Move37/strategy |
 
 **Atributos:** value (text)
 
@@ -591,7 +591,7 @@ Este Option Set define as diferentes fases de um projeto, com informações asso
 | Opção (Display)             | Valor (db_value)              | Posição | Ação             | Programas Associados (REDACTED)                                               |
 | --------------------------- | ----------------------------- | ------- | ---------------- | ----------------------------------------------------------------------------- |
 | Discovery meeting           | discovery_call                | 1       | Schedule Meeting | sandbox_launch, market_ready_product, scale_ready_system, subscription        |
-| System activation (Blur Studio internal tool) | REDACTED                      | 2       | -                | sandbox_launch, market_ready_product, scale_ready_system, subscription        |
+| System activation (Move37 internal tool) | REDACTED                      | 2       | -                | sandbox_launch, market_ready_product, scale_ready_system, subscription        |
 | Non-Disclosure agreement (NDA) | programs                      | 3       | Sign NDA         | sandbox_launch, market_ready_product, scale_ready_system, subscription        |
 | Information gathering meeting | information_gathering_meeting | 4       | Schedule Meeting | sandbox_launch, market_ready_product, scale_ready_system, subscription        |
 | Client Slack channel creation | client_slack_channel_creation | 5       | -                | sandbox_launch, market_ready_product, scale_ready_system, subscription        |
@@ -814,7 +814,7 @@ Option Set que armazena depoimentos de referências, incluindo o nome do referen
 
 | Opção (referral_testimonials) | Valor (referral_testimonials) | referrer_name | testimonial_body | referrer_subtitle | testimonial_title |
 |---|---|---|---|---|---|
-| Aditya Pati | bTRZp | Aditya Pati | I have referred multiple Bubble projects to Blur Apps (Ranjit) and the whole process was extremely smooth. \n\nExtremely reliable considering the vast experience they have. I love how their systems have ensured timely referral payments while ensuring the clients have flawless onboarding. \n\nBlur Apps has helped me connect my trusted network to folks who can ensure a quality outcome. | Founder, Era Of No Code | Connecting my trusted network to folks who ensure quality outcomes |
+| Aditya Pati | bTRZp | Aditya Pati | I have referred multiple Bubble projects to Move37 (Ranjit) and the whole process was extremely smooth. \n\nExtremely reliable considering the vast experience they have. I love how their systems have ensured timely referral payments while ensuring the clients have flawless onboarding. \n\nMove37 has helped me connect my trusted network to folks who can ensure a quality outcome. | Founder, Era Of No Code | Connecting my trusted network to folks who ensure quality outcomes |
 (Exibindo 1 de 1 opção)
 
 **Atributos:** Referrer Name (text), Testimonial Body (text), Referrer Subtitle (text), Testimonial Title (text)

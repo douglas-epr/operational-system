@@ -196,7 +196,7 @@ export default function TalentSelfEditForm({ code, initial }: Props) {
             disabled
             className="input-field opacity-60"
             placeholder="—"
-            title="Only Blur Studio staff can change your current company."
+            title="Only Move37 staff can change your current company."
           />
         </Field>
       </div>

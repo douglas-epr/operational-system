@@ -9,7 +9,7 @@
  *
  *   - `pinned`  — user clicked the toggle icon; sidebar stays expanded and
  *                 reserves 232 px of layout space (main column shifts).
- *                 Persists in localStorage (`blur:sidebar-pinned`).
+ *                 Persists in localStorage (`move37:sidebar-pinned`).
  *   - `hovered` — transient mouse-over state; expands the sidebar visually
  *                 as an OVERLAY on top of the main content. The main column
  *                 does NOT reflow on hover.
@@ -35,7 +35,7 @@ interface SidebarState {
 
 const SidebarContext = createContext<SidebarState | null>(null);
 
-const STORAGE_KEY = "blur:sidebar-pinned";
+const STORAGE_KEY = "move37:sidebar-pinned";
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [pinned, setPinnedState] = useState<boolean>(false);

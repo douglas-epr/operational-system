@@ -53,7 +53,7 @@ export default function AgencyForm({ initialAgency }: Props) {
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Blur Studio"
+          placeholder="Move37"
           className={inputClass}
           disabled={isPending}
           maxLength={120}
@@ -68,7 +68,7 @@ export default function AgencyForm({ initialAgency }: Props) {
           type="url"
           value={website ?? ""}
           onChange={(e) => setWebsite(e.target.value)}
-          placeholder="https://blurapps.com"
+          placeholder="https://move37.fun"
           className={inputClass}
           disabled={isPending}
         />

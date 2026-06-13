@@ -15,10 +15,10 @@ export default function ResetPasswordPage() {
         <div className="w-full max-w-[400px] bg-white rounded-2xl shadow-sm border border-gray-200 px-8 py-10">
           {/* Logo */}
           <div className="flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 rounded-md bg-[#4338ca] flex items-center justify-center text-white font-bold text-sm">
-              b
+            <div className="w-8 h-8 rounded-md bg-[#FFB800] flex items-center justify-center text-[#0D0D1A] font-bold text-sm">
+              M
             </div>
-            <span className="text-sm font-semibold text-gray-800">Blur Studio</span>
+            <span className="text-sm font-semibold text-gray-800">Move37</span>
           </div>
 
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Set new password</h1>
@@ -120,7 +120,7 @@ export default function ResetPasswordPage() {
           </div>
           <h2 className="text-3xl font-bold mb-3">Secure your account</h2>
           <p className="text-white/70 text-sm leading-relaxed">
-            Choose a strong, unique password to keep your Blur Studio account safe.
+            Choose a strong, unique password to keep your Move37 account safe.
           </p>
         </div>
       </div>

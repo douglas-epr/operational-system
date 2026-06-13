@@ -1812,7 +1812,7 @@ Agreed Solution: {{agreed_solution}}
 
 Write the full strategic document now.`;
 
-const FALLBACK_SCORER = `You are a neutral referee and scorer evaluating a business idea for Blur Studio. The Devil's Advocate debate has concluded. You have the agreed problem + solution + the full debate transcript. Your job is two-part:
+const FALLBACK_SCORER = `You are a neutral referee and scorer evaluating a business idea for Move37. The Devil's Advocate debate has concluded. You have the agreed problem + solution + the full debate transcript. Your job is two-part:
 
 PART A — Score the idea's COMPLETENESS against its OWN framing (6 areas, same rubric as always). These scores measure how well the founder has DONE THE DISCOVERY WORK — they are NOT adjusted for the debate outcome. The alignment multiplier (not your job) handles the "wrong problem" penalty.
 
@@ -1920,7 +1920,7 @@ Do NOT include playbook_html here — it is generated in a separate call.
 
 // Scorer playbook HTML call: returns only the playbook_html section as plain-text HTML.
 // Called with generateAiTextResponse so there is no JSON-parse step and no size limit.
-const FALLBACK_SCORER_HTML = `You are writing the strategic playbook section of a Devil's Advocate report for Blur Studio.
+const FALLBACK_SCORER_HTML = `You are writing the strategic playbook section of a Devil's Advocate report for Move37.
 
 ## STRUCTURE (use these exact section titles as <h2> headings, in this order)
 1. The Core Problem
@@ -1955,7 +1955,7 @@ Summary: {{summary}}
 
 Write the full playbook now.`;
 
-const FALLBACK_REPORT = `You are a Critical Thought Partner and Devil's Advocate evaluating a business idea for Blur Studio, BEFORE any build work begins. This is a go/no-go gate: the team has done discovery (problem, customers, positioning, competition) but has NOT yet written a PRD, designed a database, or planned the build. Your job is to decide — honestly — whether this idea deserves to move into the build steps, or whether it should be refined or killed first.
+const FALLBACK_REPORT = `You are a Critical Thought Partner and Devil's Advocate evaluating a business idea for Move37, BEFORE any build work begins. This is a go/no-go gate: the team has done discovery (problem, customers, positioning, competition) but has NOT yet written a PRD, designed a database, or planned the build. Your job is to decide — honestly — whether this idea deserves to move into the build steps, or whether it should be refined or killed first.
 
 You do not optimize for agreement. You optimize for truth quality and decision integrity. The founder has probably already talked themselves into this. Provide the resistance their echo chamber has not.
 
@@ -2493,7 +2493,7 @@ Benchmarking: ${stripHtml(benchmarking?.overview) || "Not defined"} / ${stripHtm
  * in supabase/migrations/20260421000000_idea_chatbot.sql — the DB row wins
  * (editable via /prompts); this constant is a fallback when the row is missing.
  */
-const FALLBACK_IDEA_CHATBOT = `You are a senior product strategist acting as an AI co-pilot inside Blur Studio's Sandbox Planner. You are embedded as a floating chat widget on the idea the user is currently refining. Answer questions using ONLY the [IDEA CONTEXT] block and the [CHAT HISTORY] below.
+const FALLBACK_IDEA_CHATBOT = `You are a senior product strategist acting as an AI co-pilot inside Move37's Sandbox Planner. You are embedded as a floating chat widget on the idea the user is currently refining. Answer questions using ONLY the [IDEA CONTEXT] block and the [CHAT HISTORY] below.
 
 ## GROUNDING RULES (non-negotiable)
 1. Use ONLY the [IDEA CONTEXT] — never invent facts, metrics, competitors, features, or personas. If the user asks about a field that is empty or missing, say so explicitly ("That field is not defined yet — the user hasn't filled it out").
@@ -2718,7 +2718,7 @@ export async function sendChatMessage(
 
 // ── Devil's Advocate Chatbot ──────────────────────────────────────────────────
 
-const FALLBACK_DEVIL_ADVOCATE_CHATBOT = `You are a Devil's Advocate co-pilot embedded in Blur Studio's Sandbox Planner. Your role is to challenge the user's thinking through a structured two-gate dialogue — first validating that they are solving the right problem, then stress-testing the solution. Your goal is better decisions, not faster ones.
+const FALLBACK_DEVIL_ADVOCATE_CHATBOT = `You are a Devil's Advocate co-pilot embedded in Move37's Sandbox Planner. Your role is to challenge the user's thinking through a structured two-gate dialogue — first validating that they are solving the right problem, then stress-testing the solution. Your goal is better decisions, not faster ones.
 
 ## IDENTITY & STANDING RULES (non-negotiable at every turn)
 1. ANTI-SYCOPHANCY: Never open with praise ("Great idea!", "That makes sense!"). Open with the sharpest relevant question or the strongest counter-argument. If you genuinely agree, state the best case against first — then explain why it fails.

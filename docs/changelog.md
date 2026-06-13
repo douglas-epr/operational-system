@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
@@ -382,7 +382,7 @@ The highest-leverage slice: any project can now collect real demand signals. Pre
 - `ConversationPane` pre-fetches these the moment a conversation loads, so the blue + red bubbles render on the first paint instead of only after the user clicks the tabs. The kanban-wrapper polling (every 2s) continues to refresh the same state.
 
 **🟠 Hover-to-expand sidebar (`src/components/layout/SidebarContext.tsx`, `Sidebar.tsx`, `PageShell.tsx`)**
-- `SidebarContext` now models two independent states — `pinned` (user clicked the toggle, layout reserves 232px) and `hovered` (transient mouse-over, sidebar widens as an OVERLAY without shifting main content). Every page starts collapsed; user pin choice persists in `localStorage` (`blur:sidebar-pinned`).
+- `SidebarContext` now models two independent states — `pinned` (user clicked the toggle, layout reserves 232px) and `hovered` (transient mouse-over, sidebar widens as an OVERLAY without shifting main content). Every page starts collapsed; user pin choice persists in `localStorage` (`move37:sidebar-pinned`).
 - 150ms close delay on `mouseleave` so the sidebar doesn't snap shut when the cursor crosses a sub-element.
 - Removed the now-redundant `defaultSidebarCollapsed` prop from `PageShell` + `chat/page.tsx` + `sandbox-planner/page.tsx`.
 
@@ -1392,7 +1392,7 @@ box. Two issues, fixed together so `npm run dev` boots cleanly:
   Fixed by switching to `@import "tailwindcss" source(none)` plus
   explicit `@source "./"`, `@source "../components"`, `@source "../lib"`
   pins. Verified: `GET /` → 307 → `/signin` → 200 OK with the rendered
-  Blur Studio sign-in page.
+  Move37 sign-in page.
 
 ## [2026-04-28] — `/chat` bug-fix + UX rework pass
 
@@ -1677,7 +1677,7 @@ earnings.
 - **Shell.** `src/app/recommended-projects/_components/RecommendedProjectsShell.tsx`:
   - Search + filter row (name, Dev/Agency Owner, Agency placeholder,
     Client, Status).
-  - 3 KPI cards — `Blur Studio` (Revenue + Profit), `Devs/Agency
+  - 3 KPI cards — `Move37` (Revenue + Profit), `Devs/Agency
     Owners + Clients` (provider revenue), `Projects` (count).
     For referrer users the middle card becomes `Your Earnings` and
     the table drops the `Provider Revenue` / `Profit` columns,
@@ -2757,7 +2757,7 @@ Two related improvements to the Sandbox Planner export + final-step experience.
 - **AI prompt** (DB-seeded + `FALLBACK_REPORT`): 6-area weighted rubric totalling 100% — Customer/Problem/Reality 25%, Competitive/Alternative 15%, Strategic Positioning 20%, Market Validation 10%, Business/Execution 15%, MVP Scope/Risk 15%. Each area returns `raw_score_pct`, `weighted_points = round(raw * weight / 100)`, `status` (strong ≥ 80 / average 60–79 / weak < 60), and a one-sentence justification. Five automatic penalties (competitors count < 2, alpha/beta API dependency, missing success metrics, single-ICP, empty out-of-scope). `final_score = clamp(0, 100, Σ weighted − Σ |penalties|)`; threshold bucket derived server-side. Playbook HTML must cover 11 required sections.
 - **Server action** (`actions.ts`): `PROMPT_ID_BY_STEP.report`, `FALLBACK_REPORT`, `generateReport()` (loads structure/ICPs/suggestions/product-def/benchmarking/PRD/database/styles/milestones in parallel inside `triggerAiGeneration`, strips HTML per field, reconciles area scores + penalties server-side, clamps `final_score`, rederives threshold, upserts `idea_report`), `saveReport()` for manual headline/summary edits, and new `case "report":` in the switch.
 - **Page fetch**: `sandbox-planner/page.tsx` adds a parallel `idea_report` fetch and wires it into `ideaFull.report`.
-- **UI** (`ReportStep.tsx`): two-column dashboard — donut SVG score, colour-coded threshold badge ("Ready for Sandbox" / "Needs Refinement" / "High Risk"), editable headline + summary with Save, "Weighted Score Summary" card listing all 6 areas with status pills and raw-score numbers, "Automatic Penalties Applied" card, right-rail Next Steps card + Threshold Guide + Founders Program promo, and a "Blur Studio Playbook" preview card with a **Live Preview** button.
+- **UI** (`ReportStep.tsx`): two-column dashboard — donut SVG score, colour-coded threshold badge ("Ready for Sandbox" / "Needs Refinement" / "High Risk"), editable headline + summary with Save, "Weighted Score Summary" card listing all 6 areas with status pills and raw-score numbers, "Automatic Penalties Applied" card, right-rail Next Steps card + Threshold Guide + Founders Program promo, and a "Move37 Playbook" preview card with a **Live Preview** button.
 - **Modal** (`ReportPreviewModal.tsx`): printable playbook surface with cover donut + inline hex styling (no oklch, html2canvas-safe), toolbar with PDF + DOCX export. PDF uses the new shared `exportElementToPdf` helper; DOCX uses the existing `html-docx-js` path.
 - **Auto-trigger**: `useAutoTriggerAi(idea.id, "report", report.final_score == null, isAiWorking)` — first visit auto-fires generation.
 - **Ancillary**: `AiLoadingOverlay.STEP_FIELDS.report` wired, Supabase TypeScript types regenerated, `next.config.ts` pins `turbopack.root` to the project directory.
@@ -3156,7 +3156,7 @@ Full flow tested with idea "TaskFlow AI — Smart Task Delegation Platform":
   - 3 view states (mirrors Bubble `custom.view_`): `signin`, `reset_password`, `email_sent`
   - Split screen layout: left (light grey + white card), right (indigo branding panel)
   - All forms use `useActionState` for progressive enhancement
-  - Logo mark + "Blur Studio" in top-left corner
+  - Logo mark + "Move37" in top-left corner
 - TypeScript: 0 errors
 
 ---
@@ -3196,7 +3196,7 @@ Full flow tested with idea "TaskFlow AI — Smart Task Delegation Platform":
   - Typography helper classes
   - Layout shell classes (`.sidebar`, `.page-shell`)
   - Custom scrollbar styling
-- Updated `src/app/layout.tsx`: title → "Blur Studio", `<html class="dark">` set
+- Updated `src/app/layout.tsx`: title → "Move37", `<html class="dark">` set
 
 ---
 

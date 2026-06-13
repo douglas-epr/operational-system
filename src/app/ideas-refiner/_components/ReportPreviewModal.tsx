@@ -118,7 +118,7 @@ ${body}
   const subtitle = report?.playbook_subtitle ?? `Generated for ${ideaName}`;
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Blur Studio Playbook" width="max-w-4xl">
+    <Modal open={isOpen} onClose={onClose} title="Move37 Playbook" width="max-w-4xl">
       <div className="flex flex-col">
         <div className="flex items-center justify-end gap-2 px-6 pt-2 pb-4 border-b border-border">
           <button

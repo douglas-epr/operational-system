@@ -1,4 +1,4 @@
-# Elementos Reutilizáveis
+﻿# Elementos Reutilizáveis
 
 ## Group Empty Repeating Group
 
@@ -31,7 +31,7 @@ Elemento reutilizável que funciona como uma barra lateral (sidebar), exibindo o
 ## Estrutura
 *   **Group A** (Group) - Contêiner principal da sidebar.
     *   **Group Logo Wrap** (Group) - Agrupa os elementos do logo.
-        *   **Text B** (Text) - Exibe o nome da empresa "Blur Studio".
+        *   **Text B** (Text) - Exibe o nome da empresa "Move37".
         *   **Group Logo Shadow 1** (Group) - Container para a imagem logomarca e sua sombra.
             *   **Image B** (Image) - Exibe a imagem da logomarca.
             *   **Group Logo Shadow 2** (Group) - Grupo para sombra adicional da logo.

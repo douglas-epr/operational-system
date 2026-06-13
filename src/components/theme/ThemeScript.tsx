@@ -4,7 +4,7 @@
  *
  * Without this we'd see a flash of dark theme on a system that prefers
  * light (or vice-versa). The script:
- *   1. Reads `localStorage.getItem("blur-theme")` → "light" | "dark" | "system" | null
+ *   1. Reads `localStorage.getItem("move37-theme")` → "light" | "dark" | "system" | null
  *   2. Falls back to `system` (which respects `prefers-color-scheme`)
  *   3. Sets `document.documentElement.classList` to either `light` or `dark`
  *
@@ -16,7 +16,7 @@
 const SCRIPT = `
 (function () {
   try {
-    var stored = localStorage.getItem("blur-theme");
+    var stored = localStorage.getItem("move37-theme");
     var pref = stored === "light" || stored === "dark" ? stored : null;
     if (!pref) {
       pref = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";

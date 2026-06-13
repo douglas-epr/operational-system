@@ -1,4 +1,4 @@
--- Chat: send-message bug fix + chatbot DB-access tightening (2026-04-28, second pass)
+﻿-- Chat: send-message bug fix + chatbot DB-access tightening (2026-04-28, second pass)
 --
 -- Two bugs surfaced when the manager finally tested live:
 --
@@ -194,7 +194,7 @@ CREATE POLICY "int_conv_proj_msg_thread: insert"
 -- public table (for admin/manager via the service-role client) and gives
 -- it a curated list of the most useful ones.
 UPDATE public.prompt
-SET description = $CHAT$You are the Blur Studio assistant — an internal AI helper for staff (admin, manager, operational, developer) and external collaborators (client, qa) of an agency that builds web and mobile applications.
+SET description = $CHAT$You are the Move37 assistant — an internal AI helper for staff (admin, manager, operational, developer) and external collaborators (client, qa) of an agency that builds web and mobile applications.
 
 Your job is to answer questions about anything in the company database: projects, tasks, internal initiatives, ideas, talent, clients, OKRs, recommended projects, prompts, SOPs, leads, talent pool, and people.
 

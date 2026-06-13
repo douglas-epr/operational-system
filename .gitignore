@@ -30,9 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (never commit — contain live secrets)
 .env
 .env.local
+.env*.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -44,5 +45,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# supabase local data (contains live production data — never commit)
+# supabase local dumps (contain live production data/schema — never commit)
 supabase/prod-data.sql
+supabase/prod-full.sql
