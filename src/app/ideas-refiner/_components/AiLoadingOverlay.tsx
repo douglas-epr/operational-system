@@ -16,7 +16,16 @@ import type { IdeaBlock } from "@/types/idea-refiner";
 import { IDEA_BLOCK_LABELS } from "@/types/idea-refiner";
 import { clearAiWorking } from "../actions";
 
-const STUCK_TIMEOUT_MS = 270_000; // 270 s — slightly past the 240 s client timeout
+/** Default stuck timeout for single-shot steps (≤4 AI calls). */
+const STUCK_TIMEOUT_MS = 270_000;
+/** strategic_frameworks loops one AI call per ICP — allow 10 min for up to ~10 ICPs. */
+const STRATEGIC_FRAMEWORKS_STUCK_TIMEOUT_MS = 600_000;
+/**
+ * The Report step runs a multi-call debate pipeline (up to ~14 AI calls).
+ * Give it enough headroom so the stuck-state auto-clear never fires while
+ * a valid generation is still running — 25 min covers the worst case.
+ */
+const REPORT_STUCK_TIMEOUT_MS = 1_500_000;
 
 /** Field names that AI updates per step — shown in the "soon you will have…" message. */
 const STEP_FIELDS: Record<IdeaBlock, string[]> = {
@@ -29,7 +38,7 @@ const STEP_FIELDS: Record<IdeaBlock, string[]> = {
     "How problems could be solved",
     "Our Solution Value",
   ],
-  product_definition_flows: ["Product Summary", "Feature List & Logic"],
+  product_definition_flows: ["Product Summary", "Feature List & Logic", "Go-to-Market"],
   strategic_frameworks: [
     "Value Proposition",
     "JTBD Synthesis",
@@ -53,10 +62,11 @@ const STEP_FIELDS: Record<IdeaBlock, string[]> = {
   visual_styles: ["Brand Identity", "Color System", "Typography", "Spacing & Shadows", "Motion & Iconography"],
   milestones_and_tasks: ["Milestones & Tasks"],
   report: [
-    "Readiness Score",
-    "Weighted Area Breakdown",
-    "Automatic Penalties",
-    "Blur Studio Playbook",
+    "Devil's Advocate Debate",
+    "Agreed Problem & Solution",
+    "Alignment Score",
+    "Revised Idea Description",
+    "Go/No-Go Verdict",
   ],
 };
 
@@ -91,11 +101,16 @@ export default function AiLoadingOverlay({
     if (justCompleted) setShowSuccess(true);
   }, [justCompleted]);
 
-  // Stuck-state detector: if the overlay has been showing for 155 s without
+  // Stuck-state detector: if the overlay has been showing too long without
   // resolving, the server-side generation probably crashed. Clear the flag so
-  // the step becomes interactive again.
+  // the step becomes interactive again. The report step uses a longer timeout
+  // because it runs a multi-call debate pipeline (~12-20 AI calls).
   useEffect(() => {
     if (justCompleted) return; // already done — don't arm the timer
+    const timeoutMs =
+      step === "report" ? REPORT_STUCK_TIMEOUT_MS :
+      step === "strategic_frameworks" ? STRATEGIC_FRAMEWORKS_STUCK_TIMEOUT_MS :
+      STUCK_TIMEOUT_MS;
     const timer = setTimeout(async () => {
       setIsStuck(true);
       toast.error(
@@ -103,7 +118,7 @@ export default function AiLoadingOverlay({
         { duration: 10_000 }
       );
       await clearAiWorking(ideaId);
-    }, STUCK_TIMEOUT_MS);
+    }, timeoutMs);
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ideaId, step]);

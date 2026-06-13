@@ -27,6 +27,7 @@ import MilestonesAndTasksStep from "./MilestonesAndTasksStep";
 import ReportStep from "./ReportStep";
 import AiConfigModal from "./AiConfigModal";
 import IdeaChatbot from "./IdeaChatbot";
+import IdeaDevilAdvocateChatbot from "./IdeaDevilAdvocateChatbot";
 
 interface SandboxPlannerShellProps {
   ideas: Idea[];
@@ -325,9 +326,12 @@ export default function SandboxPlannerShell({
         )}
       </div>
 
-      {/* Floating Idea Chatbot — visible on all 10 refinement tabs */}
+      {/* Floating chatbots — visible on all 10 refinement tabs */}
       {activeTab !== "ideas" && (
-        <IdeaChatbot ideaId={ideaFull.idea.id} currentTab={activeTab} />
+        <>
+          <IdeaDevilAdvocateChatbot ideaId={ideaFull.idea.id} currentTab={activeTab} />
+          <IdeaChatbot ideaId={ideaFull.idea.id} currentTab={activeTab} />
+        </>
       )}
 
       {/* Inline AI config modal — opened by timeout/error toasts */}

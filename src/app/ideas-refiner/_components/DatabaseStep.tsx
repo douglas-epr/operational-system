@@ -11,8 +11,8 @@ import { saveDatabase, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import RichTextEditor from "./RichTextEditor";
-import { useAutoTriggerAi, clearAutoTriggerGuard, isBlankHtml } from "../_hooks/useAutoTriggerAi";
-import { runAiWithTimeout } from "../_hooks/useAiWithTimeout";
+import { useAutoTriggerAi, isBlankHtml } from "../_hooks/useAutoTriggerAi";
+import { useRegenerate } from "../_hooks/useRegenerate";
 
 interface DatabaseStepProps {
   ideaFull: IdeaFull;
@@ -26,8 +26,7 @@ export default function DatabaseStep({ ideaFull }: DatabaseStepProps) {
   const [relationships, setRelationships] = useState(database?.relationships ?? "");
   const [notes, setNotes] = useState(database?.notes ?? "");
   const [isSaving, setIsSaving] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "database", isAiWorking);
 
   useEffect(() => {
     setTablesSchema(database?.tables_schema ?? "");
@@ -63,14 +62,8 @@ export default function DatabaseStep({ ideaFull }: DatabaseStepProps) {
     if (result.error) setError(result.error);
   }
 
-  async function handleRegenerate() {
-    setIsRegenerating(true);
-    setError(null);
-    clearAutoTriggerGuard(idea.id, "database");
-    const result = await runAiWithTimeout(() => triggerAiGeneration(idea.id, "database"));
-
-    setIsRegenerating(false);
-    if (result.error) setError(result.error);
+  function handleRegenerate() {
+    return triggerRegenerate(() => triggerAiGeneration(idea.id, "database"));
   }
 
   if (isAiWorking || isRegenerating) {

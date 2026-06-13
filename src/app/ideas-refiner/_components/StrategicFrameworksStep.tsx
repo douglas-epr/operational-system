@@ -14,8 +14,8 @@ import { cn } from "@/lib/utils";
 import IcpPillSelector from "./IcpPillSelector";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import RichTextEditor from "./RichTextEditor";
-import { useAutoTriggerAi, clearAutoTriggerGuard } from "../_hooks/useAutoTriggerAi";
-import { runAiWithTimeout } from "../_hooks/useAiWithTimeout";
+import { useAutoTriggerAi } from "../_hooks/useAutoTriggerAi";
+import { useRegenerate } from "../_hooks/useRegenerate";
 
 /** Fields that count toward "completion" for an ICP's strategic frameworks. */
 const FRAMEWORK_FIELDS: (keyof IdeaIcp)[] = [
@@ -85,9 +85,8 @@ export default function StrategicFrameworksStep({ ideaFull }: StrategicFramework
     icps[0]?.id ?? null
   );
   const [editState, setEditState] = useState<Record<string, IcpEditState>>({});
-  const [isRegenerating, setIsRegenerating] = useState(false);
+  const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "strategic_frameworks", isAiWorking);
   const [isSavingFramework, setIsSavingFramework] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const selectedIcp = icps.find((i) => i.id === selectedIcpId) ?? null;
 
@@ -174,16 +173,10 @@ export default function StrategicFrameworksStep({ ideaFull }: StrategicFramework
     if (result.error) setError(result.error);
   }
 
-  async function handleRegenerate() {
-    setIsRegenerating(true);
-    setError(null);
-    clearAutoTriggerGuard(idea.id, "strategic_frameworks");
-    const result = await runAiWithTimeout(() =>
-      triggerAiGeneration(idea.id, "strategic_frameworks", selectedIcpId ?? undefined)
+  function handleRegenerate() {
+    return triggerRegenerate(() =>
+      triggerAiGeneration(idea.id, "strategic_frameworks")
     );
-
-    setIsRegenerating(false);
-    if (result.error) setError(result.error);
   }
 
   if (isAiWorking || isRegenerating) {

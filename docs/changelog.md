@@ -3,6 +3,91 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-13] — Ideas Refiner: Report score formula change + hide zero-penalty section
+
+Changed the final score formula from an alignment multiplier to a weighted average, and hid the "Automatic Penalties Applied" section when no penalty points were triggered.
+
+- **`actions.ts`** — Changed `finalScore` computation from `round(completeness × (alignmentScore / 100)) − penaltyTotal` to `round(completeness × 0.75 + alignmentScore × 0.25) − penaltyTotal`. The old multiplicative formula collapsed scores severely when alignment was low (e.g. completeness=65, alignment=63 → 41). The new weighted average treats completeness (75%) and alignment (25%) as balanced inputs.
+- **`ReportStep.tsx`** — Added `penaltyTotal` local variable (`penalties.reduce((s, p) => s + Math.abs(p.points), 0)`). Updated the score math display line to read "Completeness N × 75% + Alignment M × 25% − P penalties = F". Wrapped the "Automatic Penalties Applied" block in `{penaltyTotal > 0 && (...)}` — hidden when all AI-returned penalty rows have 0 pts (total is zero), rather than checking `penalties.length` which would still show an empty red box.
+- **Supabase backfill** — Updated all existing `idea_report` rows via CTE UPDATE using the new formula. VirtueBud: `final_score` changed from 41 → 65, `threshold_bucket` from `kill` → `refine`. Math: `round(65×0.75 + 63×0.25) = round(64.5) = 65`.
+- **Live test** — Report page shows "Completeness 65 × 75% + Alignment 63 × 25% − 0 penalties = 65"; penalties section not visible (VirtueBud has zero penalty points).
+
+## [2026-06-12] — Ideas Refiner: Strategic Frameworks per-ICP loop + timeout fixes
+
+Refactored Strategic Frameworks AI generation to a sequential per-ICP loop and fixed client/overlay timeouts so a 5-ICP run no longer triggers false alarms.
+
+- **`actions.ts`** — Rewrote `generateStrategicFrameworks` from a single multi-ICP call (exceeds 16,384-token ceiling for 3+ ICPs) to a sequential per-ICP loop: one `generateAiJsonResponse<SingleIcpFrameworkOutput>` call per ICP, each well within the ceiling. Loop iterates `targetIcps` (filtered by `icpId` if supplied, otherwise all ICPs). `isRequestActive` guard between iterations allows a newer run to supersede a running one.
+- **`json-converters.ts`** — Added `SingleIcpFrameworkOutput` type (flat single-ICP response shape, extends `StrategicICP`).
+- **`StrategicFrameworksStep.tsx`** — Fixed `handleRegenerate`: removed `selectedIcpId ?? undefined` arg to `triggerAiGeneration` so all ICPs are regenerated, not just the currently-visible one.
+- **Supabase `prompt` table** — Updated Strategic Frameworks prompt row (`48f29e59-...`) to per-ICP format using `{{icp_name}}`, `{{icp_description}}`, `{{icp_day_in_life}}`, `{{icp_pain_points}}` variables; output is a single flat JSON object.
+- **`useRegenerate.ts`** — Extended 10-minute timeout to `strategic_frameworks` (was report-only); 5 ICPs at ~36s each = ~3-5 min, well within the 4-min default but borderline with slower models.
+- **`AiLoadingOverlay.tsx`** — Added `STRATEGIC_FRAMEWORKS_STUCK_TIMEOUT_MS = 600_000`; `stuck-state` timer now uses 10 min for `strategic_frameworks` (was 4.5 min default). The 270s stuck timer fires `clearAiWorking()` which nulls `current_ai_request_id`, making `isRequestActive` return `false` for remaining ICPs — a premature clear cancels unfinished ICPs.
+- **Live test** — All 5/5 ICPs populated (scores 85, 82, 84, 88, 90/100). Page loads without overlay after generation.
+
+## [2026-06-12] — Ideas Refiner: maxTokens fixes (Benchmarking, Product Definition, Go-to-Market)
+
+Fixed silent AI generation failures across multiple steps caused by the default 8,192-token ceiling being insufficient for large multi-field rich HTML responses.
+
+- **`actions.ts`** — Added `maxTokens: 16384` to `generateBenchmarking`, `generateDatabaseContent`, `generateVisualStylesContent`, and `generateMilestonesContent`. `generateProductDefinition` was already fixed in the prior session.
+- **`loadIdeaFull.ts`** — Added `go_to_market` to the explicit `.select(...)` column list for `idea_product_definition_and_flows`; the column existed in the DB but was silently omitted from every server-side load.
+- **Supabase `prompt` table** — Updated the `product_definition_flows` prompt row (UUID `965408c8-9910-4caf-81b9-376e44410691`) to include the full `"Go-to-Market"` key with a detailed 5-point GTM strategy prompt, so the DB row no longer overrides the updated code fallback with a stale version.
+- **Root cause pattern** — Any `generateAiJsonResponse` call that produces multi-field rich HTML output silently fails when the response exceeds 8,192 tokens: `JSON.parse` throws → `returned_an_error: true` → function returns early → DB not written → overlay clears via stuck timer → empty page. Fix: always pass `maxTokens: 16384` for multi-field rich HTML generation steps.
+- **Live test** — Benchmarking page for idea `f301da01` verified: all 4 fields written (overview 1.8k, comparison 9.5k, business_models 16.8k, takeaways 11.4k chars), Strategic Frameworks tab unlocked after completion.
+
+## [2026-06-12] — Ideas Refiner: Devil's Advocate AI-vs-AI debate pipeline (Report Step 7)
+
+Replaced the single-shot report generation with a full two-gate AI-vs-AI debate pipeline. The Skeptic and Founder's Advocate argue in bounded rounds (≤5/gate), converge on an agreed problem bottleneck and solution, then two synthesis calls (Reframer + Scorer) produce the final report with alignment scoring.
+
+- **DB migration** (`20260611120000_report_devils_advocate.sql`) — Added 8 columns to `idea_report`: `agreed_problem`, `agreed_solution`, `recommendation`, `revised_description`, `completeness_score`, `alignment` (JSONB), `debate_transcript` (JSONB), `debate_meta` (JSONB). Seeded 4 editable prompt rows (Skeptic, Advocate, Reframer, Scorer) in the `prompt` table.
+- **DB migration** (`20260612000000_fix_threshold_bucket_constraint.sql`) — Expanded `threshold_bucket` constraint to allow both old (`ready`, `risk`) and new (`build`, `refine`, `kill`) values.
+- **Types** (`src/types/idea-refiner.ts`) — Added `IdeaReportAlignment` and `IdeaReportDebateTurn` interfaces; extended `IdeaReport` with all 8 new nullable fields.
+- **Server action** (`src/app/ideas-refiner/actions.ts`) — Rewrote `generateReport`: 2-gate debate loop (Skeptic + Advocate, up to `MAX_ROUNDS_PER_GATE=5` each), early-exit on convergence, `isRequestActive` stale-write guard between gates. Reframer step split into JSON meta call + plain-text HTML doc call (`generateAiTextResponse`, 16384 tokens) to avoid JSON-in-JSON encoding problems. Scorer split into meta call (8192 tokens, all fields except `playbook_html`) + HTML call. Score composition: `completeness × (alignment/100) − penalties`. Strips markdown code fences from `revised_description` before storing.
+- **UI** (`src/app/ideas-refiner/_components/ReportStep.tsx`) — Added: (1) "The Debate" collapsible with gate labels, role chips (Skeptic/Advocate), round number, argument content, proposed statements, impasse note; (2) Debate Consensus cards (Agreed Problem, Agreed Solution, Recommendation); (3) Alignment to Correct Framing block (problem-fit %, solution-fit %, reframe-distance pill, alignment score, verdict, rationales); (4) score math line under the donut (`completeness × alignment% − penalties = final`); (5) Revised Idea Description read-only HTML card.
+- **`sanitizeJsonText` state machine** — Applied to all three AI providers (`claude.ts`, `openai.ts`, `gemini.ts`): escapes bare `\n`/`\r`/`\t` inside JSON string values using a character-by-character `inString`/`wasEscaped` state machine.
+- **Client timeout** — Report step uses `timeoutMs: 600_000` (10 min) in `useRegenerate` to cover the full debate loop.
+- **Live test** — Verified on VibeCheck AI idea: all 6 UI sections render, score math checks out (48 × 55% − 0 = 26, Kill verdict), 5-round impasse on both gates, full Revised Idea Description (11-section Quality Bar document).
+
+## [2026-06-10] — Marketing: P1 integrations (Interview Intelligence, booking webhook, Tally survey, traffic tab)
+
+Continued implementing the signal-accuracy improvement plan. All P0 items were already live (migration, types, signals page, TrafficShell, ad campaigns). This session completes the P1 layer.
+
+- **InterviewsShell.tsx** (new) — Full Interview Intelligence client component: add-interview form (name, role, segment, source, date, consent, transcript), per-interview Mom Test analysis panel (pains + severity + quotes, past behaviors highlighted green, hypothetical praise flagged amber, commitment signals, objections), cross-interview synthesis panel (themes, pivot indicators, segment contrast, contradictions, AI recommendation, saturation indicator). Connects to pre-existing `analyzeInterview` / `synthesizeInterviews` server actions.
+- **MarketingProjectNav.tsx** — Added "Interviews" (B2B group) and "Traffic" tabs to the 9-tab funnel nav.
+- **`meeting_booked` event type** — Added to `ALLOWED_EVENT_TYPES` in `public.ts`; the intent gradient now covers the full lifecycle from view → click → scroll → pricing_click → meeting_booked.
+- **`{{booking_link}}` in outreach templates** — Added `booking_link` to `prospectVars()` and a `bookingUrlCache` + `getBookingUrl()` helper in `processDueOutreach`; the cache fetches `mkt_validation.booking_url` once per idea per cron run.
+- **`window.__MKT_BOOKING_URL__` injection** — `getPublishedLanding` now also fetches `mkt_validation.booking_url` (parallel `Promise.all` with the idea fetch); `injectContract` injects it into the iframe contract when present; generated page code can use `window.__MKT_BOOKING_URL__` to power a post-capture "Book a call" CTA.
+- **`/api/webhooks/calcom`** (new) — BOOKING_CREATED → fires `mkt_event type='meeting_booked'` for the funnel + creates `mkt_interview` stub with participant name/email/date and `source='booking'`. Signature verification via `CALCOM_WEBHOOK_SECRET` (skipped in dev). Booking URL must include `?ideaId=<uuid>` — Cal.com passes URL query params into `payload.metadata`.
+- **`/api/webhooks/tally`** (new) — FORM_RESPONSE → reads `signalId` from hidden field, updates `mkt_signal.survey_answers` with all non-hidden field answers. Signature verification via `TALLY_WEBHOOK_SECRET`.
+- **TypeScript** — `tsc --noEmit` = 0 errors across all new/changed files.
+
+## [2026-06-10] — Marketing: signal-accuracy report & improvement roadmap
+
+Full audit of the validation funnel (Set positioning → … → Watch signals) against the goal of accurate keep/pivot/kill decisions, grounded in live data (VirtueBud: 23 sessions, 1 signal, 106 prospects, 0 sends).
+
+- **Report** — `docs/marketing/signal-accuracy-report.md`. Core finding: the funnel measures activity, not evidence (binary step completion, no ICP scoring, no UTM attribution, free-form quiz answers, dormant preorder/outreach channels, manual unstructured decision).
+- **Roadmap** — P0: Decision Contract with pre-registered thresholds, structured quiz schema, auto-UTM, outreach tooling split (cold via dedicated sender; Brevo nurture-only), Stripe Payment Link preorders, weighted/ICP-split/n-gated scoring. P1: Interview Intelligence (`mkt_interview` + Mom Test analyst + cross-interview synthesizer), Cal.com booking webhook, Tally post-capture micro-survey, PostHog session recordings. P2: A/B variants, decision panel + `mkt_decision_log` + pivot taxonomy, Idea Refiner feedback loop.
+- **New funnel shape** — adds Define hypothesis (step 0), Drive paid traffic (2.7, `mkt_ad_campaign` + cost-per-ICP-capture), Interviews (2.5), post-capture micro-survey (6.5), recurring Decision review (7).
+- No code changes in this session; report + roadmap only.
+
+## [2026-06-10] — Marketing: fix all [ideaId] pages (Turbopack stale cache bug)
+
+The entire marketing workspace (`/marketing/[ideaId]` and all 6 sub-tabs) was returning 404 due to a Turbopack dev-server cache conflict on Windows: renaming the route folder from `[projectId]` to `[ideaId]` did not update Turbopack's in-memory route registry because Windows file watchers do not reliably fire on bracket-named directories. Both `[projectId]` and `[ideaId]` were registered as competing dynamic segments, causing every URL like `/marketing/<uuid>` to 404.
+
+- **Root cause** — `.next/dev/server/app-paths-manifest.json` contained both `/marketing/[projectId]/page` (stale, source deleted) and `/marketing/[ideaId]/page` (new); Turbopack could not resolve the ambiguity.
+- **Fix** — Triggered a Turbopack dev-server restart via a no-op `next.config.ts` comment edit; on restart Turbopack rescanned source files, dropped all stale `[projectId]` entries, and registered only `[ideaId]` routes.
+- **Verified live** — All 7 pages load correctly: Dashboard, Positioning, Sourcing, Outreach, Content, Landing, Signals.
+
+## [2026-06-10] — Marketing: migrate all mkt_* tables from project_id → idea_id
+
+All 12 marketing tables now reference `idea` directly instead of `project`, reflecting the move from project-level to idea-level validation workspaces.
+
+- **DB** — Migration `20260610000000_mkt_idea_id_migration.sql` (retrospective): adds `idea_id uuid NOT NULL REFERENCES idea(id) ON DELETE CASCADE` to all 12 `mkt_*` tables, backfills from `project_id` (latest idea per project), drops `project_id`, recreates RLS policies with `idea → project` join, rebuilds the `mkt_suppression` unique index on `(idea_id, lower(email))`. Schema was applied directly to hosted DB on 2026-06-10 via MCP; migration file documents and replays the change with full IF NOT EXISTS guards.
+- **Routes** — Renamed `src/app/marketing/[projectId]/` → `src/app/marketing/[ideaId]/`; eliminated Next.js routing conflict.
+- **Components** — All 6 client components (`LandingBuilder`, `PositioningEditor`, `SourcingShell`, `ContentStudio`, `OutreachShell`, `CampaignDetail`) renamed `projectId` → `ideaId` throughout.
+- **Lib** — `src/lib/marketing/outreach.ts`: all `projectId`/`project_id` → `ideaId`/`idea_id`; HMAC token seed updated. API routes `api/m/unsubscribe` and `api/webhooks/brevo` updated to match.
+- **Deleted** — `ValidationSettings.tsx` (orphan; called non-existent `updateValidation`).
+- **TypeScript** — `tsc --noEmit` = 0 errors.
+
 ## [2026-06-08] — Idea Refiner: Report becomes a pre-build Devil's Advocate go/no-go gate
 
 Moved the Report step from last (Step 11) to Step 7 — immediately after Strategic Frameworks and before PRD. Rationale: PRD → Database → Visual Styles → Project Milestones only make sense once the team has decided to build. Report is now the explicit "should we build this at all?" gate, so it scores only discovery-phase evidence.

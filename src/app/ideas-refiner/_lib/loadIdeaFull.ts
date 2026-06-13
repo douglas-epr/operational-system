@@ -86,7 +86,7 @@ export async function loadIdeaFull(
       .order("created_at", { ascending: true }),
     supabase
       .from("idea_product_definition_and_flows")
-      .select("id, idea_id, created_by, summary, business_model, features, created_at")
+      .select("id, idea_id, created_by, summary, business_model, features, go_to_market, created_at")
       .eq("idea_id", ideaId)
       .maybeSingle(),
     supabase

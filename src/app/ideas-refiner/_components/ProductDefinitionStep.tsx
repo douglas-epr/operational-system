@@ -14,8 +14,8 @@ import { saveProductDefinition, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import RichTextEditor from "./RichTextEditor";
 import AiLoadingOverlay from "./AiLoadingOverlay";
-import { useAutoTriggerAi, clearAutoTriggerGuard, isBlankHtml } from "../_hooks/useAutoTriggerAi";
-import { runAiWithTimeout } from "../_hooks/useAiWithTimeout";
+import { useAutoTriggerAi, isBlankHtml } from "../_hooks/useAutoTriggerAi";
+import { useRegenerate } from "../_hooks/useRegenerate";
 
 interface ProductDefinitionStepProps {
   ideaFull: IdeaFull;
@@ -28,16 +28,17 @@ export default function ProductDefinitionStep({ ideaFull }: ProductDefinitionSte
   const [summary, setSummary] = useState(productDefinition?.summary ?? "");
   const [businessModel, setBusinessModel] = useState(productDefinition?.business_model ?? "");
   const [features, setFeatures] = useState(productDefinition?.features ?? "");
+  const [goToMarket, setGoToMarket] = useState(productDefinition?.go_to_market ?? "");
 
   const [isSaving, setIsSaving] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "product_definition_flows", isAiWorking);
 
   useEffect(() => {
     setSummary(productDefinition?.summary ?? "");
     setBusinessModel(productDefinition?.business_model ?? "");
     setFeatures(productDefinition?.features ?? "");
-  }, [productDefinition?.summary, productDefinition?.business_model, productDefinition?.features]);
+    setGoToMarket(productDefinition?.go_to_market ?? "");
+  }, [productDefinition?.summary, productDefinition?.business_model, productDefinition?.features, productDefinition?.go_to_market]);
 
   const isEmpty =
     isBlankHtml(productDefinition?.summary) && isBlankHtml(productDefinition?.features);
@@ -54,18 +55,13 @@ export default function ProductDefinitionStep({ ideaFull }: ProductDefinitionSte
     setIsSaving(true);
     setError(null);
 
-    const result = await saveProductDefinition(idea.id, { summary, business_model: businessModel, features });
+    const result = await saveProductDefinition(idea.id, { summary, business_model: businessModel, features, go_to_market: goToMarket });
     setIsSaving(false);
     if (result.error) setError(result.error);
   }
 
-  async function handleRegenerate() {
-    setIsRegenerating(true);
-    setError(null);
-    clearAutoTriggerGuard(idea.id, "product_definition_flows");
-    const result = await runAiWithTimeout(() => triggerAiGeneration(idea.id, "product_definition_flows"));
-    setIsRegenerating(false);
-    if (result.error) setError(result.error);
+  function handleRegenerate() {
+    return triggerRegenerate(() => triggerAiGeneration(idea.id, "product_definition_flows"));
   }
 
   if (isAiWorking || isRegenerating) {
@@ -141,6 +137,16 @@ export default function ProductDefinitionStep({ ideaFull }: ProductDefinitionSte
               onChange={setFeatures}
               editable={!isSaving && !isRegenerating}
               placeholder="Describe the feature list organized by categories..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-text-primary">Go-to-Market</label>
+            <RichTextEditor
+              content={goToMarket}
+              onChange={setGoToMarket}
+              editable={!isSaving && !isRegenerating}
+              placeholder="Describe the go-to-market strategy — the wedge user, zero-CAC supply/demand acquisition, first use case, and year-one distribution channels..."
             />
           </div>
 

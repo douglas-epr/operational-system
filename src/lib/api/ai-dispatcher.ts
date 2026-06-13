@@ -17,6 +17,11 @@ export interface AiGenerationParams {
   model: string;
   /** The prompt text */
   prompt: string;
+  /**
+   * Max output tokens. Defaults vary by provider (Claude: 8192, Gemini: model default).
+   * For steps with large JSON responses (ICPs, PRD, Report) pass 16384 to avoid truncation.
+   */
+  maxTokens?: number;
 }
 
 /**
@@ -26,7 +31,7 @@ export interface AiGenerationParams {
 export async function generateAiJsonResponse<T = unknown>(
   params: AiGenerationParams
 ): Promise<{ data?: T; returned_an_error: boolean; error?: string }> {
-  const { service, apiKey, model, prompt } = params;
+  const { service, apiKey, model, prompt, maxTokens } = params;
 
   switch (service) {
     case "openai":
@@ -34,16 +39,18 @@ export async function generateAiJsonResponse<T = unknown>(
         model,
         input: prompt,
         apiKey,
+        maxTokens,
       });
 
     case "gemini":
-      return generateGeminiJsonResponse<T>(prompt, model, apiKey);
+      return generateGeminiJsonResponse<T>(prompt, model, apiKey, maxTokens);
 
     case "claude":
       return generateClaudeJsonResponse<T>({
         model,
         input: prompt,
         apiKey,
+        maxTokens,
       });
 
     default:
@@ -61,11 +68,11 @@ export async function generateAiJsonResponse<T = unknown>(
 export async function generateAiTextResponse(
   params: AiGenerationParams
 ): Promise<{ text?: string; returned_an_error: boolean; error?: string }> {
-  const { service, apiKey, model, prompt } = params;
+  const { service, apiKey, model, prompt, maxTokens } = params;
 
   switch (service) {
     case "openai": {
-      const res = await generateOpenAIResponse({ model, input: prompt, apiKey });
+      const res = await generateOpenAIResponse({ model, input: prompt, apiKey, maxTokens });
       return { returned_an_error: res.returned_an_error, text: res.text, error: res.status_message };
     }
     case "gemini": {
@@ -73,11 +80,12 @@ export async function generateAiTextResponse(
         model,
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         apiKey,
+        generationConfig: maxTokens ? { maxOutputTokens: maxTokens } : undefined,
       });
       return { returned_an_error: res.returned_an_error, text: res.text, error: res.status_message };
     }
     case "claude": {
-      const res = await generateClaudeResponse({ model, input: prompt, apiKey });
+      const res = await generateClaudeResponse({ model, input: prompt, apiKey, maxTokens });
       return { returned_an_error: res.returned_an_error, text: res.text, error: res.status_message };
     }
     default:

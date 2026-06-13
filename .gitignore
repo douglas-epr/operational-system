@@ -44,4 +44,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
+# supabase local data (contains live production data — never commit)
+supabase/prod-data.sql

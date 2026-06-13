@@ -100,6 +100,11 @@ export interface StrategicFrameworksOutput {
   ICPs: StrategicICP[];
 }
 
+/** Single-ICP flat output shape — used by the per-ICP sequential generation loop. */
+export type SingleIcpFrameworkOutput = StrategicICP & {
+  optimization_suggestions?: { name: string; description: string }[];
+};
+
 export function convertStrategicFrameworksJson(
   input_json: string
 ): ConvertResult<StrategicFrameworksOutput> {
@@ -120,6 +125,7 @@ export interface ProductDefinitionOutput {
   "Product Overview": string;
   "Business Model": string;
   "Feature List & Logic": string;
+  "Go-to-Market": string;
   "User Flows": UserFlow[];
 }
 

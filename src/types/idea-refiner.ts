@@ -124,6 +124,7 @@ export interface Idea {
   project_id: string | null;
   created_by: string | null;
   name: string;
+  version_name: string | null;
   score: number | null;
   description: string | null;
   success_metrics: string | null;
@@ -185,6 +186,7 @@ export interface IdeaBlockProductDefinition {
   summary: string | null;
   business_model: string | null;
   features: string | null;
+  go_to_market: string | null;
   created_at: string;
 }
 
@@ -326,6 +328,27 @@ export interface IdeaReportPenalty {
   points: number;
 }
 
+/** Alignment block produced by the Devil's Advocate debate scorer. */
+export interface IdeaReportAlignment {
+  problem_fit_pct: number;
+  solution_fit_pct: number;
+  reframe_distance: "minor" | "moderate" | "major";
+  alignment_score: number;
+  problem_rationale: string;
+  solution_rationale: string;
+  verdict: string;
+}
+
+/** A single turn in the Devil's Advocate debate transcript. */
+export interface IdeaReportDebateTurn {
+  gate: "problem" | "solution";
+  round: number;
+  role: "skeptic" | "advocate";
+  content: string;
+  proposed_statement: string;
+  agree: boolean;
+}
+
 /** Represents a row in the `idea_report` table. */
 export interface IdeaReport {
   id: string;
@@ -341,6 +364,21 @@ export interface IdeaReport {
   playbook_subtitle: string | null;
   playbook_html: string | null;
   created_at: string;
+  // Devil's Advocate debate fields (added 2026-06-11)
+  agreed_problem: string | null;
+  agreed_solution: string | null;
+  recommendation: string | null;
+  revised_description: string | null;
+  completeness_score: number | null;
+  alignment: IdeaReportAlignment | null;
+  debate_transcript: IdeaReportDebateTurn[];
+  debate_meta: {
+    problem_rounds: number;
+    solution_rounds: number;
+    problem_converged: boolean;
+    solution_converged: boolean;
+    impasse_note?: string;
+  } | null;
 }
 
 // ── Composite Types ──────────────────────────────────────────────────────────

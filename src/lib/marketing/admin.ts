@@ -1,49 +1,66 @@
 /**
  * Admin-side data access for the Marketing Validation Engine.
- * Used by the gated /marketing/[projectId]/* server components.
+ * Used by the gated /marketing/[ideaId]/* server components.
  * Relies on RLS (admin/manager) via the standard server client.
  */
 
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import type { MktValidation, MktFunnelMetrics } from "@/types/marketing";
+import type {
+  ContractMetric,
+  DecisionContract,
+  MktValidation,
+  MktFunnelMetrics,
+} from "@/types/marketing";
 
-export interface ProjectContext {
-  projectId: string;
+export interface IdeaContext {
+  ideaId: string;
+  ideaName: string | null;
+  projectId: string | null;
   projectName: string | null;
   validation: MktValidation | null;
 }
 
-/** Load a project's name + validation config. Returns null if project missing. */
-export async function getProjectContext(
-  projectId: string
-): Promise<ProjectContext | null> {
+/** Load an idea's name + its project name + validation config. Returns null if idea missing. */
+export async function getIdeaContext(
+  ideaId: string
+): Promise<IdeaContext | null> {
   const supabase = await createClient();
 
-  const { data: project } = await supabase
-    .from("project")
-    .select("id, name")
-    .eq("id", projectId)
+  const { data: idea } = await supabase
+    .from("idea")
+    .select("id, name, project_id, project:project_id(id, name)")
+    .eq("id", ideaId)
     .maybeSingle();
 
-  if (!project) return null;
+  if (!idea) return null;
+
+  type IdeaRow = {
+    id: string;
+    name: string | null;
+    project_id: string | null;
+    project: { id: string; name: string | null } | null;
+  };
+  const row = idea as unknown as IdeaRow;
 
   const { data: validation } = await supabase
     .from("mkt_validation" as never)
     .select("*")
-    .eq("project_id", projectId)
+    .eq("idea_id", ideaId)
     .maybeSingle();
 
   return {
-    projectId,
-    projectName: (project as { name: string | null }).name,
+    ideaId,
+    ideaName: row.name,
+    projectId: row.project_id,
+    projectName: row.project?.name ?? null,
     validation: (validation as unknown as MktValidation) ?? null,
   };
 }
 
-/** Roll up the honest funnel metrics for a project. */
+/** Roll up the honest funnel metrics for an idea. */
 export async function getFunnelMetrics(
-  projectId: string
+  ideaId: string
 ): Promise<MktFunnelMetrics> {
   const supabase = await createClient();
 
@@ -51,7 +68,7 @@ export async function getFunnelMetrics(
     const { count } = await supabase
       .from("mkt_event" as never)
       .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId)
+      .eq("idea_id", ideaId)
       .eq("type", type);
     return count ?? 0;
   }
@@ -59,7 +76,7 @@ export async function getFunnelMetrics(
     const { count } = await supabase
       .from("mkt_signal" as never)
       .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId)
+      .eq("idea_id", ideaId)
       .eq("type", type);
     return count ?? 0;
   }
@@ -67,7 +84,7 @@ export async function getFunnelMetrics(
     const { count } = await supabase
       .from("mkt_outreach" as never)
       .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId)
+      .eq("idea_id", ideaId)
       .not(field, "is", null);
     return count ?? 0;
   }
@@ -75,16 +92,15 @@ export async function getFunnelMetrics(
     const { count } = await supabase
       .from("mkt_prospect" as never)
       .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId);
+      .eq("idea_id", ideaId);
     return count ?? 0;
   }
 
-  // Pre-order amount sum (small set; fetch and reduce).
   async function preorderAmount(): Promise<number> {
     const { data } = await supabase
       .from("mkt_signal" as never)
       .select("amount_cents")
-      .eq("project_id", projectId)
+      .eq("idea_id", ideaId)
       .eq("type", "preorder");
     return ((data as unknown as { amount_cents: number | null }[]) ?? []).reduce(
       (sum, r) => sum + (r.amount_cents ?? 0),
@@ -131,7 +147,7 @@ export async function getFunnelMetrics(
 }
 
 /** Extra flags for the dashboard getting-started checklist + content metrics. */
-export async function getOnboardingExtras(projectId: string): Promise<{
+export async function getOnboardingExtras(ideaId: string): Promise<{
   landingPublished: boolean;
   contentCount: number;
   contentScheduled: number;
@@ -149,26 +165,26 @@ export async function getOnboardingExtras(projectId: string): Promise<{
     supabase
       .from("mkt_landing" as never)
       .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId)
+      .eq("idea_id", ideaId)
       .eq("published", true),
     supabase
       .from("mkt_content" as never)
       .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId),
+      .eq("idea_id", ideaId),
     supabase
       .from("mkt_content" as never)
       .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId)
+      .eq("idea_id", ideaId)
       .eq("status", "scheduled"),
     supabase
       .from("mkt_content" as never)
       .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId)
+      .eq("idea_id", ideaId)
       .eq("status", "posted"),
     supabase
       .from("mkt_content" as never)
       .select("id", { count: "exact", head: true })
-      .eq("project_id", projectId)
+      .eq("idea_id", ideaId)
       .eq("status", "draft"),
   ]);
   return {
@@ -180,16 +196,153 @@ export async function getOnboardingExtras(projectId: string): Promise<{
   };
 }
 
+// ── Decision Contract progress ────────────────────────────────────────────────
+
+/** A contract metric with its computed live value and n-gated verdict. */
+export interface ContractMetricProgress extends ContractMetric {
+  /** Live value, or null when the metric isn't auto-computable. */
+  current: number | null;
+  /** Sample size backing the value (sessions for rates, denominators otherwise). */
+  sample: number;
+  /** true/false once the minimum sample is reached; null = insufficient data. */
+  met: boolean | null;
+}
+
+/** Metric keys whose value is a percentage (n-gated on their denominator). */
+const RATE_METRICS = new Set([
+  "visitor_to_capture_rate",
+  "icp_capture_share",
+  "outreach_reply_rate",
+  "pricing_click_rate",
+]);
+
 /**
- * Funnel metrics for many projects at once (portfolio view). Uses accurate
- * count queries per project (reuses getFunnelMetrics) — fine for the small
- * number of validating projects; revisit with an RPC if it grows large.
+ * Compute live progress against the pre-registered Decision Contract.
+ * Rates below their min_sample render as "insufficient data" (met: null) —
+ * never as a confident-looking percentage built on noise.
+ */
+export async function getContractProgress(
+  ideaId: string,
+  contract: DecisionContract,
+  m: MktFunnelMetrics
+): Promise<ContractMetricProgress[]> {
+  const metricsWanted = contract.success_metrics ?? [];
+  if (metricsWanted.length === 0) return [];
+
+  const supabase = await createClient();
+
+  // Unique sessions (the honest denominator for visitor rates).
+  const { data: viewRows } = await supabase
+    .from("mkt_event" as never)
+    .select("session_id")
+    .eq("idea_id", ideaId)
+    .eq("type", "view");
+  const sessions = new Set(
+    ((viewRows ?? []) as { session_id: string | null }[])
+      .map((r) => r.session_id)
+      .filter(Boolean)
+  ).size;
+
+  async function countEvent(type: string): Promise<number> {
+    const { count } = await supabase
+      .from("mkt_event" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("idea_id", ideaId)
+      .eq("type", type);
+    return count ?? 0;
+  }
+
+  const needs = new Set(metricsWanted.map((x) => x.metric));
+  const [verified, icpFit, meetings, strongInterviews, pricingClicks] = await Promise.all([
+    needs.has("verified_captures")
+      ? supabase
+          .from("mkt_signal" as never)
+          .select("id", { count: "exact", head: true })
+          .eq("idea_id", ideaId)
+          .not("verified_at", "is", null)
+          .then((r) => r.count ?? 0)
+      : Promise.resolve(0),
+    needs.has("icp_capture_share")
+      ? supabase
+          .from("mkt_signal" as never)
+          .select("id", { count: "exact", head: true })
+          .eq("idea_id", ideaId)
+          .eq("icp_fit", true)
+          .then((r) => r.count ?? 0)
+      : Promise.resolve(0),
+    needs.has("meetings_booked") ? countEvent("meeting_booked") : Promise.resolve(0),
+    needs.has("interviews_strong_evidence")
+      ? supabase
+          .from("mkt_interview" as never)
+          .select("id", { count: "exact", head: true })
+          .eq("idea_id", ideaId)
+          .eq("analysis->>evidence_grade", "strong")
+          .then((r) => r.count ?? 0)
+      : Promise.resolve(0),
+    needs.has("pricing_click_rate") ? countEvent("pricing_click") : Promise.resolve(0),
+  ]);
+
+  const captures = m.quiz + m.waitlist + m.preorders;
+
+  return metricsWanted.map((cm) => {
+    let current: number | null = null;
+    let sample = sessions;
+
+    switch (cm.metric) {
+      case "visitor_to_capture_rate":
+        current = sessions > 0 ? (captures / sessions) * 100 : 0;
+        sample = sessions;
+        break;
+      case "verified_captures":
+        current = verified;
+        break;
+      case "icp_capture_share":
+        current = captures > 0 ? (icpFit / captures) * 100 : 0;
+        sample = captures;
+        break;
+      case "outreach_reply_rate":
+        current = m.sent > 0 ? (m.replied / m.sent) * 100 : 0;
+        sample = m.sent;
+        break;
+      case "meetings_booked":
+        current = meetings;
+        break;
+      case "interviews_strong_evidence":
+        current = strongInterviews;
+        break;
+      case "pricing_click_rate":
+        current = sessions > 0 ? (pricingClicks / sessions) * 100 : 0;
+        sample = sessions;
+        break;
+      case "preorders":
+        current = m.preorders;
+        break;
+      default:
+        current = null; // manual / unknown metric
+    }
+
+    const isRate = RATE_METRICS.has(cm.metric);
+    let met: boolean | null = null;
+    if (current !== null) {
+      if (isRate && sample < (cm.min_sample ?? 0)) {
+        met = null; // insufficient data — refuse to judge
+      } else {
+        met = current >= cm.threshold;
+      }
+    }
+
+    return { ...cm, current, sample, met };
+  });
+}
+
+/**
+ * Funnel metrics for many ideas at once (portfolio view).
  */
 export async function getPortfolioMetricsMap(
-  projectIds: string[]
+  ideaIds: string[]
 ): Promise<Record<string, MktFunnelMetrics>> {
   const entries = await Promise.all(
-    projectIds.map(async (id) => [id, await getFunnelMetrics(id)] as const)
+    ideaIds.map(async (id) => [id, await getFunnelMetrics(id)] as const)
   );
   return Object.fromEntries(entries);
 }

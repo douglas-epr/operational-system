@@ -67,20 +67,65 @@ export const CHANNEL_LABELS: Record<MktChannel, string> = {
 
 // ── Row interfaces ────────────────────────────────────────────────────────────
 
-/** Per-project funnel config (1:1 with `project`). */
+/** Per-idea funnel config (1:1 with `idea`). */
 export interface MktValidation {
   id: string;
-  project_id: string;
+  idea_id: string;
   funnel_mode: MktFunnelMode;
   status: MktValidationStatus;
   positioning: string | null;
   icp_definition: Record<string, unknown>;
   /** Per-platform reference source URLs (competitor/inspiration accounts + posts). */
   reference_sources: ReferenceSources;
+  /** Pre-registered hypothesis + thresholds that decide keep/pivot/kill. */
+  decision_contract: DecisionContract;
+  /** Cal.com (or similar) booking link used in outreach + post-capture CTA. */
+  booking_url: string | null;
   enabled_capture_stages: string[];
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ── Decision Contract (pre-registered success criteria) ───────────────────────
+
+/** One success metric with its threshold, minimum sample, and window. */
+export interface ContractMetric {
+  metric: string;
+  threshold: number;
+  unit: string;
+  min_sample: number;
+  window_days: number;
+  why?: string;
+}
+
+/**
+ * The decision contract: defined BEFORE data collection so the keep/pivot/kill
+ * call is made against pre-registered criteria, not post-hoc rationalization.
+ * Stored in mkt_validation.decision_contract (JSONB, {} when unset).
+ */
+export interface DecisionContract {
+  riskiest_assumption?: string;
+  success_metrics?: ContractMetric[];
+  review_window_days?: number;
+  kill_condition?: string;
+  notes?: string;
+}
+
+// ── Structured quiz schema (aggregatable capture answers) ─────────────────────
+
+/** One selectable option; `icp` marks it as an ICP-qualifying answer. */
+export interface QuizOption {
+  value: string;
+  label: string;
+  icp?: boolean;
+}
+
+/** One multiple-choice quiz question rendered on the landing page. */
+export interface QuizQuestion {
+  key: string;
+  question: string;
+  options: QuizOption[];
 }
 
 // ── Reference Sources (positioning research inputs) ───────────────────────────
@@ -185,7 +230,7 @@ export const REFERENCE_SOURCE_GROUPS: ReferenceSourceGroup[] = [
 /** A sourced contact (B2B). */
 export interface MktProspect {
   id: string;
-  project_id: string;
+  idea_id: string;
   name: string | null;
   email: string | null;
   company: string | null;
@@ -194,6 +239,8 @@ export interface MktProspect {
   source: string | null;
   enrichment: Record<string, unknown>;
   score: number | null;
+  /** ICP segment tag — reply rate per segment is audience-pivot data. */
+  segment: string | null;
   status: string;
   source_run_id: string | null;
   created_by: string | null;
@@ -204,7 +251,7 @@ export interface MktProspect {
 /** A sourcing job (Apollo / Apify run). */
 export interface MktSourceRun {
   id: string;
-  project_id: string;
+  idea_id: string;
   channel: MktChannel;
   query: Record<string, unknown>;
   status: string;
@@ -218,7 +265,7 @@ export interface MktSourceRun {
 /** An outreach campaign. */
 export interface MktCampaign {
   id: string;
-  project_id: string;
+  idea_id: string;
   channel: MktChannel;
   name: string;
   status: string;
@@ -230,7 +277,7 @@ export interface MktCampaign {
 /** A step within a campaign sequence. */
 export interface MktSequenceStep {
   id: string;
-  project_id: string;
+  idea_id: string;
   campaign_id: string;
   step_order: number;
   delay_days: number;
@@ -244,7 +291,7 @@ export interface MktSequenceStep {
 /** Per-prospect outbound message log. */
 export interface MktOutreach {
   id: string;
-  project_id: string;
+  idea_id: string;
   prospect_id: string;
   campaign_id: string;
   step_order: number;
@@ -254,14 +301,109 @@ export interface MktOutreach {
   opened_at: string | null;
   replied_at: string | null;
   brevo_message_id: string | null;
+  /** AI/manual classification of the reply — a classified "no" is pivot evidence. */
+  reply_sentiment: "positive" | "neutral" | "negative" | "meeting_request" | null;
   created_at: string;
   updated_at: string;
 }
 
+// ── Paid traffic (mkt_ad_campaign) ────────────────────────────────────────────
+
+export type MktAdPlatform = "meta" | "google" | "linkedin";
+export type MktAdStatus = "draft" | "live" | "paused" | "ended";
+
+export const AD_PLATFORM_LABELS: Record<MktAdPlatform, string> = {
+  meta: "Meta (FB/IG)",
+  google: "Google Ads",
+  linkedin: "LinkedIn",
+};
+
+/** A paid ad campaign; attribution joins mkt_event/mkt_signal on utm_campaign. */
+export interface MktAdCampaign {
+  id: string;
+  idea_id: string;
+  landing_id: string | null;
+  platform: MktAdPlatform;
+  name: string;
+  status: MktAdStatus;
+  budget_cents: number;
+  spend_cents: number;
+  targeting_notes: string | null;
+  utm_campaign: string;
+  /** AI-generated ad copy variants ({ variants, targeting_tips }). */
+  ad_creative: Record<string, unknown>;
+  started_at: string | null;
+  ended_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Interview Intelligence (mkt_interview) ────────────────────────────────────
+
+export type MktInterviewSource = "outreach" | "network" | "panel" | "inbound" | "booking";
+
+/** A customer interview with its transcript and AI analysis. */
+export interface MktInterview {
+  id: string;
+  idea_id: string;
+  prospect_id: string | null;
+  participant_name: string | null;
+  participant_role: string | null;
+  segment: string | null;
+  source: MktInterviewSource;
+  conducted_at: string | null;
+  recording_url: string | null;
+  transcript: string | null;
+  consent: boolean;
+  /** Interview Analyst output (pains, quotes, Mom Test flags, evidence grade). */
+  analysis: Record<string, unknown>;
+  analyzed_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Decision log (mkt_decision_log) ───────────────────────────────────────────
+
+/** A dated keep/pivot/kill verdict with its rationale and metrics snapshot. */
+export interface MktDecisionLog {
+  id: string;
+  idea_id: string;
+  verdict: MktValidationStatus;
+  rationale: string;
+  metrics_snapshot: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+}
+
+// ── Evidence weights (weighted validation score) ──────────────────────────────
+
+/**
+ * Evidence weight per signal/event type. Commitment-graded: a preorder is worth
+ * 200 page views. Used by the Signals page weighted score.
+ */
+export const EVIDENCE_WEIGHTS: Record<string, number> = {
+  view: 0.1,
+  cta_click: 0.5,
+  scroll_50: 0.1,
+  scroll_90: 0.3,
+  pricing_click: 5,
+  quiz: 2,
+  waitlist: 3,
+  verified_bonus: 1,
+  meeting_booked: 8,
+  interview_strong: 10,
+  preorder: 20,
+};
+
+/** Minimum sessions before conversion percentages are shown at all. */
+export const MIN_SESSIONS_FOR_RATES = 30;
+
 /** A content piece for multi-channel social distribution. */
 export interface MktContent {
   id: string;
-  project_id: string;
+  idea_id: string;
   channels: string[];
   body: string | null;
   media_url: string | null;
@@ -279,11 +421,15 @@ export interface MktContent {
 /** Landing page config (public slug). */
 export interface MktLanding {
   id: string;
-  project_id: string;
+  idea_id: string;
   slug: string;
   title: string | null;
   /** Full self-contained HTML document, rendered in a sandboxed iframe on /m/[slug]. */
   code_html: string | null;
+  /** Structured qualification quiz; answers validate against this schema. */
+  quiz_schema: QuizQuestion[];
+  /** Tally (or similar) form URL embedded post-capture. */
+  survey_url: string | null;
   capture_stages: string[];
   published: boolean;
   created_by: string | null;
@@ -294,7 +440,7 @@ export interface MktLanding {
 /** A captured demand signal (the gold data). */
 export interface MktSignal {
   id: string;
-  project_id: string;
+  idea_id: string;
   landing_id: string | null;
   type: MktSignalType;
   email: string | null;
@@ -303,13 +449,19 @@ export interface MktSignal {
   stripe_session_id: string | null;
   amount_cents: number | null;
   utm: Record<string, unknown>;
+  /** Set when the email passed double opt-in (only verified count toward thresholds). */
+  verified_at: string | null;
+  /** Post-capture micro-survey answers (Tally webhook). */
+  survey_answers: Record<string, unknown>;
+  /** Rule-based ICP fit from quiz_schema qualifying options; null = unknown. */
+  icp_fit: boolean | null;
   created_at: string;
 }
 
 /** An analytics beacon event. */
 export interface MktEvent {
   id: string;
-  project_id: string;
+  idea_id: string;
   landing_id: string | null;
   type: string;
   session_id: string | null;
@@ -320,7 +472,7 @@ export interface MktEvent {
 /** An unsubscribe / GDPR suppression record. */
 export interface MktSuppression {
   id: string;
-  project_id: string;
+  idea_id: string;
   email: string;
   reason: string | null;
   created_at: string;
@@ -328,9 +480,13 @@ export interface MktSuppression {
 
 // ── Composite / view types ────────────────────────────────────────────────────
 
-/** A project row joined with its validation config (for the /marketing list). */
-export interface MktProjectListItem {
-  project_id: string;
+/** An idea row joined with its validation config (for the /marketing list). */
+export interface MktIdeaListItem {
+  idea_id: string;
+  idea_name: string | null;
+  idea_description: string | null;
+  idea_version_name: string | null;
+  project_id: string | null;
   project_name: string | null;
   validation: MktValidation | null;
   /** Optional funnel rollup, attached for the portfolio dashboard. */

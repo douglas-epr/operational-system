@@ -30,7 +30,7 @@ type SB = ReturnType<typeof createServiceClient>;
 
 interface SourceRunRow {
   id: string;
-  project_id: string;
+  idea_id: string;
   status: string;
   channel: string;
   apify_dataset_ref: string | null;
@@ -267,7 +267,7 @@ async function importSocialProfiles(
   for (const p of sorted) {
     if (!p.email && !p.name) continue;
     const { error } = await sb.from("mkt_prospect" as never).insert({
-      project_id: run.project_id,
+      idea_id: run.idea_id,
       name: p.name,
       email: p.email ? p.email.toLowerCase() : null,
       company: p.company,
@@ -368,7 +368,7 @@ async function importOne(sb: SB, run: SourceRunRow): Promise<SyncResult> {
     // Never insert a record with no usable identity (avoids blank prospects).
     if (!p.email && !p.name) continue;
     const { error } = await sb.from("mkt_prospect" as never).insert({
-      project_id: run.project_id,
+      idea_id: run.idea_id,
       name: p.name,
       email: p.email ? p.email.toLowerCase() : null,
       company: p.company,
@@ -401,7 +401,7 @@ export async function importSourceRun(sourceRunId: string): Promise<SyncResult> 
   const sb = createServiceClient();
   const { data } = await sb
     .from("mkt_source_run" as never)
-    .select("id, project_id, status, channel, apify_dataset_ref, query")
+    .select("id, idea_id, status, channel, apify_dataset_ref, query")
     .eq("id", sourceRunId)
     .maybeSingle();
   const run = data as unknown as SourceRunRow | null;
@@ -414,7 +414,7 @@ export async function importDueSourceRuns(limit = 20): Promise<{ checked: number
   const sb = createServiceClient();
   const { data } = await sb
     .from("mkt_source_run" as never)
-    .select("id, project_id, status, channel, apify_dataset_ref, query")
+    .select("id, idea_id, status, channel, apify_dataset_ref, query")
     .eq("status", "running")
     .limit(limit);
   const runs = (data ?? []) as unknown as SourceRunRow[];

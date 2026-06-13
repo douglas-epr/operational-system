@@ -36,10 +36,10 @@ export async function POST(req: Request) {
   // Find the outreach row by Brevo message id.
   const { data: rowData } = await sb
     .from("mkt_outreach" as never)
-    .select("id, project_id")
+    .select("id, idea_id")
     .eq("brevo_message_id", messageId)
     .maybeSingle();
-  const row = rowData as unknown as { id: string; project_id: string } | null;
+  const row = rowData as unknown as { id: string; idea_id: string } | null;
   if (!row) return NextResponse.json({ ok: true });
 
   if (event === "opened" || event === "unique_opened") {
@@ -64,12 +64,12 @@ export async function POST(req: Request) {
       const { data: exists } = await sb
         .from("mkt_suppression" as never)
         .select("id")
-        .eq("project_id", row.project_id)
+        .eq("idea_id", row.idea_id)
         .ilike("email", email)
         .maybeSingle();
       if (!exists) {
         await sb.from("mkt_suppression" as never).insert({
-          project_id: row.project_id,
+          idea_id: row.idea_id,
           email,
           reason: "brevo_unsubscribe",
         } as never);

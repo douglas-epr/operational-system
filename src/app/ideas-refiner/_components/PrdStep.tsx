@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import RichTextEditor from "./RichTextEditor";
 import PrdPreviewModal from "./PrdPreviewModal";
-import { useAutoTriggerAi, clearAutoTriggerGuard, isBlankHtml } from "../_hooks/useAutoTriggerAi";
-import { runAiWithTimeout } from "../_hooks/useAiWithTimeout";
+import { useAutoTriggerAi, isBlankHtml } from "../_hooks/useAutoTriggerAi";
+import { useRegenerate } from "../_hooks/useRegenerate";
 
 const PRD_SECTIONS = [
   { key: "app_overview", label: "App Overview" },
@@ -53,8 +53,7 @@ export default function PrdStep({ ideaFull }: PrdStepProps) {
     new Set(PRD_SECTIONS.map((s) => s.key))
   );
   const [isSaving, setIsSaving] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "prd", isAiWorking);
   const [showPreview, setShowPreview] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isExportingDocx, setIsExportingDocx] = useState(false);
@@ -184,14 +183,8 @@ export default function PrdStep({ ideaFull }: PrdStepProps) {
     if (result.error) setError(result.error);
   }
 
-  async function handleRegenerate() {
-    setIsRegenerating(true);
-    setError(null);
-    clearAutoTriggerGuard(idea.id, "prd");
-    const result = await runAiWithTimeout(() => triggerAiGeneration(idea.id, "prd"));
-
-    setIsRegenerating(false);
-    if (result.error) setError(result.error);
+  function handleRegenerate() {
+    return triggerRegenerate(() => triggerAiGeneration(idea.id, "prd"));
   }
 
   if (isAiWorking || isRegenerating) {

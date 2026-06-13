@@ -62,21 +62,10 @@ export default function AiSettingsForm({
   const [geminiModel, setGeminiModel] = useState(initialSettings.geminiModel);
   const [claudeModel, setClaudeModel] = useState(initialSettings.claudeModel);
 
-  // Key fields — empty string means unchanged; new value means replace
+  // Key fields — empty means "keep current"; non-empty replaces the stored key
   const [openaiKey, setOpenaiKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [claudeKey, setClaudeKey] = useState("");
-
-  // Track whether user wants to change an existing key
-  const [editingOpenaiKey, setEditingOpenaiKey] = useState(
-    !initialSettings.openaiKeySet
-  );
-  const [editingGeminiKey, setEditingGeminiKey] = useState(
-    !initialSettings.geminiKeySet
-  );
-  const [editingClaudeKey, setEditingClaudeKey] = useState(
-    !initialSettings.claudeKeySet
-  );
 
   // The "Use my agency's AI keys" toggle. When ON, the per-service form is
   // collapsed into a read-only preview built from `agencySummary` and the
@@ -104,10 +93,10 @@ export default function AiSettingsForm({
       useAgencySettings: allowAgencyToggle ? useAgency : undefined,
     };
 
-    // Only include key fields if user is editing them
-    if (editingOpenaiKey) payload.openaiApiKey = openaiKey;
-    if (editingGeminiKey) payload.geminiApiKey = geminiKey;
-    if (editingClaudeKey) payload.claudeApiKey = claudeKey;
+    // Only send key fields if the user actually typed something
+    if (openaiKey.trim()) payload.openaiApiKey = openaiKey.trim();
+    if (geminiKey.trim()) payload.geminiApiKey = geminiKey.trim();
+    if (claudeKey.trim()) payload.claudeApiKey = claudeKey.trim();
 
     const result = await onSave(payload);
     setIsSubmitting(false);
@@ -233,6 +222,7 @@ export default function AiSettingsForm({
             : service === "gemini"
               ? initialSettings.geminiKeySet
               : initialSettings.claudeKeySet;
+        void keySet; // key presence shown via placeholder; no longer used for conditional rendering
         const keyValue =
           service === "openai"
             ? openaiKey
@@ -245,18 +235,6 @@ export default function AiSettingsForm({
             : service === "gemini"
               ? setGeminiKey
               : setClaudeKey;
-        const editing =
-          service === "openai"
-            ? editingOpenaiKey
-            : service === "gemini"
-              ? editingGeminiKey
-              : editingClaudeKey;
-        const setEditing =
-          service === "openai"
-            ? setEditingOpenaiKey
-            : service === "gemini"
-              ? setEditingGeminiKey
-              : setEditingClaudeKey;
         const modelValue =
           service === "openai"
             ? openaiModel
@@ -299,33 +277,19 @@ export default function AiSettingsForm({
               >
                 API Key
               </label>
-              {keySet && !editing ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-text-muted">
-                    Key is configured
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setEditing(true)}
-                    className={cn(
-                      "text-xs text-accent hover:text-accent/80 underline",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-                    )}
-                  >
-                    Change
-                  </button>
-                </div>
-              ) : (
-                <input
-                  id={`ai-key-${service}`}
-                  type="password"
-                  value={keyValue}
-                  onChange={(e) => setKeyValue(e.target.value)}
-                  placeholder={`Enter ${AI_SERVICE_LABELS[service]} API key...`}
-                  disabled={isSubmitting}
-                  className={inputClass}
-                />
-              )}
+              <input
+                id={`ai-key-${service}`}
+                type="password"
+                value={keyValue}
+                onChange={(e) => setKeyValue(e.target.value)}
+                placeholder={
+                  keySet
+                    ? "Leave blank to keep current key"
+                    : `Enter ${AI_SERVICE_LABELS[service]} API key...`
+                }
+                disabled={isSubmitting}
+                className={inputClass}
+              />
             </div>
 
             {/* Model */}

@@ -13,7 +13,8 @@ import { cn } from "@/lib/utils";
 import CreateIdeaModal from "./CreateIdeaModal";
 import AiSettingsModal from "./AiSettingsModal";
 import ConfirmDeleteModal from "@/app/projects/_components/modals/ConfirmDeleteModal";
-import { deleteIdea } from "../actions";
+import ConfirmCopyModal from "./ConfirmCopyModal";
+import { deleteIdea, duplicateIdea } from "../actions";
 
 interface IdeasGridProps {
   ideas: Idea[];
@@ -49,6 +50,7 @@ export default function IdeasGrid({
   const [pendingIdeaId, setPendingIdeaId] = useState<string | null>(null);
   const [deletingIdea, setDeletingIdea] = useState<Idea | null>(null);
   const [editingIdea, setEditingIdea] = useState<Idea | null>(null);
+  const [copyingIdea, setCopyingIdea] = useState<Idea | null>(null);
 
   /** Gate "See Refinement" — show AI settings modal if not configured. */
   function handleSelectIdea(ideaId: string) {
@@ -181,6 +183,7 @@ export default function IdeasGrid({
                   onSelect={() => handleSelectIdea(idea.id)}
                   onDeleteClick={() => setDeletingIdea(idea)}
                   onEditClick={() => setEditingIdea(idea)}
+                  onCopyClick={() => setCopyingIdea(idea)}
                 />
               ))}
             </div>
@@ -232,6 +235,21 @@ export default function IdeasGrid({
           return result;
         }}
       />
+
+      {/* Duplicate Idea confirm modal */}
+      <ConfirmCopyModal
+        open={!!copyingIdea}
+        onClose={() => setCopyingIdea(null)}
+        ideaName={copyingIdea?.name ?? ""}
+        onConfirm={async () => {
+          if (!copyingIdea) return {};
+          const result = await duplicateIdea(copyingIdea.id);
+          if (!result.error) {
+            router.refresh();
+          }
+          return result;
+        }}
+      />
     </div>
   );
 }
@@ -243,10 +261,11 @@ interface IdeaCardProps {
   onSelect: () => void;
   onDeleteClick: () => void;
   onEditClick: () => void;
+  onCopyClick: () => void;
 }
 
 /** Single idea card displaying name and description. Click to open refinement. */
-function IdeaCard({ idea, onSelect, onDeleteClick, onEditClick }: IdeaCardProps) {
+function IdeaCard({ idea, onSelect, onDeleteClick, onEditClick, onCopyClick }: IdeaCardProps) {
   return (
     <div
       className="group relative flex flex-col bg-surface border border-border rounded-xl p-5 transition-shadow hover:shadow-md cursor-pointer"
@@ -254,6 +273,19 @@ function IdeaCard({ idea, onSelect, onDeleteClick, onEditClick }: IdeaCardProps)
     >
       {/* Action buttons — hidden until hover */}
       <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button
+          type="button"
+          aria-label="Duplicate idea"
+          onClick={(e) => {
+            e.stopPropagation();
+            onCopyClick();
+          }}
+          className="p-1.5 rounded-md text-text-muted/70 hover:text-accent hover:bg-accent/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
         <button
           type="button"
           aria-label="Edit idea"
@@ -282,9 +314,12 @@ function IdeaCard({ idea, onSelect, onDeleteClick, onEditClick }: IdeaCardProps)
         </button>
       </div>
 
-      <h3 className="text-sm font-semibold text-text-primary line-clamp-2 mb-2 pr-16">
+      <h3 className="text-sm font-semibold text-text-primary line-clamp-2 mb-0.5 pr-16">
         {idea.name}
       </h3>
+      {idea.version_name && (
+        <p className="text-[11px] text-text-muted mb-2">{idea.version_name}</p>
+      )}
       <div
         className="text-xs text-text-muted line-clamp-3 flex-1 prose prose-invert max-w-none [&_*]:!text-xs [&_*]:!leading-snug [&_p]:!my-0"
         dangerouslySetInnerHTML={{

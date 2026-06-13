@@ -1,5 +1,5 @@
 /**
- * GET /api/m/unsubscribe?p=<projectId>&e=<email>&t=<token>
+ * GET /api/m/unsubscribe?p=<ideaId>&e=<email>&t=<token>
  * Public one-click unsubscribe (PECR/GDPR). Verifies the signed token, adds the
  * email to mkt_suppression for the project, and returns a small confirmation page.
  */
@@ -24,11 +24,11 @@ h1{font-size:20px;margin:0 0 8px}p{color:#a1a1aa;font-size:14px;line-height:1.6}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const projectId = url.searchParams.get("p") ?? "";
+  const ideaId = url.searchParams.get("p") ?? "";
   const email = (url.searchParams.get("e") ?? "").toLowerCase();
   const token = url.searchParams.get("t") ?? "";
 
-  if (!projectId || !email || !token || !verifyUnsubscribeToken(projectId, email, token)) {
+  if (!ideaId || !email || !token || !verifyUnsubscribeToken(ideaId, email, token)) {
     return page("This unsubscribe link is invalid or has expired.", false);
   }
 
@@ -36,13 +36,13 @@ export async function GET(req: Request) {
   const { data: exists } = await sb
     .from("mkt_suppression" as never)
     .select("id")
-    .eq("project_id", projectId)
+    .eq("idea_id", ideaId)
     .ilike("email", email)
     .maybeSingle();
 
   if (!exists) {
     await sb.from("mkt_suppression" as never).insert({
-      project_id: projectId,
+      idea_id: ideaId,
       email,
       reason: "unsubscribe_link",
     } as never);
@@ -52,7 +52,7 @@ export async function GET(req: Request) {
   const { data: prospectRows } = await sb
     .from("mkt_prospect" as never)
     .select("id")
-    .eq("project_id", projectId)
+    .eq("idea_id", ideaId)
     .ilike("email", email);
   const prospectIds = ((prospectRows ?? []) as unknown as { id: string }[]).map(
     (r) => r.id
@@ -61,7 +61,7 @@ export async function GET(req: Request) {
     await sb
       .from("mkt_outreach" as never)
       .update({ status: "unsub" } as never)
-      .eq("project_id", projectId)
+      .eq("idea_id", ideaId)
       .eq("status", "queued")
       .in("prospect_id", prospectIds);
   }

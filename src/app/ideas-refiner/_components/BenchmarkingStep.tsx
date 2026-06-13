@@ -12,8 +12,8 @@ import { saveBenchmarking, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import RichTextEditor from "./RichTextEditor";
-import { useAutoTriggerAi, clearAutoTriggerGuard, isBlankHtml } from "../_hooks/useAutoTriggerAi";
-import { runAiWithTimeout } from "../_hooks/useAiWithTimeout";
+import { useAutoTriggerAi, isBlankHtml } from "../_hooks/useAutoTriggerAi";
+import { useRegenerate } from "../_hooks/useRegenerate";
 
 interface BenchmarkingStepProps {
   ideaFull: IdeaFull;
@@ -30,8 +30,7 @@ export default function BenchmarkingStep({ ideaFull }: BenchmarkingStepProps) {
   );
   const [takeaways, setTakeaways] = useState(benchmarking?.takeaways ?? "");
   const [isSaving, setIsSaving] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "benchmarking", isAiWorking);
 
   useEffect(() => {
     setOverview(benchmarking?.overview ?? "");
@@ -76,14 +75,8 @@ export default function BenchmarkingStep({ ideaFull }: BenchmarkingStepProps) {
     if (result.error) setError(result.error);
   }
 
-  async function handleRegenerate() {
-    setIsRegenerating(true);
-    setError(null);
-    clearAutoTriggerGuard(idea.id, "benchmarking");
-    const result = await runAiWithTimeout(() => triggerAiGeneration(idea.id, "benchmarking"));
-
-    setIsRegenerating(false);
-    if (result.error) setError(result.error);
+  function handleRegenerate() {
+    return triggerRegenerate(() => triggerAiGeneration(idea.id, "benchmarking"));
   }
 
   if (isAiWorking || isRegenerating) {

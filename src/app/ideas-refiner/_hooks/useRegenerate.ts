@@ -1,0 +1,54 @@
+"use client";
+
+/**
+ * useRegenerate — shared regeneration state for all Sandbox Planner steps.
+ *
+ * Key behavior: clears isRegenerating as soon as Supabase Realtime fires
+ * (isAiWorking transitions true→false), NOT when the server-action HTTP
+ * response arrives. This makes new content visible immediately — the user
+ * should never have to wait for the full round-trip after Claude responds.
+ */
+
+import { useState, useEffect, useRef } from "react";
+import type { IdeaBlock } from "@/types/idea-refiner";
+import { runAiWithTimeout } from "./useAiWithTimeout";
+import { clearAutoTriggerGuard } from "./useAutoTriggerAi";
+
+export function useRegenerate(
+  ideaId: string,
+  step: IdeaBlock,
+  isAiWorking: boolean,
+) {
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // Tracks that isAiWorking was seen as true during this regeneration cycle,
+  // so we only clear isRegenerating on the true→false edge, not on the initial
+  // false→false state before the DB flag is set.
+  const hadAiWorkingRef = useRef(false);
+
+  useEffect(() => {
+    if (isAiWorking && isRegenerating) {
+      hadAiWorkingRef.current = true;
+    }
+    if (!isAiWorking && hadAiWorkingRef.current && isRegenerating) {
+      hadAiWorkingRef.current = false;
+      setIsRegenerating(false);
+    }
+  }, [isAiWorking, isRegenerating]);
+
+  async function triggerRegenerate(action: () => Promise<{ error?: string }>) {
+    setIsRegenerating(true);
+    setError(null);
+    clearAutoTriggerGuard(ideaId, step);
+    // Report runs a multi-call debate loop; strategic_frameworks loops per-ICP. Allow 10 min.
+    const longSteps: IdeaBlock[] = ["report", "strategic_frameworks"];
+    const result = await runAiWithTimeout(action, {
+      timeoutMs: longSteps.includes(step) ? 600_000 : undefined,
+    });
+    // Fallback: clear if Realtime didn't already do so.
+    setIsRegenerating(false);
+    if (result.error) setError(result.error);
+  }
+
+  return { isRegenerating, error, setError, triggerRegenerate };
+}

@@ -1,14 +1,13 @@
 /**
- * /marketing — Marketing Validation Engine admin zone (Phase 0).
+ * /marketing — Marketing Validation Engine admin zone.
  *
- * Lists every project with its validation config. Staff enable validation on a
- * project (creates the 1:1 `mkt_validation` row), then drill into the per-project
- * dashboard. Gated to admin / manager.
+ * Lists all ideas as cards. Staff can open any idea's marketing dashboard.
+ * Gated to admin / manager.
  */
 import { requirePageAccess } from "@/lib/auth/page-gate";
 import PageShell from "@/components/layout/PageShell";
 import type { UserProfile } from "@/types/projects";
-import { listProjectsWithValidation } from "./actions";
+import { listIdeasWithValidation } from "./actions";
 import { getPortfolioMetricsMap } from "@/lib/marketing/admin";
 import MarketingShell from "./_components/MarketingShell";
 
@@ -21,19 +20,19 @@ export default async function MarketingPage() {
     .eq("id", userId)
     .single();
 
-  const projects = await listProjectsWithValidation();
+  const ideas = await listIdeasWithValidation();
 
-  // Attach funnel metrics for projects that have validation enabled.
-  const enabledIds = projects.filter((p) => p.validation).map((p) => p.project_id);
-  const metricsMap = await getPortfolioMetricsMap(enabledIds);
-  const withMetrics = projects.map((p) => ({
-    ...p,
-    metrics: metricsMap[p.project_id] ?? null,
+  // Attach funnel metrics for ideas that have validation started.
+  const validatedIds = ideas.filter((i) => i.validation).map((i) => i.idea_id);
+  const metricsMap = await getPortfolioMetricsMap(validatedIds);
+  const withMetrics = ideas.map((i) => ({
+    ...i,
+    metrics: metricsMap[i.idea_id] ?? null,
   }));
 
   return (
     <PageShell profile={(profile ?? null) as UserProfile | null} flush>
-      <MarketingShell initialProjects={withMetrics} />
+      <MarketingShell initialIdeas={withMetrics} />
     </PageShell>
   );
 }

@@ -11,8 +11,8 @@ import { saveMilestonesAndTasks, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import RichTextEditor from "./RichTextEditor";
-import { useAutoTriggerAi, clearAutoTriggerGuard, isBlankHtml } from "../_hooks/useAutoTriggerAi";
-import { runAiWithTimeout } from "../_hooks/useAiWithTimeout";
+import { useAutoTriggerAi, isBlankHtml } from "../_hooks/useAutoTriggerAi";
+import { useRegenerate } from "../_hooks/useRegenerate";
 
 interface MilestonesAndTasksStepProps {
   ideaFull: IdeaFull;
@@ -24,8 +24,7 @@ export default function MilestonesAndTasksStep({ ideaFull }: MilestonesAndTasksS
 
   const [content, setContent] = useState(milestonesAndTasks?.content ?? "");
   const [isSaving, setIsSaving] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "milestones_and_tasks", isAiWorking);
   const [showPlatformModal, setShowPlatformModal] = useState(false);
 
   useEffect(() => {
@@ -46,16 +45,11 @@ export default function MilestonesAndTasksStep({ ideaFull }: MilestonesAndTasksS
     if (result.error) setError(result.error);
   }
 
-  async function handleRegenerate(platform: "bubble" | "claude_code") {
+  function handleRegenerate(platform: "bubble" | "claude_code") {
     setShowPlatformModal(false);
-    setIsRegenerating(true);
-    setError(null);
-    clearAutoTriggerGuard(idea.id, "milestones_and_tasks");
-    const result = await runAiWithTimeout(
+    return triggerRegenerate(
       () => triggerAiGeneration(idea.id, "milestones_and_tasks", undefined, platform)
     );
-    setIsRegenerating(false);
-    if (result.error) setError(result.error);
   }
 
   if (isAiWorking || isRegenerating) {

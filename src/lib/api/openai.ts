@@ -65,6 +65,8 @@ export interface OpenAIRequestParams {
   instructions?: string;
   /** Optional API key — falls back to OPENAI_API_KEY env var */
   apiKey?: string;
+  /** Max output tokens (maps to max_output_tokens in the Responses API body) */
+  maxTokens?: number;
 }
 
 // ── Main function ─────────────────────────────────────────────────────────────
@@ -79,7 +81,7 @@ export async function generateOpenAIResponse(
   const apiKey = params.apiKey ?? process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("Missing OpenAI API key: provide apiKey param or set OPENAI_API_KEY env var");
 
-  const { model, input, format = "text", instructions } = params;
+  const { model, input, format = "text", instructions, maxTokens } = params;
 
   const body: Record<string, unknown> = {
     model,
@@ -89,9 +91,8 @@ export async function generateOpenAIResponse(
     },
   };
 
-  if (instructions) {
-    body.instructions = instructions;
-  }
+  if (instructions) body.instructions = instructions;
+  if (maxTokens) body.max_output_tokens = maxTokens;
 
   let res: Response;
   try {
@@ -144,15 +145,37 @@ export async function generateOpenAIResponse(
  */
 function sanitizeJsonText(text: string): string {
   let s = text.trim();
-  // Strip markdown code fences (```json...``` or ```...```)
   s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
-  // Extract from first { to last } to remove any remaining preamble/postamble
   const start = s.indexOf("{");
   const end = s.lastIndexOf("}");
   if (start !== -1 && end !== -1 && end > start) {
     s = s.slice(start, end + 1);
   }
-  return s.trim();
+  // Escape bare control chars inside JSON string values using a state machine.
+  let inString = false;
+  let wasEscaped = false;
+  let result = "";
+  for (const ch of s) {
+    if (wasEscaped) {
+      result += ch;
+      wasEscaped = false;
+    } else if (ch === "\\") {
+      result += ch;
+      wasEscaped = true;
+    } else if (ch === '"') {
+      result += ch;
+      inString = !inString;
+    } else if (inString && ch === "\n") {
+      result += "\\n";
+    } else if (inString && ch === "\r") {
+      result += "\\r";
+    } else if (inString && ch === "\t") {
+      result += "\\t";
+    } else {
+      result += ch;
+    }
+  }
+  return result.trim();
 }
 
 /**

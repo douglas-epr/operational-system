@@ -15,8 +15,8 @@ import { cn } from "@/lib/utils";
 import IcpPillSelector from "./IcpPillSelector";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import RichTextEditor from "./RichTextEditor";
-import { useAutoTriggerAi, clearAutoTriggerGuard, isBlankHtml } from "../_hooks/useAutoTriggerAi";
-import { runAiWithTimeout } from "../_hooks/useAiWithTimeout";
+import { useAutoTriggerAi, isBlankHtml } from "../_hooks/useAutoTriggerAi";
+import { useRegenerate } from "../_hooks/useRegenerate";
 
 interface RefiningIcpStepProps {
   ideaFull: IdeaFull;
@@ -36,8 +36,7 @@ export default function RefiningIcpStep({ ideaFull }: RefiningIcpStepProps) {
   const [howCouldBeSolved, setHowCouldBeSolved] = useState("");
   const [ourSolutionValue, setOurSolutionValue] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "refining_icp", isAiWorking);
 
   // ICP modal state — create mode only (no description field in modal)
   const [icpModal, setIcpModal] = useState<{ mode: "create" | "edit"; icp?: IdeaIcp } | null>(null);
@@ -104,15 +103,10 @@ export default function RefiningIcpStep({ ideaFull }: RefiningIcpStepProps) {
     if (result.error) setError(result.error);
   }
 
-  async function handleRegenerate() {
-    setIsRegenerating(true);
-    setError(null);
-    clearAutoTriggerGuard(idea.id, "refining_icp");
-    const result = await runAiWithTimeout(() =>
+  function handleRegenerate() {
+    return triggerRegenerate(() =>
       triggerAiGeneration(idea.id, "refining_icp", selectedIcpId ?? undefined)
     );
-    setIsRegenerating(false);
-    if (result.error) setError(result.error);
   }
 
   function openCreateModal() {

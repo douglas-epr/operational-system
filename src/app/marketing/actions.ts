@@ -3,24 +3,14 @@
 /**
  * Server actions for /marketing — the Marketing Validation Engine admin zone.
  *
- * Phase 0 scope: list existing projects with their validation config, and
- * enable/update a project's validation (creates the 1:1 `mkt_validation` row).
- *
- * Auth gate: admin / manager (matches the sidebar entry and page gate).
- * `mkt_*` tables aren't in the generated Supabase types yet, so we use the
- * established `as never` cast pattern (see sandbox-planner actions).
+ * Lists ideas with their validation config. Marketing analysis is now
+ * idea-based (not project-based). Auth gate: admin / manager.
+ * `mkt_*` tables use the established `as never` cast pattern.
  */
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type {
-  MktFunnelMode,
-  MktProjectListItem,
-  MktValidation,
-  MktValidationStatus,
-} from "@/types/marketing";
+import type { MktIdeaListItem, MktValidation } from "@/types/marketing";
 
-const PATH = "/marketing";
 const STAFF = ["admin", "manager"] as const;
 
 async function getAdminClient() {
@@ -42,95 +32,40 @@ async function getAdminClient() {
   return { supabase, user };
 }
 
-/** List every project with its validation config (null if not yet enabled). */
-export async function listProjectsWithValidation(): Promise<MktProjectListItem[]> {
+/** List every idea with its validation config (null if not yet started). */
+export async function listIdeasWithValidation(): Promise<MktIdeaListItem[]> {
   const ctx = await getAdminClient();
   if ("error" in ctx) return [];
 
-  const [{ data: projects }, { data: validations }] = await Promise.all([
-    ctx.supabase.from("project").select("id, name").order("name", { ascending: true }),
+  const [{ data: ideas }, { data: validations }] = await Promise.all([
+    ctx.supabase
+      .from("idea")
+      .select("id, name, version_name, description, project_id, project:project_id(id, name)")
+      .order("created_at", { ascending: false }),
     ctx.supabase.from("mkt_validation" as never).select("*"),
   ]);
 
-  const vByProject = new Map<string, MktValidation>();
+  type IdeaRow = {
+    id: string;
+    name: string | null;
+    version_name: string | null;
+    description: string | null;
+    project_id: string | null;
+    project: { id: string; name: string | null } | null;
+  };
+
+  const vByIdea = new Map<string, MktValidation>();
   for (const v of (validations ?? []) as unknown as MktValidation[]) {
-    vByProject.set(v.project_id, v);
+    vByIdea.set(v.idea_id, v);
   }
 
-  return ((projects ?? []) as { id: string; name: string | null }[]).map((p) => ({
-    project_id: p.id,
-    project_name: p.name,
-    validation: vByProject.get(p.id) ?? null,
+  return ((ideas ?? []) as unknown as IdeaRow[]).map((i) => ({
+    idea_id: i.id,
+    idea_name: i.name,
+    idea_version_name: i.version_name,
+    idea_description: i.description,
+    project_id: i.project_id,
+    project_name: (i.project as { name: string | null } | null)?.name ?? null,
+    validation: vByIdea.get(i.id) ?? null,
   }));
-}
-
-/** Fetch one project's validation config. */
-export async function getValidation(
-  projectId: string
-): Promise<MktValidation | null> {
-  const ctx = await getAdminClient();
-  if ("error" in ctx) return null;
-
-  const { data } = await ctx.supabase
-    .from("mkt_validation" as never)
-    .select("*")
-    .eq("project_id", projectId)
-    .maybeSingle();
-
-  return (data as unknown as MktValidation) ?? null;
-}
-
-/** Enable validation for a project — creates the 1:1 mkt_validation row. */
-export async function enableValidation(
-  projectId: string,
-  funnelMode: MktFunnelMode = "b2b_outreach"
-): Promise<{ error?: string; id?: string }> {
-  const ctx = await getAdminClient();
-  if ("error" in ctx) return { error: ctx.error };
-
-  if (!projectId) return { error: "Project is required." };
-
-  const { data, error } = await ctx.supabase
-    .from("mkt_validation" as never)
-    .upsert(
-      {
-        project_id: projectId,
-        funnel_mode: funnelMode,
-        created_by: ctx.user.id,
-      } as never,
-      { onConflict: "project_id" }
-    )
-    .select("id")
-    .single();
-
-  if (error) return { error: error.message };
-
-  revalidatePath(PATH);
-  return { id: (data as unknown as { id: string }).id };
-}
-
-/** Update a project's validation config (mode, status, positioning, stages). */
-export async function updateValidation(
-  projectId: string,
-  patch: {
-    funnel_mode?: MktFunnelMode;
-    status?: MktValidationStatus;
-    positioning?: string | null;
-    enabled_capture_stages?: string[];
-    icp_definition?: Record<string, unknown>;
-  }
-): Promise<{ error?: string }> {
-  const ctx = await getAdminClient();
-  if ("error" in ctx) return { error: ctx.error };
-
-  const { error } = await ctx.supabase
-    .from("mkt_validation" as never)
-    .update(patch as never)
-    .eq("project_id", projectId);
-
-  if (error) return { error: error.message };
-
-  revalidatePath(PATH);
-  revalidatePath(`${PATH}/${projectId}`);
-  return {};
 }

@@ -18,8 +18,8 @@ import { saveStyles, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import RichTextEditor from "./RichTextEditor";
-import { useAutoTriggerAi, clearAutoTriggerGuard, isBlankHtml } from "../_hooks/useAutoTriggerAi";
-import { runAiWithTimeout } from "../_hooks/useAiWithTimeout";
+import { useAutoTriggerAi, isBlankHtml } from "../_hooks/useAutoTriggerAi";
+import { useRegenerate } from "../_hooks/useRegenerate";
 
 interface VisualStylesStepProps {
   ideaFull: IdeaFull;
@@ -44,8 +44,7 @@ export default function VisualStylesStep({ ideaFull }: VisualStylesStepProps) {
   const [neutralColor, setNeutralColor] = useState(styles?.neutral_color ?? "#6B7280");
 
   const [isSaving, setIsSaving] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "visual_styles", isAiWorking);
 
   useEffect(() => {
     setLogoBranding(styles?.logo_branding ?? "");
@@ -91,14 +90,8 @@ export default function VisualStylesStep({ ideaFull }: VisualStylesStepProps) {
     if (result.error) setError(result.error);
   }
 
-  async function handleRegenerate() {
-    setIsRegenerating(true);
-    setError(null);
-    clearAutoTriggerGuard(idea.id, "visual_styles");
-    const result = await runAiWithTimeout(() => triggerAiGeneration(idea.id, "visual_styles"));
-
-    setIsRegenerating(false);
-    if (result.error) setError(result.error);
+  function handleRegenerate() {
+    return triggerRegenerate(() => triggerAiGeneration(idea.id, "visual_styles"));
   }
 
   if (isAiWorking || isRegenerating) {

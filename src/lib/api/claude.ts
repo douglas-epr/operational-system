@@ -27,9 +27,8 @@ const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 529]);
 const CLAUDE_MODEL_ALIASES: Record<string, string> = {
   "claude-haiku-4-5": "claude-haiku-4-5-20251001",
   "claude-sonnet-4-5": "claude-sonnet-4-5-20250929",
-  "claude-sonnet-4-6": "claude-sonnet-4-5-20250929",
   "claude-opus-4-5": "claude-opus-4-5-20250929",
-  "claude-opus-4-6": "claude-opus-4-5-20250929",
+  // claude-sonnet-4-6, claude-opus-4-8 etc. are already valid API IDs — pass through unchanged
 };
 
 function resolveClaudeModel(model: string): string {
@@ -119,6 +118,10 @@ export async function generateClaudeResponse(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     let res: Response;
+    // Use AbortController + setTimeout instead of AbortSignal.timeout() —
+    // the static factory doesn't fire reliably in Next.js dev (patched fetch).
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), AI_FETCH_TIMEOUT_MS);
     try {
       res = await fetch(CLAUDE_API_URL, {
         method: "POST",
@@ -128,10 +131,15 @@ export async function generateClaudeResponse(
           "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(AI_FETCH_TIMEOUT_MS),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
     } catch (e) {
-      const isAbort = e instanceof DOMException && e.name === "TimeoutError";
+      clearTimeout(timeoutId);
+      // AbortController fires with AbortError; also catch DOMException TimeoutError for safety.
+      const isAbort =
+        (e instanceof DOMException && (e.name === "AbortError" || e.name === "TimeoutError")) ||
+        (e instanceof Error && e.name === "AbortError");
       // Timeouts are NOT retried — the user is waiting, and retrying a
       // 230s timeout would blow past the client-side 240s budget.
       if (isAbort) {
@@ -210,6 +218,8 @@ export async function generateClaudeResponse(
 /**
  * Strip markdown code fences and extract the JSON object from an AI response.
  * Handles: ```json...```, ```...```, and any leading/trailing prose.
+ * Also escapes bare control characters (newlines, tabs) inside JSON string
+ * values, which Claude sometimes emits and which break JSON.parse().
  */
 function sanitizeJsonText(text: string): string {
   let s = text.trim();
@@ -219,7 +229,32 @@ function sanitizeJsonText(text: string): string {
   if (start !== -1 && end !== -1 && end > start) {
     s = s.slice(start, end + 1);
   }
-  return s.trim();
+  // Escape bare control chars inside JSON string values using a state machine.
+  // A regex cannot reliably distinguish "inside a string" from structural JSON.
+  let inString = false;
+  let wasEscaped = false;
+  let result = "";
+  for (const ch of s) {
+    if (wasEscaped) {
+      result += ch;
+      wasEscaped = false;
+    } else if (ch === "\\") {
+      result += ch;
+      wasEscaped = true;
+    } else if (ch === '"') {
+      result += ch;
+      inString = !inString;
+    } else if (inString && ch === "\n") {
+      result += "\\n";
+    } else if (inString && ch === "\r") {
+      result += "\\r";
+    } else if (inString && ch === "\t") {
+      result += "\\t";
+    } else {
+      result += ch;
+    }
+  }
+  return result.trim();
 }
 
 /**

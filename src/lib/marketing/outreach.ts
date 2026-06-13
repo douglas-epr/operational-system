@@ -44,6 +44,7 @@ export function prospectVars(p: MktProspect): Record<string, string> {
     title: p.title ?? "",
     email: p.email ?? "",
     ai_opening: "",
+    booking_link: "", // populated in processDueOutreach from mkt_validation.booking_url
   };
 }
 
@@ -54,19 +55,19 @@ function secret(): string {
 }
 
 /** Deterministic, non-guessable token tying an email to a project. */
-export function unsubscribeToken(projectId: string, email: string): string {
+export function unsubscribeToken(ideaId: string, email: string): string {
   return createHmac("sha256", secret())
-    .update(`${projectId}:${email.toLowerCase()}`)
+    .update(`${ideaId}:${email.toLowerCase()}`)
     .digest("hex")
     .slice(0, 24);
 }
 
 export function verifyUnsubscribeToken(
-  projectId: string,
+  ideaId: string,
   email: string,
   token: string
 ): boolean {
-  const expected = unsubscribeToken(projectId, email);
+  const expected = unsubscribeToken(ideaId, email);
   // constant-ish time compare
   if (token.length !== expected.length) return false;
   let diff = 0;
@@ -74,23 +75,23 @@ export function verifyUnsubscribeToken(
   return diff === 0;
 }
 
-export function unsubscribeUrl(projectId: string, email: string): string {
+export function unsubscribeUrl(ideaId: string, email: string): string {
   const base = process.env.NEXT_PUBLIC_APP_URL || "";
-  const t = unsubscribeToken(projectId, email);
-  return `${base}/api/m/unsubscribe?p=${projectId}&e=${encodeURIComponent(email)}&t=${t}`;
+  const t = unsubscribeToken(ideaId, email);
+  return `${base}/api/m/unsubscribe?p=${ideaId}&e=${encodeURIComponent(email)}&t=${t}`;
 }
 
 type SB = ReturnType<typeof createServiceClient>;
 
 async function isSuppressed(
   sb: SB,
-  projectId: string,
+  ideaId: string,
   email: string
 ): Promise<boolean> {
   const { data } = await sb
     .from("mkt_suppression" as never)
     .select("id")
-    .eq("project_id", projectId)
+    .eq("idea_id", ideaId)
     .ilike("email", email)
     .maybeSingle();
   return !!data;
@@ -141,7 +142,7 @@ export async function processDueOutreach(limit = 50): Promise<ProcessResult> {
 
   const due = (dueData ?? []) as unknown as {
     id: string;
-    project_id: string;
+    idea_id: string;
     prospect_id: string;
     campaign_id: string;
     step_order: number;
@@ -151,6 +152,7 @@ export async function processDueOutreach(limit = 50): Promise<ProcessResult> {
   const stepCache = new Map<string, MktSequenceStep | null>();
   const campaignCache = new Map<string, MktCampaign | null>();
   const positioningCache = new Map<string, string>();
+  const bookingUrlCache = new Map<string, string>();
 
   async function getStep(campaignId: string, order: number) {
     const key = `${campaignId}:${order}`;
@@ -176,16 +178,27 @@ export async function processDueOutreach(limit = 50): Promise<ProcessResult> {
     campaignCache.set(id, c);
     return c;
   }
-  async function getPositioning(projectId: string) {
-    if (positioningCache.has(projectId)) return positioningCache.get(projectId)!;
+  async function getPositioning(ideaId: string) {
+    if (positioningCache.has(ideaId)) return positioningCache.get(ideaId)!;
     const { data } = await sb
       .from("mkt_validation" as never)
       .select("positioning")
-      .eq("project_id", projectId)
+      .eq("idea_id", ideaId)
       .maybeSingle();
     const pos = (data as { positioning: string | null } | null)?.positioning ?? "";
-    positioningCache.set(projectId, pos);
+    positioningCache.set(ideaId, pos);
     return pos;
+  }
+  async function getBookingUrl(ideaId: string) {
+    if (bookingUrlCache.has(ideaId)) return bookingUrlCache.get(ideaId)!;
+    const { data } = await sb
+      .from("mkt_validation" as never)
+      .select("booking_url")
+      .eq("idea_id", ideaId)
+      .maybeSingle();
+    const url = (data as { booking_url: string | null } | null)?.booking_url ?? "";
+    bookingUrlCache.set(ideaId, url);
+    return url;
   }
 
   for (const o of due) {
@@ -204,7 +217,7 @@ export async function processDueOutreach(limit = 50): Promise<ProcessResult> {
       continue;
     }
 
-    if (await isSuppressed(sb, o.project_id, prospect.email)) {
+    if (await isSuppressed(sb, o.idea_id, prospect.email)) {
       await sb.from("mkt_outreach" as never).update({ status: "unsub" } as never).eq("id", o.id);
       result.skipped++;
       continue;
@@ -225,12 +238,13 @@ export async function processDueOutreach(limit = 50): Promise<ProcessResult> {
     }
 
     const vars = prospectVars(prospect);
+    vars.booking_link = await getBookingUrl(o.idea_id);
 
     // Optional AI personalisation of the opening line.
     if (step.ai_personalise) {
       try {
         const campaign = await getCampaign(o.campaign_id);
-        const positioning = await getPositioning(o.project_id);
+        const positioning = await getPositioning(o.idea_id);
         const cfg = campaign?.created_by
           ? await resolveAiConfig(sb, campaign.created_by)
           : null;
@@ -256,13 +270,13 @@ Return only the sentence — no greeting, no sign-off, no quotes.`;
 
     const subject = renderTemplate(step.subject_tpl ?? "", vars).trim() || "Quick question";
     const bodyText = renderTemplate(step.body_tpl ?? "", vars);
-    const html = wrapHtml(bodyText, unsubscribeUrl(o.project_id, prospect.email));
+    const html = wrapHtml(bodyText, unsubscribeUrl(o.idea_id, prospect.email));
 
     const send = await sendRawEmail({
       to: { email: prospect.email, name: prospect.name ?? prospect.email },
       subject,
       htmlContent: html,
-      tags: [`mkt:${o.project_id}`, `campaign:${o.campaign_id}`],
+      tags: [`mkt:${o.idea_id}`, `campaign:${o.campaign_id}`],
     });
 
     if (send.returned_an_error) {
@@ -294,7 +308,7 @@ Return only the sentence — no greeting, no sign-off, no quotes.`;
     if (next) {
       const when = new Date(Date.now() + (next.delay_days ?? 0) * 86_400_000).toISOString();
       await sb.from("mkt_outreach" as never).insert({
-        project_id: o.project_id,
+        idea_id: o.idea_id,
         prospect_id: o.prospect_id,
         campaign_id: o.campaign_id,
         step_order: next.step_order,

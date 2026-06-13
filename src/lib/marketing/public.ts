@@ -10,11 +10,13 @@
 
 import "server-only";
 import { createServiceClient } from "@/lib/supabase/server";
-import type { MktLanding, MktSignalType } from "@/types/marketing";
+import type { MktLanding, MktSignalType, QuizQuestion } from "@/types/marketing";
 
-/** A published landing page, joined with its project name for rendering. */
+/** A published landing page, joined with its idea name for rendering. */
 export interface PublicLanding extends MktLanding {
+  idea_name: string | null;
   project_name: string | null;
+  booking_url: string | null;
 }
 
 /** Fetch a published landing page by slug (or null). */
@@ -34,15 +36,29 @@ export async function getPublishedLanding(
   const landing = data as unknown as MktLanding | null;
   if (!landing) return null;
 
-  const { data: project } = await supabase
-    .from("project")
-    .select("name")
-    .eq("id", landing.project_id)
-    .maybeSingle();
+  const [{ data: idea }, { data: validation }] = await Promise.all([
+    supabase
+      .from("idea")
+      .select("name, project:project_id(name)")
+      .eq("id", landing.idea_id)
+      .maybeSingle(),
+    supabase
+      .from("mkt_validation" as never)
+      .select("booking_url")
+      .eq("idea_id", landing.idea_id)
+      .maybeSingle(),
+  ]);
+
+  type IdeaRow = { name: string | null; project: { name: string | null } | null } | null;
+  const ideaRow = idea as unknown as IdeaRow;
+  const bookingUrl =
+    (validation as unknown as { booking_url: string | null } | null)?.booking_url ?? null;
 
   return {
     ...landing,
-    project_name: (project as { name: string | null } | null)?.name ?? null,
+    idea_name: ideaRow?.name ?? null,
+    project_name: ideaRow?.project?.name ?? null,
+    booking_url: bookingUrl,
   };
 }
 
@@ -61,8 +77,7 @@ export interface RecordSignalInput {
  * Record a captured demand signal (quiz / waitlist).
  *
  * Pre-order is intentionally NOT accepted here yet — it arrives via the Stripe
- * webhook once that integration is switched on. We hard-reject it so a stubbed
- * UI can't write an unpaid "preorder" row.
+ * webhook once that integration is switched on.
  */
 export async function recordSignal(
   input: RecordSignalInput
@@ -83,18 +98,18 @@ export async function recordSignal(
 
   const supabase = createServiceClient();
 
-  // Resolve the landing + verify the stage is enabled on a published page.
   const { data: landingRow } = await supabase
     .from("mkt_landing" as never)
-    .select("id, project_id, capture_stages, published")
+    .select("id, idea_id, capture_stages, published, quiz_schema")
     .eq("slug", slug)
     .maybeSingle();
 
   const landing = landingRow as unknown as {
     id: string;
-    project_id: string;
+    idea_id: string;
     capture_stages: string[];
     published: boolean;
+    quiz_schema: QuizQuestion[] | null;
   } | null;
 
   if (!landing || !landing.published) {
@@ -104,15 +119,49 @@ export async function recordSignal(
     return { error: "This submission type is not enabled on this page." };
   }
 
+  // Validate quiz answers against the structured schema (when one is defined)
+  // and compute rule-based ICP fit. Schema-less landings accept free-form
+  // answers but get icp_fit = null (unknown) — they can't count as ICP evidence.
+  const schema = (landing.quiz_schema ?? []) as QuizQuestion[];
+  const rawAnswers = input.quizAnswers ?? {};
+  let icpFit: boolean | null = null;
+
+  if (schema.length > 0 && Object.keys(rawAnswers).length > 0) {
+    const byKey = new Map(schema.map((q) => [q.key, q]));
+    for (const [key, value] of Object.entries(rawAnswers)) {
+      const q = byKey.get(key);
+      if (!q) {
+        return { error: `Unknown quiz field "${key}".` };
+      }
+      const valid = q.options.some((o) => o.value === String(value));
+      if (!valid) {
+        return { error: `Invalid answer for "${key}".` };
+      }
+    }
+
+    // ICP fit: among answered questions that define qualifying options,
+    // at least half of the chosen answers must be ICP-flagged.
+    let qualifying = 0;
+    let hits = 0;
+    for (const [key, value] of Object.entries(rawAnswers)) {
+      const q = byKey.get(key)!;
+      if (!q.options.some((o) => o.icp)) continue;
+      qualifying++;
+      if (q.options.find((o) => o.value === String(value))?.icp) hits++;
+    }
+    if (qualifying > 0) icpFit = hits * 2 >= qualifying;
+  }
+
   const { data, error } = await supabase
     .from("mkt_signal" as never)
     .insert({
-      project_id: landing.project_id,
+      idea_id: landing.idea_id,
       landing_id: landing.id,
       type,
       email,
       name: input.name?.trim() || null,
-      quiz_answers: input.quizAnswers ?? {},
+      quiz_answers: rawAnswers,
+      icp_fit: icpFit,
       utm: input.utm ?? {},
     } as never)
     .select("id")
@@ -124,31 +173,43 @@ export async function recordSignal(
 
 export interface RecordEventInput {
   slug: string;
-  type: string; // "view" | "click" | "cta" | ...
+  type: string;
   sessionId?: string | null;
   utm?: Record<string, unknown>;
 }
+
+/** Event types the public beacon may write (intent gradient, not just views). */
+const ALLOWED_EVENT_TYPES = new Set([
+  "view",
+  "click",
+  "cta_click",
+  "scroll_50",
+  "scroll_90",
+  "pricing_click",
+  "meeting_booked",
+]);
 
 /** Record an analytics beacon event (best-effort; never throws). */
 export async function recordEvent(
   input: RecordEventInput
 ): Promise<{ ok: boolean }> {
   try {
+    if (!ALLOWED_EVENT_TYPES.has(input.type)) return { ok: false };
     const supabase = createServiceClient();
     const { data: landingRow } = await supabase
       .from("mkt_landing" as never)
-      .select("id, project_id")
+      .select("id, idea_id")
       .eq("slug", input.slug)
       .maybeSingle();
 
     const landing = landingRow as unknown as {
       id: string;
-      project_id: string;
+      idea_id: string;
     } | null;
     if (!landing) return { ok: false };
 
     await supabase.from("mkt_event" as never).insert({
-      project_id: landing.project_id,
+      idea_id: landing.idea_id,
       landing_id: landing.id,
       type: input.type.slice(0, 40),
       session_id: input.sessionId ?? null,

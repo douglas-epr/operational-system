@@ -12,8 +12,8 @@ import { saveStructureAlign, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import RichTextEditor from "./RichTextEditor";
-import { useAutoTriggerAi, clearAutoTriggerGuard, isBlankHtml } from "../_hooks/useAutoTriggerAi";
-import { runAiWithTimeout } from "../_hooks/useAiWithTimeout";
+import { useAutoTriggerAi, isBlankHtml } from "../_hooks/useAutoTriggerAi";
+import { useRegenerate } from "../_hooks/useRegenerate";
 
 interface StructureAlignStepProps {
   ideaFull: IdeaFull;
@@ -34,8 +34,7 @@ export default function StructureAlignStep({ ideaFull }: StructureAlignStepProps
     structureAlign?.success_metrics ?? ""
   );
   const [isSaving, setIsSaving] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "structure_align", isAiWorking);
 
   useEffect(() => {
     setCoreProblem(structureAlign?.core_problem ?? "");
@@ -72,15 +71,8 @@ export default function StructureAlignStep({ ideaFull }: StructureAlignStepProps
     if (result.error) setError(result.error);
   }
 
-  async function handleRegenerate() {
-    setIsRegenerating(true);
-    setError(null);
-    clearAutoTriggerGuard(idea.id, "structure_align");
-
-    const result = await runAiWithTimeout(() => triggerAiGeneration(idea.id, "structure_align"));
-
-    setIsRegenerating(false);
-    if (result.error) setError(result.error);
+  function handleRegenerate() {
+    return triggerRegenerate(() => triggerAiGeneration(idea.id, "structure_align"));
   }
 
   // Show AI loading overlay when generation is in progress OR user just clicked regenerate

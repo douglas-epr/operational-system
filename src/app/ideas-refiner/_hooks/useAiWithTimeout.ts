@@ -48,18 +48,16 @@ type TimedResult<T> = T & { _timedOut?: true };
 
 /**
  * Options for runAiWithTimeout.
- * - `silent: true` — suppress both the timeout and error toasts. Use for
- *   background auto-triggered calls that the user did NOT explicitly initiate,
- *   so a transient provider error (e.g. "high demand") doesn't surface a
- *   confusing toast on top of data that may already be saved from an earlier
- *   successful run. Manual "Regenerate" button clicks should remain non-silent.
+ * - `silent: true` — suppress both the timeout and error toasts.
+ * - `timeoutMs` — override the default 4-minute timeout (e.g. 600_000 for long debate loops).
  */
 interface RunAiOptions {
   silent?: boolean;
+  timeoutMs?: number;
 }
 
 /**
- * Run `fn` with a 4-minute client-side timeout.
+ * Run `fn` with a client-side timeout (default 4 min, overridable via options.timeoutMs).
  * By default shows a toast on timeout or on error. Pass `{ silent: true }` to
  * suppress all toasts (for background auto-triggered calls).
  * Always returns a result object.
@@ -68,7 +66,7 @@ export async function runAiWithTimeout<T extends { error?: string }>(
   fn: () => Promise<T>,
   options: RunAiOptions = {}
 ): Promise<T> {
-  const { silent = false } = options;
+  const { silent = false, timeoutMs = AI_TIMEOUT_MS } = options;
   let timedOut = false;
 
   const timeoutPromise = new Promise<TimedResult<T>>((resolve) =>
@@ -76,10 +74,10 @@ export async function runAiWithTimeout<T extends { error?: string }>(
       timedOut = true;
       if (!silent) showTimeoutToast();
       resolve({
-        error: "AI response timed out after 4 minutes.",
+        error: `AI response timed out after ${Math.round(timeoutMs / 60_000)} minutes.`,
         _timedOut: true,
       } as TimedResult<T>);
-    }, AI_TIMEOUT_MS)
+    }, timeoutMs)
   );
 
   const result = (await Promise.race([fn(), timeoutPromise])) as TimedResult<T>;

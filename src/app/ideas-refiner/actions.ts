@@ -11,15 +11,18 @@ import type {
   IdeaBlock,
   IdeaChatbotMessage,
   IdeaFull,
+  IdeaReportAlignment,
+  IdeaReportDebateTurn,
 } from "@/types/idea-refiner";
 import { IDEA_BLOCK_LABELS } from "@/types/idea-refiner";
-import { generateAiJsonResponse } from "@/lib/api/ai-dispatcher";
+import { generateAiJsonResponse, generateAiTextResponse } from "@/lib/api/ai-dispatcher";
 import { loadIdeaFull } from "./_lib/loadIdeaFull";
 import type {
   StructureAlignOutput,
   ICPsOutput,
   ProductDefinitionOutput,
   StrategicFrameworksOutput,
+  SingleIcpFrameworkOutput,
   BenchmarkingOutput,
   PrdOutput,
   DatabaseOutput,
@@ -74,6 +77,126 @@ export async function updateIdea(
   if (error) return { error: error.message };
   revalidatePath(PATH);
   return {};
+}
+
+/**
+ * Duplicate an idea and all its related data as a new version.
+ * The new idea gets the next auto-assigned version_name from the DB trigger.
+ * ICP UUIDs are pre-generated so optimization_suggestion.icp_id can be remapped.
+ */
+export async function duplicateIdea(ideaId: string): Promise<{ error?: string; id?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const full = await loadIdeaFull(supabase, ideaId);
+  if (!full) return { error: "Idea not found" };
+
+  // Create the new idea — omit version_name so the DB trigger assigns it.
+  const { data: newIdeaRow, error: ideaErr } = await supabase
+    .from("idea")
+    .insert({
+      name: full.idea.name,
+      description: full.idea.description,
+      success_metrics: full.idea.success_metrics,
+      project_id: full.idea.project_id,
+      created_by: user.id,
+      current_block_ended: full.idea.current_block_ended,
+    })
+    .select("id")
+    .single();
+
+  if (ideaErr) return { error: ideaErr.message };
+  const newId = newIdeaRow.id as string;
+
+  // Pre-generate new UUIDs for ICPs so we can remap optimization_suggestion.icp_id.
+  const icpIdMap: Record<string, string> = {};
+  for (const icp of full.icps) {
+    icpIdMap[icp.id] = crypto.randomUUID();
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type AnyClient = any;
+  const db = supabase as AnyClient;
+
+  const tasks: Promise<{ error: { message: string } | null }>[] = [];
+
+  if (full.structureAlign) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _i, idea_id: _ii, created_at: _ca, ...rest } = full.structureAlign;
+    tasks.push(db.from("idea_structure_and_align").insert({ ...rest, idea_id: newId }));
+  }
+
+  if (full.icps.length > 0) {
+    const rows = full.icps.map(({ id, idea_id: _ii, created_at: _ca, ...rest }) => ({
+      ...rest,
+      id: icpIdMap[id],
+      idea_id: newId,
+    }));
+    tasks.push(db.from("idea_icp").insert(rows));
+  }
+
+  if (full.optimizationSuggestions.length > 0) {
+    const rows = full.optimizationSuggestions.map(
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      ({ id: _i, idea_id: _ii, created_at: _ca, icp_id, ...rest }) => ({
+        ...rest,
+        idea_id: newId,
+        icp_id: icp_id ? (icpIdMap[icp_id] ?? null) : null,
+      })
+    );
+    tasks.push(db.from("idea_optimization_suggestion").insert(rows));
+  }
+
+  if (full.productDefinition) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _i, idea_id: _ii, created_at: _ca, created_by: _cb, ...rest } = full.productDefinition;
+    tasks.push(db.from("idea_product_definition_and_flows").insert({ ...rest, idea_id: newId, created_by: user.id }));
+  }
+
+  if (full.benchmarking) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _i, idea_id: _ii, created_at: _ca, ...rest } = full.benchmarking;
+    tasks.push(db.from("idea_benchmarking").insert({ ...rest, idea_id: newId }));
+  }
+
+  if (full.prd) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _i, idea_id: _ii, created_at: _ca, ...rest } = full.prd;
+    tasks.push(db.from("idea_prd").insert({ ...rest, idea_id: newId }));
+  }
+
+  if (full.database) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _i, idea_id: _ii, created_at: _ca, ...rest } = full.database;
+    tasks.push(db.from("idea_database").insert({ ...rest, idea_id: newId }));
+  }
+
+  if (full.styles) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _i, idea_id: _ii, created_at: _ca, ...rest } = full.styles;
+    tasks.push(db.from("idea_styles").insert({ ...rest, idea_id: newId }));
+  }
+
+  if (full.milestonesAndTasks) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _i, idea_id: _ii, created_at: _ca, ...rest } = full.milestonesAndTasks;
+    tasks.push(db.from("idea_milestones_and_tasks").insert({ ...rest, idea_id: newId }));
+  }
+
+  if (full.report) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _i, idea_id: _ii, created_at: _ca, ...rest } = full.report;
+    tasks.push(db.from("idea_report").insert({ ...rest, idea_id: newId }));
+  }
+
+  const results = await Promise.all(tasks);
+  for (const r of results) {
+    if (r.error) return { error: r.error.message };
+  }
+
+  revalidatePath(PATH);
+  return { id: newId };
 }
 
 /** Delete an idea and all cascaded children (handled by DB FK ON DELETE CASCADE). */
@@ -210,7 +333,7 @@ export async function deleteIcp(icpId: string): Promise<{ error?: string }> {
 /** Upsert product definition block. */
 export async function saveProductDefinition(
   ideaId: string,
-  data: { summary?: string; business_model?: string; features?: string }
+  data: { summary?: string; business_model?: string; features?: string; go_to_market?: string }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
   const {
@@ -544,7 +667,12 @@ const PROMPT_ID_BY_STEP: Record<string, string> = {
   milestones_and_tasks_bubble:      "9bfb8337-25ca-4259-a6e9-da15cb3bea55",
   milestones_and_tasks_claude_code: "c1d2e3f4-0001-4000-8000-000000000001",
   report: "e1f6cb88-9a7e-4f5b-bb6c-1c0a8d2f3401",
+  report_skeptic: "da000001-0000-4000-8000-000000000001",
+  report_advocate: "da000002-0000-4000-8000-000000000001",
+  report_reframer: "da000003-0000-4000-8000-000000000001",
+  report_scorer: "da000004-0000-4000-8000-000000000001",
   idea_chatbot: "a1b2c3d4-0000-4000-8000-000000000001",
+  idea_chatbot_devil_advocate: "da001000-0000-4000-8000-000000000001",
 };
 
 /** Strip HTML tags from a string so AI prompt templates and idea descriptions
@@ -622,51 +750,54 @@ Return a JSON object with exactly these keys:
 - "Product Overview": Rich HTML text describing the product vision and architecture.
 - "Business Model": REQUIRED. Rich HTML text describing the single best-fit business model for this product given its nature, target audience, and competitive landscape. Name the model (e.g. SaaS subscription, marketplace, freemium+premium, usage-based, per-seat, transaction fee, white-label, enterprise license). Explain in 2–3 sentences WHY this model fits better than the alternatives for THIS idea. Be specific — reference the product's core value prop and ICP willingness-to-pay signals. Do not list multiple models here; pick the best one and defend the choice.
 - "Feature List & Logic": Rich HTML text with features organized by categories.
+- "Go-to-Market": REQUIRED. Rich HTML text describing the go-to-market strategy. Cover: (1) The Wedge — the single first user archetype and why they are acquired first (supply vs demand, early adopter profile); (2) Content or outreach strategy for acquiring that wedge user at zero or near-zero CAC; (3) Why supply or demand comes first and how the other side follows organically; (4) The first concrete use case that closes the first transaction; (5) Distribution channels in year one ranked by priority. Write in plain, direct prose — no fluff, no generic GTM boilerplate. Reference the specific ICP circumstances, communities, and pain triggers from the idea's context.
 - "User Flows": Array of objects with "user_name" (string), "description" (string), "user_flow" (string with HTML flow description).
 
 Return ONLY valid JSON.`;
 
-const FALLBACK_STRATEGIC_FRAMEWORKS = `You are a strategic business consultant. Generate comprehensive strategic frameworks for each ICP.
+const FALLBACK_STRATEGIC_FRAMEWORKS = `You are a strategic business consultant. Generate comprehensive strategic frameworks for the following ICP.
 
 Idea: {{idea_name}} — {{idea_description}}
 Core Problem: {{core_problem}}
 Target Audience: {{target_audience}}
 
-ICPs:
-{{icp_descriptions}}
+ICP to analyse:
+Name: {{icp_name}}
+Description: {{icp_description}}
+Day in the Life: {{icp_day_in_life}}
+Pain Points: {{icp_pain_points}}
 
-Return a JSON object with key "ICPs" containing an array of objects — one per ICP — each with ALL of these fields:
-- "id": The ICP identifier (use their name as id)
-- "name": ICP name
+Return a single flat JSON object (NOT wrapped in an array) with ALL of these fields:
+- "name": ICP name (copy from above)
 - "score_breakdown": object with these integer sub-scores (each 0–20):
     - "pain_severity": How acute and painful the problem is for this ICP.
     - "pain_frequency": How often this ICP encounters the pain (daily > weekly > monthly).
     - "willingness_to_pay": How strongly this ICP would pay to solve it (budget authority + urgency).
     - "market_reachability": How easy it is to reach this ICP (channels, density, identifiability).
     - "solution_fit": How well our product specifically solves their pain compared to alternatives.
-- "score": integer = sum of score_breakdown values (0–100). Do NOT round. Sub-scores MUST differ across ICPs — never give identical breakdowns for two ICPs.
+- "score": integer = sum of score_breakdown values (0–100). Do NOT round.
 - "score_rationale": REQUIRED. Rich HTML, 2–3 sentences, explaining the breakdown and why this ICP ranks where it does.
-- "value_proposition_icp_pains": Rich HTML — ICP's specific pains that the product addresses
+- "value_proposition_icp_pains": Rich HTML — ICP's specific pains that the product addresses.
 - "value_proposition_value_map_solutions": REQUIRED Rich HTML — Value Map: specific solutions/features that relieve this ICP's pains. Do not leave empty.
-- "value_proposition_icp_gains": Rich HTML — ICP's desired gains and positive outcomes they seek
+- "value_proposition_icp_gains": Rich HTML — ICP's desired gains and positive outcomes they seek.
 - "value_proposition_value_map_gain_creators": REQUIRED Rich HTML — Value Map: how the product creates gains and delivers the ICP's desired outcomes. Do not leave empty.
-- "jtbd": Rich HTML — Jobs To Be Done synthesis for this ICP
-- "architect_title": ICP archetype title (e.g. "The Overwhelmed SMB Owner")
-- "architect_subtitle": REQUIRED ICP archetype subtitle (brief tagline, 4–10 words)
-- "picture": REQUIRED URL string for a representative avatar. Use the format: https://api.dicebear.com/7.x/personas/svg?seed=<URL_ENCODED_ARCHETYPE_TITLE> (for example https://api.dicebear.com/7.x/personas/svg?seed=The%20Overwhelmed%20SMB%20Owner). Always return a non-null URL.
-- "architect_tags": Array of 3-6 short descriptor tags
-- "architect_psychographics": Rich HTML — psychographic profile
-- "architect_firmographics": Rich HTML — firmographic profile
-- "pitch_need": Rich HTML — NABC pitch: Need
-- "pitch_approach": Rich HTML — NABC pitch: Approach
-- "pitch_benefit": Rich HTML — NABC pitch: Benefit
-- "pitch_competition": Rich HTML — NABC pitch: Competition
+- "jtbd": Rich HTML — Jobs To Be Done synthesis for this ICP.
+- "architect_title": ICP archetype title (e.g. "The Overwhelmed SMB Owner").
+- "architect_subtitle": REQUIRED ICP archetype subtitle (brief tagline, 4–10 words).
+- "picture": REQUIRED URL string for a representative avatar. Use the format: https://api.dicebear.com/7.x/personas/svg?seed=<URL_ENCODED_ARCHETYPE_TITLE>. Always return a non-null URL.
+- "architect_tags": Array of 3-6 short descriptor tags.
+- "architect_psychographics": Rich HTML — psychographic profile.
+- "architect_firmographics": Rich HTML — firmographic profile.
+- "pitch_need": Rich HTML — NABC pitch: Need.
+- "pitch_approach": Rich HTML — NABC pitch: Approach.
+- "pitch_benefit": Rich HTML — NABC pitch: Benefit.
+- "pitch_competition": Rich HTML — NABC pitch: Competition.
 - "optimization_suggestions": REQUIRED array of EXACTLY 3–5 objects. Each object has:
-    - "name": short noun phrase (≤6 words), e.g. "Automated Brand DNA Onboarding".
-    - "description": 1–2 sentence actionable rationale.
-  This field is REQUIRED — never omit it and never return an empty array. Each suggestion must target this specific ICP's pains or gains above.
+    - "name": short noun phrase (≤6 words).
+    - "description": 1–2 sentence actionable rationale targeting this ICP's pains or gains.
+  Never omit this field and never return an empty array.
 
-Return ONLY valid JSON.`;
+Return ONLY valid JSON — a single flat object, not an array.`;
 
 const FALLBACK_BENCHMARKING = `You are a competitive analysis expert and business model innovator. Given the following startup idea and its context, create a comprehensive benchmarking analysis.
 
@@ -1034,6 +1165,7 @@ async function generateRefiningIcp(
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
+    maxTokens: 16384, // 3-5 rich HTML ICPs can easily exceed the 8192 default
   });
 
   if (res.returned_an_error || !res.data) {
@@ -1088,6 +1220,7 @@ async function generateProductDefinition(
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
+    maxTokens: 16384,
   });
 
   if (res.returned_an_error || !res.data) {
@@ -1113,6 +1246,7 @@ async function generateProductDefinition(
     summary: d["Product Overview"],
     business_model: d["Business Model"] || null,
     features: d["Feature List & Logic"],
+    go_to_market: d["Go-to-Market"] || null,
   };
 
   if (existing) {
@@ -1140,40 +1274,41 @@ async function generateStrategicFrameworks(
   requestId: string
 ): Promise<{ error?: string }> {
   const targetIcps = icpId ? icps.filter((i) => i.id === icpId) : icps;
-  const icpDescriptions = targetIcps
-    .map((i) => `- ${i.name}: ${stripHtml(i.description)} (Day in life: ${stripHtml(i.day_in_life)}, Pain points: ${stripHtml(i.pain_points)})`)
-    .join("\n");
-
   const template = (await getPromptTemplate("strategic_frameworks")) ?? FALLBACK_STRATEGIC_FRAMEWORKS;
-  const prompt = renderPrompt(template, {
+
+  const ideaVars = {
     idea_name: idea.name,
     idea_description: stripHtml(idea.description),
     core_problem: stripHtml(structureAlign?.core_problem) || "Not defined yet",
     target_audience: stripHtml(structureAlign?.target_audience) || "Not defined yet",
-    icp_descriptions: icpDescriptions,
-  });
+  };
 
-  const res = await generateAiJsonResponse<StrategicFrameworksOutput>({
-    service: aiConfig.service,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
-    prompt,
-  });
+  // Process each ICP sequentially with one AI call per ICP so that the
+  // response for a single ICP comfortably fits within maxTokens: 16384.
+  // A single call for all ICPs would exceed that ceiling for 3+ ICPs.
+  for (const icp of targetIcps) {
+    // Bail early if a newer request superseded this one.
+    if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
 
-  if (res.returned_an_error || !res.data) {
-    return { error: res.error ?? "AI returned no data" };
-  }
+    const prompt = renderPrompt(template, {
+      ...ideaVars,
+      icp_name: icp.name ?? "",
+      icp_description: stripHtml(icp.description),
+      icp_day_in_life: stripHtml(icp.day_in_life),
+      icp_pain_points: stripHtml(icp.pain_points),
+    });
 
-  // Guard: skip the write if a newer AI request has taken over.
-  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+    const res = await generateAiJsonResponse<SingleIcpFrameworkOutput>({
+      service: aiConfig.service,
+      apiKey: aiConfig.apiKey,
+      model: aiConfig.model,
+      prompt,
+      maxTokens: 16384,
+    });
 
-  // Update each ICP with framework data
-  for (const framework of res.data.ICPs) {
-    // Find matching ICP by name
-    const matchingIcp = targetIcps.find(
-      (i) => i.name?.toLowerCase() === framework.name?.toLowerCase()
-    );
-    if (!matchingIcp) continue;
+    if (res.returned_an_error || !res.data) continue; // skip this ICP, try the next
+
+    const framework = res.data;
 
     await supabase
       .from("idea_icp")
@@ -1181,9 +1316,9 @@ async function generateStrategicFrameworks(
         score: (framework as unknown as { score?: number }).score ?? null,
         score_rationale: (framework as unknown as { score_rationale?: string }).score_rationale ?? null,
         value_proposition_icp_pains: framework.value_proposition_icp_pains ?? null,
-        value_proposition_value_map_solutions: (framework as unknown as { value_proposition_value_map_solutions?: string }).value_proposition_value_map_solutions ?? null,
+        value_proposition_value_map_solutions: framework.value_proposition_value_map_solutions ?? null,
         value_proposition_icp_gains: framework.value_proposition_icp_gains ?? null,
-        value_proposition_value_map_gain_creators: (framework as unknown as { value_proposition_value_map_gain_creators?: string }).value_proposition_value_map_gain_creators ?? null,
+        value_proposition_value_map_gain_creators: framework.value_proposition_value_map_gain_creators ?? null,
         jtbd: framework.jtbd ?? null,
         title: framework.architect_title ?? null,
         subtitle: framework.architect_subtitle ?? null,
@@ -1196,25 +1331,14 @@ async function generateStrategicFrameworks(
         pitch_benefit: framework.pitch_benefit ?? null,
         pitch_competition: framework.pitch_competition ?? null,
       })
-      .eq("id", matchingIcp.id);
+      .eq("id", icp.id);
 
-    // Handle optimization suggestions if present
-    const suggestions = (framework as unknown as { optimization_suggestions?: { name: string; description: string }[] })
-      .optimization_suggestions;
+    const suggestions = framework.optimization_suggestions;
     if (suggestions && suggestions.length > 0) {
-      // Delete existing suggestions for this ICP
-      await supabase
-        .from("idea_optimization_suggestion")
-        .delete()
-        .eq("icp_id", matchingIcp.id);
-
-      const suggestionRows = suggestions.map((s) => ({
-        idea_id: ideaId,
-        icp_id: matchingIcp.id,
-        name: s.name,
-        description: s.description,
-      }));
-      await supabase.from("idea_optimization_suggestion").insert(suggestionRows);
+      await supabase.from("idea_optimization_suggestion").delete().eq("icp_id", icp.id);
+      await supabase.from("idea_optimization_suggestion").insert(
+        suggestions.map((s) => ({ idea_id: ideaId, icp_id: icp.id, name: s.name, description: s.description }))
+      );
     }
   }
 
@@ -1246,6 +1370,7 @@ async function generateBenchmarking(
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
+    maxTokens: 16384,
   });
 
   if (res.returned_an_error || !res.data) {
@@ -1312,6 +1437,7 @@ async function generatePrdContent(
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
+    maxTokens: 16384, // 9 rich HTML PRD sections can exceed 8192 default
   });
 
   if (res.returned_an_error || !res.data) {
@@ -1383,6 +1509,7 @@ async function generateDatabaseContent(
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
+    maxTokens: 16384,
   });
 
   if (res.returned_an_error || !res.data) {
@@ -1442,6 +1569,7 @@ async function generateVisualStylesContent(
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
+    maxTokens: 16384,
   });
 
   if (res.returned_an_error || !res.data) {
@@ -1518,6 +1646,7 @@ async function generateMilestonesContent(
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
+    maxTokens: 16384,
   });
 
   if (res.returned_an_error || !res.data) {
@@ -1553,6 +1682,278 @@ async function generateMilestonesContent(
 }
 
 // ── Report Generation ────────────────────────────────────────────────────────
+
+// ── Devil's Advocate debate persona fallback prompts ─────────────────────────
+
+const FALLBACK_SKEPTIC = `You are the Devil's Advocate — a hyper-critical evaluator whose only goal is truth quality. You are NOT trying to kill the idea. You ARE trying to expose whether the problem framing is correct and whether the proposed solution genuinely solves it.
+
+## YOUR STANDING RULES (non-negotiable)
+1. Open with the sharpest challenge available. Never praise first.
+2. One move at a time. One challenge, one question, or one demand for evidence per turn.
+3. Label every key claim: [Fact] (in the source), [Inference] (logical but unproven), [Speculation] (low/no evidence).
+4. Challenge vagueness and symptoms. Push to the root cause via "five whys" thinking.
+5. Concede when genuinely beaten — say "Conceded: [point]" and move to the next challenge.
+6. ANTI-SYCOPHANCY: never soften, never open with agreement, never validate unless the Advocate actually proved a point.
+7. You are WILLING to collapse a multi-feature idea to one wedge if the evidence only supports one. The collapse IS the insight.
+
+## GATE RULES
+- Gate 1 (PROBLEM): Challenge whether the stated problem is the real bottleneck or a symptom. Ask: Who defined this problem? Whose perspective is missing? Is it a functional/experiential/social need? What does "good enough" look like today? What specific circumstance makes the pain acute vs. chronic?
+- Gate 2 (SOLUTION): Challenge only after Gate 1 is resolved. Anchor exclusively to the agreed bottleneck. Apply the SWAP TEST: if you replaced this solution with a competitor's and the bottleneck is still solved, it is not differentiated. Name the strongest counter-argument an investor would raise.
+
+## YOUR OUTPUT (strict JSON, no markdown)
+{
+  "content": "Your argument in plain text — direct, blunt, Hemingway-short sentences.",
+  "proposed_statement": "Your current best one-sentence version of the [bottleneck / solution] that the debate should converge on.",
+  "agree": false,
+  "reason": "Why you do or do not accept the other side's latest proposed_statement."
+}
+
+## [SOURCE]
+{{source_block}}
+
+## [DEBATE SO FAR — {{gate}} gate, round {{round}}]
+{{transcript_so_far}}
+
+## ADVOCATE'S LAST PROPOSED STATEMENT
+{{other_proposed_statement}}
+
+Now give your turn. Be brief. Be sharp. One move.`;
+
+const FALLBACK_ADVOCATE = `You are the Founder's Advocate — you defend the idea's current framing but only with evidence from [SOURCE]. You are NOT a yes-person. You ARE trying to find the strongest defensible version of the problem/solution.
+
+## YOUR STANDING RULES (non-negotiable)
+1. Answer the Skeptic's specific challenge directly. Never deflect.
+2. Use ONLY evidence from [SOURCE]. Never invent data or cite outside facts.
+3. Refine your proposed_statement toward the sharpest, most defensible version each round.
+4. Concede when the Skeptic's challenge is correct and unrefuted by the source — say "Conceded: [point]" and update your proposed_statement accordingly.
+5. Label key claims: [Fact], [Inference], [Speculation].
+
+## GATE RULES
+- Gate 1 (PROBLEM): Defend the problem framing. Show the pain is real, acute, and specific using source evidence.
+- Gate 2 (SOLUTION): Defend the solution. Show it directly addresses the agreed bottleneck and survives the swap test.
+
+## YOUR OUTPUT (strict JSON, no markdown)
+{
+  "content": "Your defense in plain text — direct, evidence-anchored.",
+  "proposed_statement": "Your current best one-sentence version of the [bottleneck / solution].",
+  "agree": false,
+  "reason": "Why you do or do not accept the Skeptic's latest proposed_statement."
+}
+
+## [SOURCE]
+{{source_block}}
+
+## [DEBATE SO FAR — {{gate}} gate, round {{round}}]
+{{transcript_so_far}}
+
+## SKEPTIC'S LAST PROPOSED STATEMENT
+{{other_proposed_statement}}
+
+Now give your defense. Be direct. Use source evidence.`;
+
+// Meta call: returns only the 3 short string fields as JSON (no HTML inside JSON — avoids
+// truncation and literal-newline encoding bugs when revised_description is large).
+const FALLBACK_REFRAMER = `You are the Reframer. The Devil's Advocate debate has concluded. Summarize the outcome in 3 short fields.
+
+## YOUR OUTPUT (strict JSON, no markdown fences)
+{
+  "agreed_problem": "The one-sentence bottleneck the debate agreed on.",
+  "agreed_solution": "The one-sentence solution the debate agreed on.",
+  "recommendation": "1-2 sentence action recommendation for the founder — what to do next with this framing."
+}
+
+## [DEBATE OUTCOME]
+Agreed Problem (bottleneck): {{agreed_problem}}
+Agreed Solution: {{agreed_solution}}
+
+## [FULL DEBATE TRANSCRIPT]
+{{full_transcript}}
+
+Return ONLY the JSON object. No extra text.`;
+
+// Doc call: generates the revised strategic document as a plain HTML fragment (no JSON wrapper).
+// Called with generateAiTextResponse so there is no JSON-parse step and no size limit.
+const FALLBACK_REFRAMER_DOC = `You are the Reframer. The Devil's Advocate debate has concluded. Write the revised idea as a complete, multi-section strategic document.
+
+## QUALITY BAR
+Collapse vague multi-feature ideas to their ONE defensible wedge. Include: a sharp one-sentence bottleneck, a concrete Core Loop, an explicit "What It Is Not" (features cut from v1), a named Moat, a Business Model, and Residual Risks. Think seed-stage product memo, not marketing blurb.
+
+## STRUCTURE (use these exact section names as <h2> headings)
+1. Origin — Why this idea exists and what opportunity it addresses.
+2. The Problem — The root-cause bottleneck (one sentence, from the agreed debate outcome).
+3. What It Is — The solution in concrete terms (no adjectives like "innovative" or "revolutionary").
+4. Core Loop — The 3-5 step flywheel: [Action] → [Artifact/Output] → [Value Received] → [Return trigger].
+5. What Each Side Gets — Separate value for each key stakeholder/side of the market.
+6. Safety and Constraints — Regulatory, ethical, trust, or technical constraints that shape design.
+7. Go-To-Market — The wedge: who is the very first user, what is the first use case, how do you reach them.
+8. Business Model — Revenue mechanism(s), pricing hypothesis, unit economics logic.
+9. What It Is Not — Explicit list of features/markets cut from v1 and why.
+10. The Moat — What makes this defensible 18 months from now that a competitor cannot copy in 6.
+11. Residual Risks — The 2-3 make-or-break assumptions that the debate did NOT fully resolve.
+
+## OUTPUT FORMAT
+Return ONLY a raw HTML fragment — <h2> and <p> tags only, no html/head/body/style/script tags.
+Each section = one <h2> followed by one or more <p>. Do NOT wrap in JSON, do NOT add code fences, do NOT add any text before or after the HTML.
+
+## INSTRUCTIONS
+- Use ONLY evidence from [SOURCE] + the agreed debate outcomes. Do not invent facts.
+- Each section must reference at least one concrete detail from [SOURCE].
+- Write in Hemingway style: direct, blunt, short sentences. No hype words.
+
+## [ORIGINAL SOURCE]
+{{source_block}}
+
+## [DEBATE OUTCOME]
+Agreed Problem (bottleneck): {{agreed_problem}}
+Agreed Solution: {{agreed_solution}}
+
+## [FULL DEBATE TRANSCRIPT]
+{{full_transcript}}
+
+Write the full strategic document now.`;
+
+const FALLBACK_SCORER = `You are a neutral referee and scorer evaluating a business idea for Blur Studio. The Devil's Advocate debate has concluded. You have the agreed problem + solution + the full debate transcript. Your job is two-part:
+
+PART A — Score the idea's COMPLETENESS against its OWN framing (6 areas, same rubric as always). These scores measure how well the founder has DONE THE DISCOVERY WORK — they are NOT adjusted for the debate outcome. The alignment multiplier (not your job) handles the "wrong problem" penalty.
+
+PART B — Score the ALIGNMENT between the current idea and the debate's agreed framing. Two percentages + a reframe distance + rationales.
+
+## GROUNDING RULES (non-negotiable)
+1. Use ONLY the supplied [SOURCE] — never invent facts.
+2. If a source field is empty or "Not defined", treat it as a strong NEGATIVE signal.
+3. Every area description MUST quote at least one concrete fragment (≤12 words) from [SOURCE] in single quotes.
+4. No generic fillers. Prefer numbers and logic over adjectives.
+
+## WRITING VOICE (Hemingway, blunt, human)
+- Direct and plain. One idea per sentence.
+- Label key claims: [Fact], [High Confidence], [Inference], [Uncertain], [Speculation].
+- DO NOT use em dashes, emojis, or hype words.
+
+## PART A — COMPLETENESS SCORING RUBRIC (score vs. the idea's OWN framing)
+Score each area 0-100:
+- 90-100 = specific, evidence-backed, survives the strongest counter-argument.
+- 75-89 = solid but missing one dimension.
+- 60-74 = present but generic OR only single-sourced.
+- 40-59 = thin, vague, or internally contradictory.
+- 0-39  = absent, founder-assumed with no evidence, or contradicts other fields.
+
+### Area 1 — problem_reality (weight 25%)
+Evidence: core_problem, target_audience, ICP pain_points, how_problems_are_solved, firmographics/psychographics.
+Questions: Is the pain acute or a vitamin? Is it quantified? How is it solved today — is "good enough" the real competitor?
+
+### Area 2 — customer_clarity (weight 15%)
+Evidence: ICP names, day_in_life, firmographics, psychographics, reachability.
+Questions: Are ICPs concrete and reachable, or is this "everyone"? Could you list ten real people who match?
+
+### Area 3 — competitive_honesty (weight 15%)
+Evidence: benchmark_overview, benchmark_comparison, benchmark_business_models, benchmark_takeaways.
+Questions: ≥3 NAMED real competitors (including "do nothing")? Is differentiation real? What stops an incumbent from copying this in a week?
+
+### Area 4 — strategic_positioning (weight 20%)
+Evidence: ICP value_proposition_*, ICP jtbd, ICP pitch_need/benefit/approach/competition, product_summary.
+Questions: Is the value prop tied to a real ICP pain? Is the JTBD specific? Does the pitch name a genuine wedge?
+
+### Area 5 — demand_evidence (weight 15%)
+Evidence: idea_success_metrics, structure_success_metrics, ICP score_rationale, suggestions_block.
+Questions: Are success metrics MEASURABLE? Any signal of real demand (interviews, waitlist, payments) — or only founder conviction?
+
+### Area 6 — assumption_risk (weight 10%)
+Evidence: synthesize across the entire [SOURCE].
+Questions: What single assumption must be true? How fragile? Name the make-or-break belief.
+
+## EXPLICIT PENALTY TRIGGERS (apply ALL that fire)
+- "No real competitors named" (-10) — fires when benchmark_comparison names fewer than 2 concrete competitors.
+- "No measurable success metrics defined" (-8) — fires when BOTH idea_success_metrics AND structure_success_metrics are blank, "Not defined", or purely qualitative.
+- "Single-ICP dependency" (-5) — fires when only one ICP is defined.
+- "Vague target audience" (-5) — fires when target_audience is blank, "Not defined", or non-specific.
+- "Unvalidated make-or-break assumption" (-5) — fires when the core assumption has zero supporting evidence.
+
+## PART B — ALIGNMENT SCORING (vs. the agreed debate framing)
+Compare the CURRENT IDEA (its problem statement, its solution) against the AGREED PROBLEM and AGREED SOLUTION the debate converged on.
+
+- problem_fit_pct (0-100): How close is the current idea's problem framing to the agreed bottleneck? 100 = identical. 0 = completely different problem.
+- solution_fit_pct (0-100): How close is the current idea's solution to the agreed solution? 100 = same solution. 0 = completely different approach.
+- reframe_distance: "minor" (idea was basically right, small refinements), "moderate" (significant re-focus needed), "major" (fundamental pivot — idea as stated solves the wrong problem or wrong solution).
+- problem_rationale: 1-2 sentences explaining the problem_fit_pct.
+- solution_rationale: 1-2 sentences explaining the solution_fit_pct.
+- verdict: One line — e.g. "Right problem, wrong solution" / "Same bottleneck, much sharper solution" / "Completely different problem identified."
+
+## [SOURCE]
+{{source_block}}
+
+## [DEBATE OUTCOME]
+Agreed Problem (bottleneck): {{agreed_problem}}
+Agreed Solution: {{agreed_solution}}
+
+## [FULL DEBATE TRANSCRIPT]
+{{full_transcript}}
+
+## OUTPUT FORMAT (strict JSON, no markdown fences)
+Do NOT include playbook_html here — it is generated in a separate call.
+{
+  "area_scores": [
+    { "key": "problem_reality", "label": "Problem Reality", "weight_pct": 25, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "customer_clarity", "label": "Customer Clarity", "weight_pct": 15, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "competitive_honesty", "label": "Competitive Honesty", "weight_pct": 15, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "strategic_positioning", "label": "Strategic Positioning", "weight_pct": 20, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "demand_evidence", "label": "Demand Evidence", "weight_pct": 15, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "assumption_risk", "label": "Assumption Risk", "weight_pct": 10, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." }
+  ],
+  "penalties": [],
+  "final_score": 0,
+  "threshold_bucket": "kill",
+  "headline": "...",
+  "summary": "...",
+  "next_steps": "<p>...</p>",
+  "playbook_title": "...",
+  "playbook_subtitle": "...",
+  "alignment": {
+    "problem_fit_pct": 0,
+    "solution_fit_pct": 0,
+    "reframe_distance": "major",
+    "alignment_score": 0,
+    "problem_rationale": "...",
+    "solution_rationale": "...",
+    "verdict": "..."
+  }
+}`;
+
+// Scorer playbook HTML call: returns only the playbook_html section as plain-text HTML.
+// Called with generateAiTextResponse so there is no JSON-parse step and no size limit.
+const FALLBACK_SCORER_HTML = `You are writing the strategic playbook section of a Devil's Advocate report for Blur Studio.
+
+## STRUCTURE (use these exact section titles as <h2> headings, in this order)
+1. The Core Problem
+2. The Customer (ICPs)
+3. Competitive Landscape and Business Models
+4. Strategic Positioning
+5. Demand and Validation Signals
+6. The Strongest Case Against This Idea
+7. Key Assumptions and What Would Change the Verdict
+8. Final Recommendation (Build, Refine, or Kill)
+
+## WRITING RULES
+- Hemingway style: direct, blunt, short sentences. No hype words.
+- Every section must cite a concrete detail from [SOURCE].
+- Section 6 ("Strongest Case Against") must be genuinely adversarial: argue, in good faith, why a smart investor would pass.
+- Use epistemic labels where useful: [Fact], [Inference], [Uncertain], [Speculation].
+
+## OUTPUT FORMAT
+Return ONLY a raw HTML fragment — <h2> and <p> tags only. No html/head/body/style/script tags.
+Each section = one <h2> followed by one or more <p>. Do NOT wrap in JSON, do NOT add code fences.
+
+## [SOURCE]
+{{source_block}}
+
+## [DEBATE OUTCOME]
+Agreed Problem (bottleneck): {{agreed_problem}}
+Agreed Solution: {{agreed_solution}}
+
+## [SCORING SUMMARY]
+Headline: {{headline}}
+Summary: {{summary}}
+
+Write the full playbook now.`;
 
 const FALLBACK_REPORT = `You are a Critical Thought Partner and Devil's Advocate evaluating a business idea for Blur Studio, BEFORE any build work begins. This is a go/no-go gate: the team has done discovery (problem, customers, positioning, competition) but has NOT yet written a PRD, designed a database, or planned the build. Your job is to decide — honestly — whether this idea deserves to move into the build steps, or whether it should be refined or killed first.
 
@@ -1681,6 +2082,43 @@ function buildSuggestionsBlock(
     .join("\n");
 }
 
+// ── Debate turn output (Skeptic & Advocate) ──────────────────────────────────
+interface DebateTurnOutput {
+  content: string;
+  proposed_statement: string;
+  agree: boolean;
+  reason: string;
+}
+
+// ── Scorer output (extends ReportOutput with alignment block) ─────────────────
+interface ScorerOutput extends ReportOutput {
+  alignment: {
+    problem_fit_pct: number;
+    solution_fit_pct: number;
+    reframe_distance: "minor" | "moderate" | "major";
+    alignment_score: number;
+    problem_rationale: string;
+    solution_rationale: string;
+    verdict: string;
+  };
+}
+// Meta call: all fields except playbook_html (no HTML in JSON — avoids literal-newline parse failures).
+type ScorerMetaOutput = Omit<ScorerOutput, "playbook_html">;
+
+// ── Reframer output ───────────────────────────────────────────────────────────
+// Meta call returns only the 3 short fields (no HTML in JSON).
+interface ReframerMetaOutput {
+  agreed_problem: string;
+  agreed_solution: string;
+  recommendation: string;
+}
+// Combined after the two calls merge meta + plain-text HTML doc.
+interface ReframerOutput extends ReframerMetaOutput {
+  revised_description: string;
+}
+
+const MAX_ROUNDS_PER_GATE = 2; // 2 rounds × 2 sides × 2 gates = 8 debate calls; keeps total generation under ~10 min
+
 async function generateReport(
   supabase: SupabaseClient,
   idea: { name: string; description: string | null; success_metrics: string | null },
@@ -1698,55 +2136,265 @@ async function generateReport(
   aiConfig: AiConfig,
   requestId: string
 ): Promise<{ error?: string }> {
-  // Report is a pre-build go/no-go gate (Step 7). It scores ONLY discovery-phase
-  // evidence — idea, structure, ICPs (incl. strategic-frameworks value-props),
-  // product definition, and benchmarking. PRD/Database/Visual/Milestones run AFTER
-  // this step and are deliberately NOT supplied here.
-  const template = (await getPromptTemplate("report")) ?? FALLBACK_REPORT;
-  const prompt = renderPrompt(template, {
-    idea_name: idea.name,
-    idea_description: stripHtml(idea.description),
-    idea_success_metrics: stripHtml(idea.success_metrics),
-    core_problem: stripHtml(structureAlign?.core_problem) || "Not defined",
-    target_audience: stripHtml(structureAlign?.target_audience) || "Not defined",
-    structure_success_metrics: stripHtml(structureAlign?.success_metrics) || "Not defined",
-    icps_block: buildIcpsBlock(icps as Array<Record<string, unknown>>),
-    suggestions_block: buildSuggestionsBlock(suggestions as Array<Record<string, unknown>>),
-    product_summary: stripHtml(productDef?.summary) || "Not defined",
-    product_features: stripHtml(productDef?.features) || "Not defined",
-    benchmark_overview: stripHtml(benchmarking?.overview) || "Not defined",
-    benchmark_comparison: stripHtml(benchmarking?.comparison) || "Not defined",
-    benchmark_business_models: stripHtml(benchmarking?.possible_business_models) || "Not defined",
-    benchmark_takeaways: stripHtml(benchmarking?.takeaways) || "Not defined",
-    month_year: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-  });
+  // ── Build the shared [SOURCE] block used across all personas ─────────────────
+  const sourceBlock = `Idea: ${idea.name} — ${stripHtml(idea.description)}
+Success Metrics: ${stripHtml(idea.success_metrics) || "Not defined"}
+Core Problem: ${stripHtml(structureAlign?.core_problem) || "Not defined"}
+Target Audience: ${stripHtml(structureAlign?.target_audience) || "Not defined"}
+Structure Success Metrics: ${stripHtml(structureAlign?.success_metrics) || "Not defined"}
+ICPs:
+${buildIcpsBlock(icps as Array<Record<string, unknown>>)}
+Optimization Suggestions:
+${buildSuggestionsBlock(suggestions as Array<Record<string, unknown>>)}
+Product Definition: ${stripHtml(productDef?.summary) || "Not defined"} / ${stripHtml(productDef?.features) || "Not defined"}
+Benchmarking: ${stripHtml(benchmarking?.overview) || "Not defined"} / ${stripHtml(benchmarking?.comparison) || "Not defined"} / ${stripHtml(benchmarking?.possible_business_models) || "Not defined"} / ${stripHtml(benchmarking?.takeaways) || "Not defined"}`;
 
-  const res = await generateAiJsonResponse<ReportOutput>({
+  // ── Load persona prompt templates (DB rows win; fallbacks cover missing rows) ─
+  const [skepticTemplate, advocateTemplate, reframerTemplate, scorerTemplate] = await Promise.all([
+    getPromptTemplate("report_skeptic"),
+    getPromptTemplate("report_advocate"),
+    getPromptTemplate("report_reframer"),
+    getPromptTemplate("report_scorer"),
+  ]);
+  const skepticPromptBase = skepticTemplate ?? FALLBACK_SKEPTIC;
+  const advocatePromptBase = advocateTemplate ?? FALLBACK_ADVOCATE;
+  const reframerPromptBase = reframerTemplate ?? FALLBACK_REFRAMER;
+  const scorerPromptBase = scorerTemplate ?? FALLBACK_SCORER;
+
+  const transcript: IdeaReportDebateTurn[] = [];
+
+  // ── Helper: build the running transcript string for prompt injection ──────────
+  function transcriptText(gate: "problem" | "solution"): string {
+    const lines = transcript
+      .filter((t) => t.gate === gate)
+      .map(
+        (t) =>
+          `[Round ${t.round} — ${t.role.toUpperCase()}]\n${t.content}\nProposed: ${t.proposed_statement}\nAgrees: ${t.agree}`
+      );
+    return lines.length ? lines.join("\n\n") : "(none yet)";
+  }
+
+  // ── Gate runner: runs Skeptic → Advocate per round until convergence ──────────
+  async function runGate(
+    gate: "problem" | "solution"
+  ): Promise<{ converged: boolean; agreed_statement: string; rounds: number }> {
+    let skepticStatement = "";
+    let advocateStatement = "";
+    let converged = false;
+
+    for (let round = 1; round <= MAX_ROUNDS_PER_GATE; round++) {
+      const soFar = transcriptText(gate);
+
+      // Skeptic turn
+      const skepticPrompt = renderPrompt(skepticPromptBase, {
+        source_block: sourceBlock,
+        gate,
+        round: String(round),
+        transcript_so_far: soFar,
+        other_proposed_statement: advocateStatement || "(none yet — first round)",
+      });
+      const skepticRes = await generateAiJsonResponse<DebateTurnOutput>({
+        service: aiConfig.service,
+        apiKey: aiConfig.apiKey,
+        model: aiConfig.model,
+        prompt: skepticPrompt,
+        maxTokens: 4096,
+      });
+      if (skepticRes.returned_an_error || !skepticRes.data) {
+        return { converged: false, agreed_statement: advocateStatement || skepticStatement, rounds: round };
+      }
+      const sk = skepticRes.data;
+      skepticStatement = sk.proposed_statement || skepticStatement;
+      transcript.push({
+        gate,
+        round,
+        role: "skeptic",
+        content: sk.content || "",
+        proposed_statement: skepticStatement,
+        agree: sk.agree,
+      });
+
+      // Advocate turn
+      const advocatePrompt = renderPrompt(advocatePromptBase, {
+        source_block: sourceBlock,
+        gate,
+        round: String(round),
+        transcript_so_far: transcriptText(gate),
+        other_proposed_statement: skepticStatement,
+      });
+      const advocateRes = await generateAiJsonResponse<DebateTurnOutput>({
+        service: aiConfig.service,
+        apiKey: aiConfig.apiKey,
+        model: aiConfig.model,
+        prompt: advocatePrompt,
+        maxTokens: 4096,
+      });
+      if (advocateRes.returned_an_error || !advocateRes.data) {
+        return { converged: false, agreed_statement: skepticStatement, rounds: round };
+      }
+      const av = advocateRes.data;
+      advocateStatement = av.proposed_statement || advocateStatement;
+      transcript.push({
+        gate,
+        round,
+        role: "advocate",
+        content: av.content || "",
+        proposed_statement: advocateStatement,
+        agree: av.agree,
+      });
+
+      // Both agree → convergence
+      if (sk.agree && av.agree) {
+        converged = true;
+        return { converged, agreed_statement: advocateStatement || skepticStatement, rounds: round };
+      }
+    }
+
+    return { converged: false, agreed_statement: advocateStatement || skepticStatement, rounds: MAX_ROUNDS_PER_GATE };
+  }
+
+  // ── Gate 1: Right Problem ────────────────────────────────────────────────────
+  const gate1 = await runGate("problem");
+  const agreedProblem = gate1.agreed_statement;
+
+  // Bail early if a newer request superseded this one
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  // ── Gate 2: Right Solution ───────────────────────────────────────────────────
+  const gate2 = await runGate("solution");
+  const agreedSolution = gate2.agreed_statement;
+
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  // ── Build full transcript text for synthesis calls ───────────────────────────
+  const fullTranscriptText = transcript
+    .map(
+      (t) =>
+        `[${t.gate.toUpperCase()} Gate — Round ${t.round} — ${t.role.toUpperCase()}]\n${t.content}\nProposed: ${t.proposed_statement}\nAgrees: ${t.agree}`
+    )
+    .join("\n\n");
+
+  const debateMeta = {
+    problem_rounds: gate1.rounds,
+    solution_rounds: gate2.rounds,
+    problem_converged: gate1.converged,
+    solution_converged: gate2.converged,
+    impasse_note:
+      !gate1.converged || !gate2.converged
+        ? `Debate hit the round cap without full convergence. ${!gate1.converged ? `Problem gate: ${gate1.rounds} rounds, no agreement. ` : ""}${!gate2.converged ? `Solution gate: ${gate2.rounds} rounds, no agreement.` : ""}`
+        : undefined,
+  };
+
+  // ── Reframer step 1: get the 3 short meta fields as JSON ─────────────────────
+  // Kept separate from step 2 so the JSON never contains a large HTML string
+  // (which can cause JSON.parse failures when the AI emits literal newlines or
+  // when the output is truncated at the model's max-token ceiling).
+  const reframerMetaPrompt = renderPrompt(reframerPromptBase, {
+    agreed_problem: agreedProblem,
+    agreed_solution: agreedSolution,
+    full_transcript: fullTranscriptText,
+  });
+  const reframerMetaRes = await generateAiJsonResponse<ReframerMetaOutput>({
     service: aiConfig.service,
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
-    prompt,
+    prompt: reframerMetaPrompt,
+    maxTokens: 1024,
   });
-
-  if (res.returned_an_error || !res.data) {
-    return { error: res.error ?? "AI returned no data" };
+  if (reframerMetaRes.returned_an_error || !reframerMetaRes.data) {
+    return { error: reframerMetaRes.error ?? "Reframer meta returned no data" };
   }
 
   if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
 
-  const d = res.data;
+  // ── Reframer step 2: generate the strategic document as plain-text HTML ───────
+  // Uses generateAiTextResponse so there is no JSON-parse step and no size limit.
+  const reframerDocPrompt = renderPrompt(FALLBACK_REFRAMER_DOC, {
+    source_block: sourceBlock,
+    agreed_problem: agreedProblem,
+    agreed_solution: agreedSolution,
+    full_transcript: fullTranscriptText,
+  });
+  const reframerDocRes = await generateAiTextResponse({
+    service: aiConfig.service,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    prompt: reframerDocPrompt,
+    maxTokens: 16384,
+  });
+  if (reframerDocRes.returned_an_error || !reframerDocRes.text) {
+    return { error: reframerDocRes.error ?? "Reframer doc returned no text" };
+  }
 
-  // ── Server-side score reconciliation ───────────────────────────────────────
-  // Defensively normalise / clamp AI output, then recompute final_score so
-  // downstream UI can trust the numbers.
-  const areas: ReportAreaOutput[] = Array.isArray(d.area_scores)
-    ? d.area_scores.map((a) => ({
+  const reframed: ReframerOutput = {
+    ...reframerMetaRes.data,
+    revised_description: reframerDocRes.text
+      .replace(/^```(?:html)?\s*/i, "")
+      .replace(/\s*```\s*$/, "")
+      .trim(),
+  };
+
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  // ── Scorer step 1: structured scores + alignment (no playbook_html in JSON) ───
+  // Kept separate from step 2 so playbook_html (multi-section HTML) is never embedded
+  // inside a JSON string value — which causes literal-newline JSON.parse failures.
+  const scorerPrompt = renderPrompt(scorerPromptBase, {
+    source_block: sourceBlock,
+    agreed_problem: agreedProblem,
+    agreed_solution: agreedSolution,
+    full_transcript: fullTranscriptText,
+  });
+  const scorerMetaRes = await generateAiJsonResponse<ScorerMetaOutput>({
+    service: aiConfig.service,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    prompt: scorerPrompt,
+    maxTokens: 8192,
+  });
+  if (scorerMetaRes.returned_an_error || !scorerMetaRes.data) {
+    return { error: scorerMetaRes.error ?? "Scorer returned no data" };
+  }
+
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  // ── Scorer step 2: playbook HTML as plain text (no JSON parse step) ───────────
+  const scorerHtmlPrompt = renderPrompt(FALLBACK_SCORER_HTML, {
+    source_block: sourceBlock,
+    agreed_problem: agreedProblem,
+    agreed_solution: agreedSolution,
+    headline: scorerMetaRes.data.headline ?? "",
+    summary: scorerMetaRes.data.summary ?? "",
+  });
+  const scorerHtmlRes = await generateAiTextResponse({
+    service: aiConfig.service,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    prompt: scorerHtmlPrompt,
+    maxTokens: 8192,
+  });
+  if (scorerHtmlRes.returned_an_error || !scorerHtmlRes.text) {
+    return { error: scorerHtmlRes.error ?? "Scorer playbook returned no text" };
+  }
+
+  const scored: ScorerOutput = {
+    ...scorerMetaRes.data,
+    playbook_html: scorerHtmlRes.text,
+  };
+
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  // ── Server-side score reconciliation (alignment-multiplier formula) ───────────
+  // 6 areas are scored vs the idea's OWN framing (as always — completeness lens).
+  // The alignment multiplier collapses the final score when the debate found a wrong problem/solution.
+  const areas: ReportAreaOutput[] = Array.isArray(scored.area_scores)
+    ? scored.area_scores.map((a) => ({
         key: String(a?.key ?? ""),
         label: String(a?.label ?? ""),
         weight_pct: Number(a?.weight_pct ?? 0),
         raw_score_pct: clamp(0, 100, Math.round(Number(a?.raw_score_pct ?? 0))),
-        weighted_points: 0, // recomputed below
-        status: (a?.status === "strong" || a?.status === "weak" ? a.status : "average") as ReportAreaOutput["status"],
+        weighted_points: 0,
+        status: "average" as ReportAreaOutput["status"],
         description: String(a?.description ?? ""),
       }))
     : [];
@@ -1756,29 +2404,64 @@ async function generateReport(
     else if (a.raw_score_pct >= 60) a.status = "average";
     else a.status = "weak";
   }
-  const penalties: ReportPenaltyOutput[] = Array.isArray(d.penalties)
-    ? d.penalties.map((p) => ({
+  const penalties: ReportPenaltyOutput[] = Array.isArray(scored.penalties)
+    ? scored.penalties.map((p) => ({
         label: String(p?.label ?? ""),
         points: -Math.abs(Math.round(Number(p?.points ?? 0))),
       }))
     : [];
-  const areaTotal = areas.reduce((s, a) => s + a.weighted_points, 0);
+
+  // completeness = weighted sum of the 6 areas vs the idea's own framing
+  const completeness = clamp(0, 100, areas.reduce((s, a) => s + a.weighted_points, 0));
   const penaltyTotal = penalties.reduce((s, p) => s + Math.abs(p.points), 0);
-  const finalScore = clamp(0, 100, areaTotal - penaltyTotal);
+
+  // alignment score from Scorer (0–100); server clamps it
+  const rawAlignment = scored.alignment ?? {} as ScorerOutput["alignment"];
+  const reframeMod: Record<string, number> = { minor: 0, moderate: -7, major: -15 };
+  const reframeDistance = (rawAlignment.reframe_distance === "minor" || rawAlignment.reframe_distance === "moderate" || rawAlignment.reframe_distance === "major")
+    ? rawAlignment.reframe_distance
+    : "major";
+  const alignmentScore = clamp(
+    0,
+    100,
+    Math.round((Number(rawAlignment.problem_fit_pct ?? 0) + Number(rawAlignment.solution_fit_pct ?? 0)) / 2) + (reframeMod[reframeDistance] ?? -15)
+  );
+
+  // final = completeness × 75% + alignment × 25% − penalties (weighted average, not a multiplier)
+  const finalScore = clamp(0, 100, Math.round(completeness * 0.75 + alignmentScore * 0.25) - penaltyTotal);
   const threshold: "build" | "refine" | "kill" =
     finalScore >= 75 ? "build" : finalScore >= 60 ? "refine" : "kill";
+
+  const alignment: IdeaReportAlignment = {
+    problem_fit_pct: clamp(0, 100, Math.round(Number(rawAlignment.problem_fit_pct ?? 0))),
+    solution_fit_pct: clamp(0, 100, Math.round(Number(rawAlignment.solution_fit_pct ?? 0))),
+    reframe_distance: reframeDistance,
+    alignment_score: alignmentScore,
+    problem_rationale: String(rawAlignment.problem_rationale ?? ""),
+    solution_rationale: String(rawAlignment.solution_rationale ?? ""),
+    verdict: String(rawAlignment.verdict ?? ""),
+  };
 
   const payload = {
     final_score: finalScore,
     threshold_bucket: threshold,
-    headline: d.headline ?? null,
-    summary: d.summary ?? null,
+    headline: scored.headline ?? null,
+    summary: scored.summary ?? null,
     area_scores: areas,
     penalties,
-    next_steps: d.next_steps ?? null,
-    playbook_title: d.playbook_title ?? null,
-    playbook_subtitle: d.playbook_subtitle ?? null,
-    playbook_html: d.playbook_html ?? null,
+    next_steps: scored.next_steps ?? null,
+    playbook_title: scored.playbook_title ?? null,
+    playbook_subtitle: scored.playbook_subtitle ?? null,
+    playbook_html: scored.playbook_html ?? null,
+    // Devil's Advocate debate fields
+    agreed_problem: reframed.agreed_problem ?? agreedProblem ?? null,
+    agreed_solution: reframed.agreed_solution ?? agreedSolution ?? null,
+    recommendation: reframed.recommendation ?? null,
+    revised_description: reframed.revised_description ?? null,
+    completeness_score: completeness,
+    alignment,
+    debate_transcript: transcript,
+    debate_meta: debateMeta,
   };
 
   const { data: existing } = await supabase
@@ -1788,14 +2471,16 @@ async function generateReport(
     .maybeSingle();
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("idea_report" as never)
       .update(payload as never)
       .eq("id", (existing as { id: string }).id);
+    if (updateError) return { error: updateError.message };
   } else {
-    await supabase
+    const { error: insertError } = await supabase
       .from("idea_report" as never)
       .insert({ idea_id: ideaId, ...payload } as never);
+    if (insertError) return { error: insertError.message };
   }
 
   return {};
@@ -2015,6 +2700,171 @@ export async function sendChatMessage(
   // 7. Persist the chatbot reply.
   const { data: botRow, error: botErr } = await supabase
     .from("idea_chatbot" as never)
+    .insert({
+      idea_id: ideaId,
+      created_by: null,
+      type: "chatbot",
+      message: replyHtml,
+    } as never)
+    .select("id, idea_id, created_by, type, message, created_at, updated_at")
+    .single();
+  if (botErr || !botRow) return { userMsg, error: botErr?.message ?? "Failed to save reply" };
+
+  return {
+    userMsg,
+    botMsg: botRow as unknown as IdeaChatbotMessage,
+  };
+}
+
+// ── Devil's Advocate Chatbot ──────────────────────────────────────────────────
+
+const FALLBACK_DEVIL_ADVOCATE_CHATBOT = `You are a Devil's Advocate co-pilot embedded in Blur Studio's Sandbox Planner. Your role is to challenge the user's thinking through a structured two-gate dialogue — first validating that they are solving the right problem, then stress-testing the solution. Your goal is better decisions, not faster ones.
+
+## IDENTITY & STANDING RULES (non-negotiable at every turn)
+1. ANTI-SYCOPHANCY: Never open with praise ("Great idea!", "That makes sense!"). Open with the sharpest relevant question or the strongest counter-argument. If you genuinely agree, state the best case against first — then explain why it fails.
+2. ONE QUESTION AT A TIME: Ask a single focused question, wait for the answer, reflect it back, then move on. Never present a questionnaire.
+3. CONFIDENCE LABELS: Tag all substantive claims as [Fact], [Inference], or [Speculation].
+4. BRAIN FIRST: Before offering analysis on anything significant, ask for the user's current take first.
+5. PUSH BACK ON VAGUENESS: If an answer is vague, generic, or sounds like a symptom, name it and ask again.
+6. CONCEDE WHEN BEATEN: Devil's advocacy is not contrarianism. When the user's answer genuinely defeats a challenge, say so explicitly and move forward.
+7. Output HTML only. Allowed tags: <p>, <ul>, <li>, <strong>, <em>, <code>. No <script>, no <button>, no <a>.
+8. GROUNDING: Use ONLY the [IDEA CONTEXT] block. Never invent facts, metrics, competitors, or personas.
+
+## THE TWO GATES
+Always announce which gate you are in.
+
+**[GATE 1 — THE RIGHT PROBLEM]**
+Challenge the framing. Is this the root cause or a symptom? Co-write ONE bottleneck statement starting with "How do we…". Exit only on explicit mutual agreement.
+When passed, declare: "✓ Problem Gate passed. Agreed bottleneck: [statement]."
+
+**[GATE 2 — THE RIGHT SOLUTION]**
+Evaluate solutions ONLY against the agreed bottleneck. Apply the swap test (could this answer fit any company?). Present the strongest counter-argument. Fix ONE named flaw per round.
+When passed, declare: "✓ Solution Gate passed." Then summarize the bottleneck, solution, why it survived, and next actions.
+
+## [IDEA CONTEXT]
+Idea: {{idea_name}} — {{idea_description}}
+Success Metrics: {{idea_success_metrics}}
+Structure & Align: core_problem={{core_problem}}; target_audience={{target_audience}}; success_metrics={{structure_success_metrics}}
+ICPs:
+{{icps_block}}
+Optimization Suggestions:
+{{suggestions_block}}
+Product Definition: summary={{product_summary}}; features={{product_features}}
+Benchmarking: overview={{benchmark_overview}}; comparison={{benchmark_comparison}}; business_models={{benchmark_business_models}}; takeaways={{benchmark_takeaways}}
+PRD: app_overview={{prd_app_overview}}; objectives={{prd_objectives}}; essential_features={{prd_essential_features}}
+Report: final_score={{report_final_score}}; headline={{report_headline}}; summary={{report_summary}}
+Current tab: {{current_tab}}
+
+## [CHAT HISTORY]
+{{chat_history}}
+
+## [USER MESSAGE]
+{{user_message}}
+
+## OUTPUT SCHEMA
+Return ONLY valid JSON: { "reply": "<html string>" }. The HTML must not contain \`<script\` or \`javascript:\`.`;
+
+/** Load all devil's advocate chatbot messages for an idea, oldest first. */
+export async function loadDevilAdvocateChatHistory(
+  ideaId: string,
+): Promise<{ messages?: IdeaChatbotMessage[]; error?: string }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("idea_chatbot_devil_advocate" as never)
+    .select("id, idea_id, created_by, type, message, created_at, updated_at")
+    .eq("idea_id", ideaId)
+    .order("created_at", { ascending: true });
+  if (error) return { error: error.message };
+  return { messages: (data ?? []) as unknown as IdeaChatbotMessage[] };
+}
+
+/**
+ * Append a user message to the devil's advocate chat, call the LLM with the
+ * devil's advocate prompt, persist the reply, and return both rows.
+ */
+export async function sendDevilAdvocateChatMessage(
+  ideaId: string,
+  userMessage: string,
+  currentTab: IdeaBlock,
+): Promise<{ userMsg?: IdeaChatbotMessage; botMsg?: IdeaChatbotMessage; error?: string }> {
+  const trimmed = userMessage.trim();
+  if (!trimmed) return { error: "Message is empty" };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  // 1. Persist the user message.
+  const { data: userRow, error: userErr } = await supabase
+    .from("idea_chatbot_devil_advocate" as never)
+    .insert({
+      idea_id: ideaId,
+      created_by: user.id,
+      type: "user",
+      message: trimmed,
+    } as never)
+    .select("id, idea_id, created_by, type, message, created_at, updated_at")
+    .single();
+  if (userErr || !userRow) return { error: userErr?.message ?? "Failed to save message" };
+  const userMsg = userRow as unknown as IdeaChatbotMessage;
+
+  // 2. Rebuild the canonical idea bundle for the LLM.
+  const ideaFull = await loadIdeaFull(supabase, ideaId);
+  if (!ideaFull) return { userMsg, error: "Idea not found or access denied" };
+
+  // 3. Load recent chat history (excludes the message just inserted so it
+  //    doesn't appear twice — the prompt surfaces it as USER MESSAGE).
+  const { data: historyData } = await supabase
+    .from("idea_chatbot_devil_advocate" as never)
+    .select("id, idea_id, created_by, type, message, created_at, updated_at")
+    .eq("idea_id", ideaId)
+    .order("created_at", { ascending: true })
+    .limit(100);
+  const history = (historyData ?? []) as unknown as IdeaChatbotMessage[];
+  const historyExcludingCurrent = history.filter((m) => m.id !== userMsg.id);
+
+  // 4. Resolve template + vars.
+  const template =
+    (await getPromptTemplate("idea_chatbot_devil_advocate")) ??
+    FALLBACK_DEVIL_ADVOCATE_CHATBOT;
+  const currentTabLabel = IDEA_BLOCK_LABELS[currentTab] ?? currentTab;
+  const prompt = renderPrompt(template, {
+    ...buildIdeaContextVars(ideaFull),
+    current_tab: currentTabLabel,
+    chat_history: renderChatHistory(historyExcludingCurrent),
+    user_message: trimmed,
+  });
+
+  // 5. Resolve AI config.
+  const aiConfig = await resolveAiConfig(supabase, user.id);
+  if (!aiConfig) {
+    return {
+      userMsg,
+      error: "No AI provider configured. Set one in Settings → AI Configuration.",
+    };
+  }
+
+  // 6. Call the LLM.
+  const res = await generateAiJsonResponse<{ reply: string }>({
+    service: aiConfig.service,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    prompt,
+  });
+  if (res.returned_an_error || !res.data) {
+    return { userMsg, error: res.error ?? "AI returned no data" };
+  }
+
+  const replyHtml = sanitizeChatbotHtml(String(res.data.reply ?? "").trim());
+  if (!replyHtml) {
+    return { userMsg, error: "AI returned an empty reply" };
+  }
+
+  // 7. Persist the chatbot reply.
+  const { data: botRow, error: botErr } = await supabase
+    .from("idea_chatbot_devil_advocate" as never)
     .insert({
       idea_id: ideaId,
       created_by: null,

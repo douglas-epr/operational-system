@@ -140,7 +140,31 @@ function sanitizeJsonText(text: string): string {
   if (start !== -1 && end !== -1 && end > start) {
     s = s.slice(start, end + 1);
   }
-  return s.trim();
+  // Escape bare control chars inside JSON string values using a state machine.
+  let inString = false;
+  let wasEscaped = false;
+  let result = "";
+  for (const ch of s) {
+    if (wasEscaped) {
+      result += ch;
+      wasEscaped = false;
+    } else if (ch === "\\") {
+      result += ch;
+      wasEscaped = true;
+    } else if (ch === '"') {
+      result += ch;
+      inString = !inString;
+    } else if (inString && ch === "\n") {
+      result += "\\n";
+    } else if (inString && ch === "\r") {
+      result += "\\r";
+    } else if (inString && ch === "\t") {
+      result += "\\t";
+    } else {
+      result += ch;
+    }
+  }
+  return result.trim();
 }
 
 /**
@@ -150,12 +174,13 @@ function sanitizeJsonText(text: string): string {
 export async function generateGeminiJsonResponse<T = unknown>(
   prompt: string,
   model = "gemini-2.5-flash",
-  apiKey?: string
+  apiKey?: string,
+  maxOutputTokens?: number,
 ): Promise<{ data?: T; returned_an_error: boolean; error?: string }> {
   const result = await generateGeminiContent({
     model,
     contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: { response_mime_type: "application/json" },
+    generationConfig: { response_mime_type: "application/json", ...(maxOutputTokens ? { maxOutputTokens } : {}) },
     apiKey,
   });
 

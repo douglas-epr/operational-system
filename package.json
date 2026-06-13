@@ -7,7 +7,12 @@
     "dev:prod": "next build && next start --port 30003",
     "build": "next build",
     "start": "next start --port 30003",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:status": "supabase status",
+    "db:studio": "start http://127.0.0.1:54323"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
