@@ -18,7 +18,7 @@ import { useRegenerate } from "../_hooks/useRegenerate";
 const PRD_SECTIONS = [
   { key: "app_overview", label: "App Overview" },
   { key: "objectives", label: "Objectives" },
-  { key: "priority_personas", label: "Priority Personas" },
+  { key: "priority_personas", label: "Users Type" },
   { key: "essential_features", label: "Essential Features" },
   { key: "user_flow", label: "Core User Flow" },
   { key: "non_functional_reqs", label: "Non-Functional Requirements" },

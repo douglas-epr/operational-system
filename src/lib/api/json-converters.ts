@@ -209,6 +209,7 @@ export interface VisualStylesOutput {
   // Legacy rich-text (kept for backward compat)
   logo_branding: string;
   color_palette: string;
+  color_narrative?: string; // renamed key in prompt; mapped to color_palette on save
   product_feeling: string;
   // Quick-access colors
   primary_color: string;

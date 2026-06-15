@@ -50,7 +50,7 @@ const STEP_FIELDS: Record<IdeaBlock, string[]> = {
   prd: [
     "App Overview",
     "Objectives",
-    "Priority Personas",
+    "Users Type",
     "Essential Features",
     "User Flow",
     "Non-Functional Reqs",

@@ -894,7 +894,7 @@ ICPs: {{icp_names}}
 Return a JSON object with exactly these keys:
 - "app_overview": Rich HTML text with the full app overview and vision.
 - "objectives": Rich HTML text listing measurable objectives.
-- "priority_personas": Rich HTML text describing priority personas (primary, secondary, end user).
+- "priority_personas": Rich HTML text listing the distinct user types who will access the application (e.g., Admin, Client, Seller, Supplier, Guest, Operator). For each user type, briefly describe their role and main actions within the app. Do NOT describe marketing ICPs or target audience segments — focus on the functional roles inside the product.
 - "essential_features": Rich HTML text with essential features organized by category with sub-items.
 - "user_flow": Rich HTML text describing the primary user flows for each persona.
 - "non_functional_reqs": Rich HTML text listing non-functional requirements (platform, security, scalability, etc.).
@@ -929,7 +929,7 @@ Target Audience: {{target_audience}}
 
 Return a JSON object with EXACTLY these keys (no extra keys, no omissions):
 - "logo_branding": Rich HTML describing the conceptual logo, app name styling, icon/symbol concepts, and overall brand style.
-- "color_palette": Rich HTML describing the Color Narrative — the story and meaning behind the chosen colors, emotional associations, usage philosophy, and how the palette reflects the brand personality.
+- "color_narrative": Rich HTML (NOT hex values) describing the Color Narrative — the story and meaning behind the chosen colors, emotional associations, usage philosophy, and how the palette reflects the brand personality. This must be a rich narrative text, NOT a list of color values (those are already covered by primary_color, secondary_color, accent_color, neutral_color, and color_tokens).
 - "product_feeling": Rich HTML describing the product feeling for different contexts (admin UI, user-facing, mobile) and how the visual identity creates the intended emotional response.
 - "primary_color": Hex string (e.g. "#3B82F6") — main brand color.
 - "secondary_color": Hex string — secondary brand color.
@@ -1778,7 +1778,7 @@ async function generateVisualStylesContent(
 
   const payload = {
     logo_branding: d.logo_branding,
-    color_palette: d.color_palette,
+    color_palette: d.color_narrative ?? d.color_palette,
     product_feeling: d.product_feeling,
     primary_color: d.primary_color,
     secondary_color: d.secondary_color,
