@@ -50,7 +50,7 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
     await Promise.all([
       supabase
         .from("idea")
-        .select("id, project_id, created_by, name, version_name, authorized_users, score, description, success_metrics, current_block_ended, current_blocks_updating, created_at, project:project_id(id, name), creator:created_by(first_name, last_name)")
+        .select("id, project_id, created_by, name, version_name, authorized_users, score, description, success_metrics, current_block_ended, current_blocks_updating, created_at, stage, project:project_id(id, name), creator:created_by(first_name, last_name)")
         .order("created_at", { ascending: false }),
       supabase
         .from("project")

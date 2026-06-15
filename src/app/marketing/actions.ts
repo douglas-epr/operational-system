@@ -41,6 +41,7 @@ export async function listIdeasWithValidation(): Promise<MktIdeaListItem[]> {
     ctx.supabase
       .from("idea")
       .select("id, name, version_name, description, project_id, project:project_id(id, name)")
+      .eq("stage" as never, "validating_market_and_building_product")
       .order("created_at", { ascending: false }),
     ctx.supabase.from("mkt_validation" as never).select("*"),
   ]);

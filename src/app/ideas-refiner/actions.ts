@@ -41,6 +41,7 @@ const PATH = "/ideas-refiner";
 export async function createIdea(data: {
   name: string;
   description: string;
+  stage?: string;
   project_id?: string;
   version_name?: string;
   authorized_users?: string[];
@@ -51,11 +52,13 @@ export async function createIdea(data: {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
-  const { data: row, error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: row, error } = await (supabase as any)
     .from("idea")
     .insert({
       name: data.name,
       description: data.description,
+      stage: data.stage ?? "refining_idea",
       project_id: data.project_id || null,
       version_name: data.version_name || null,
       authorized_users: data.authorized_users ?? [],
@@ -110,6 +113,7 @@ export async function duplicateIdea(ideaId: string): Promise<{ error?: string; i
       project_id: full.idea.project_id,
       created_by: user.id,
       current_block_ended: full.idea.current_block_ended,
+      stage: "refining_idea",
     })
     .select("id")
     .single();
@@ -216,6 +220,52 @@ export async function deleteIdea(id: string): Promise<{ error?: string }> {
   if (error) return { error: error.message };
   revalidatePath(PATH);
   return {};
+}
+
+/**
+ * Create a new project from an idea and advance the idea's stage to
+ * "validating_market_and_building_product". Both operations succeed or the
+ * caller gets an error — the project is not created if the stage update fails.
+ */
+export async function buildProjectFromIdea(
+  ideaId: string
+): Promise<{ error?: string; projectId?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const { data: idea, error: ideaErr } = await supabase
+    .from("idea")
+    .select("name")
+    .eq("id", ideaId)
+    .single();
+  if (ideaErr || !idea) return { error: ideaErr?.message ?? "Idea not found" };
+
+  const { data: project, error: projectErr } = await supabase
+    .from("project")
+    .insert({
+      name: idea.name,
+      status: "not_started",
+      created_by: user.id,
+      change_automatically_project_estimated_time: true,
+      change_automatically_milestone_estimated_time: true,
+      change_automatically_project_start_end_dates: true,
+      change_automatically_milestone_start_end_dates: true,
+    })
+    .select("id")
+    .single();
+  if (projectErr) return { error: projectErr.message };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error: stageErr } = await (supabase as any)
+    .from("idea")
+    .update({ stage: "validating_market_and_building_product" })
+    .eq("id", ideaId);
+  if (stageErr) return { error: (stageErr as { message: string }).message };
+
+  revalidatePath(PATH);
+  revalidatePath("/projects");
+  return { projectId: project.id };
 }
 
 /**

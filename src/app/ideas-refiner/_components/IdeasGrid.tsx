@@ -7,7 +7,8 @@
 
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { Idea, ProjectOption } from "@/types/idea-refiner";
+import type { Idea, IdeaStage, ProjectOption } from "@/types/idea-refiner";
+import { IDEA_STAGE_LABELS } from "@/types/idea-refiner";
 import type { UserAiSettingsClient } from "@/types/settings";
 import type { UserProfile } from "@/types/projects";
 import type { UserMultiSelectOption } from "@/components/ui/UserMultiSelect";
@@ -16,7 +17,7 @@ import CreateIdeaModal from "./CreateIdeaModal";
 import AiSettingsModal from "./AiSettingsModal";
 import ConfirmDeleteModal from "@/app/projects/_components/modals/ConfirmDeleteModal";
 import ConfirmCopyModal from "./ConfirmCopyModal";
-import { deleteIdea, duplicateIdea } from "../actions";
+import { deleteIdea, duplicateIdea, buildProjectFromIdea } from "../actions";
 
 interface IdeasGridProps {
   ideas: Idea[];
@@ -61,6 +62,9 @@ export default function IdeasGrid({
   const [deletingIdea, setDeletingIdea] = useState<Idea | null>(null);
   const [editingIdea, setEditingIdea] = useState<Idea | null>(null);
   const [copyingIdea, setCopyingIdea] = useState<Idea | null>(null);
+  const [buildingIdea, setBuildingIdea] = useState<Idea | null>(null);
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const [buildSubmitting, setBuildSubmitting] = useState(false);
 
   /** Gate "See Refinement" — show AI settings modal if not configured. */
   function handleSelectIdea(ideaId: string) {
@@ -195,6 +199,7 @@ export default function IdeasGrid({
                   onDeleteClick={() => setDeletingIdea(idea)}
                   onEditClick={() => setEditingIdea(idea)}
                   onCopyClick={() => setCopyingIdea(idea)}
+                  onBuildProjectClick={() => { setBuildError(null); setBuildingIdea(idea); }}
                 />
               ))}
             </div>
@@ -263,11 +268,61 @@ export default function IdeasGrid({
           return result;
         }}
       />
+
+      {/* Build Project confirmation modal */}
+      {buildingIdea && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h2 className="text-base font-semibold text-text-primary">Build Project</h2>
+            <p className="text-sm text-text-secondary">
+              This will create a new project named{" "}
+              <span className="font-medium text-text-primary">&ldquo;{buildingIdea.name}&rdquo;</span>{" "}
+              and automatically change this idea&apos;s stage to{" "}
+              <span className="font-medium text-text-primary">Validating Market &amp; Building Product</span>.
+            </p>
+            {buildError && (
+              <p className="text-sm text-red-400" role="alert">{buildError}</p>
+            )}
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                onClick={() => { setBuildingIdea(null); setBuildError(null); }}
+                disabled={buildSubmitting}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium border border-border text-text-secondary hover:text-text-primary hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setBuildSubmitting(true);
+                  setBuildError(null);
+                  const result = await buildProjectFromIdea(buildingIdea.id);
+                  setBuildSubmitting(false);
+                  if (result.error) {
+                    setBuildError(result.error);
+                  } else {
+                    setBuildingIdea(null);
+                    router.refresh();
+                  }
+                }}
+                disabled={buildSubmitting}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {buildSubmitting ? "Building..." : "Build Project"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
+
+const STAGE_STYLES: Record<IdeaStage, string> = {
+  refining_idea: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  validating_market_and_building_product: "bg-green-500/15 text-green-400 border-green-500/30",
+};
 
 interface IdeaCardProps {
   idea: Idea;
@@ -276,10 +331,12 @@ interface IdeaCardProps {
   onDeleteClick: () => void;
   onEditClick: () => void;
   onCopyClick: () => void;
+  onBuildProjectClick: () => void;
 }
 
 /** Single idea card displaying name and description. Click to open refinement. */
-function IdeaCard({ idea, isCreator, onSelect, onDeleteClick, onEditClick, onCopyClick }: IdeaCardProps) {
+function IdeaCard({ idea, isCreator, onSelect, onDeleteClick, onEditClick, onCopyClick, onBuildProjectClick }: IdeaCardProps) {
+  const stage = idea.stage ?? "refining_idea";
   return (
     <div
       className="group relative flex flex-col bg-surface border border-border rounded-xl p-5 transition-shadow hover:shadow-md cursor-pointer"
@@ -344,6 +401,26 @@ function IdeaCard({ idea, isCreator, onSelect, onDeleteClick, onEditClick, onCop
           __html: idea.description ?? "<em>No description yet.</em>",
         }}
       />
+
+      {/* Stage tag + Build Project button */}
+      <div className="flex items-center justify-between mt-3 gap-2">
+        <span className={cn(
+          "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border",
+          STAGE_STYLES[stage]
+        )}>
+          {IDEA_STAGE_LABELS[stage]}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onBuildProjectClick();
+          }}
+          className="px-2.5 py-1 rounded-md text-[11px] font-medium bg-accent/15 text-accent hover:bg-accent hover:text-white border border-accent/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent shrink-0"
+        >
+          Build Project
+        </button>
+      </div>
     </div>
   );
 }

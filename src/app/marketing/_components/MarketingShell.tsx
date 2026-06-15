@@ -102,7 +102,7 @@ export default function MarketingShell({ initialIdeas }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
           <div>
-            <h1 className="text-xl font-bold text-text-primary">Marketing</h1>
+            <h1 className="text-xl font-bold text-text-primary">Market Validation</h1>
             <p className="text-sm text-text-muted mt-0.5">
               {validatedCount} of {initialIdeas.length} ideas in validation
             </p>

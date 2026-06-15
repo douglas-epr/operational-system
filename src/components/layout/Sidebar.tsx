@@ -91,7 +91,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: "OKRs",                 href: "/okrs",                 icon: IconTarget,     roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
   { label: "Documents",            href: "/sops",                 icon: IconDocument,   roles: ALL_STAFF_AND_CLIENTS,                 group: "operations" },
   { label: "Ideas Refiner",        href: "/ideas-refiner",        icon: IconLightbulb,  roles: ["admin","manager","operational","developer","client","lead"] as const, group: "operations" },
-  { label: "Marketing",            href: "/marketing",            icon: IconMegaphone,  roles: ADMIN_MANAGER,                         group: "operations" },
+  { label: "Market Validation",    href: "/marketing",            icon: IconMegaphone,  roles: ADMIN_MANAGER,                         group: "operations" },
 
   // Administration
   { label: "Users",                href: "/users",                icon: IconPerson,     roles: ["admin"] as const,                    group: "administration" },

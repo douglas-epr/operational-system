@@ -10,7 +10,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "@/app/projects/_components/modals/Modal";
-import type { Idea, ProjectOption } from "@/types/idea-refiner";
+import type { Idea, IdeaStage, ProjectOption } from "@/types/idea-refiner";
+import { IDEA_STAGE_LABELS } from "@/types/idea-refiner";
 import { createIdea, updateIdea } from "../actions";
 import { cn } from "@/lib/utils";
 import RichTextEditor from "./RichTextEditor";
@@ -53,6 +54,7 @@ export default function CreateIdeaModal({
     idea?.project_id ?? defaultProjectId ?? ""
   );
   const [versionName, setVersionName] = useState(idea?.version_name ?? "");
+  const [stage, setStage] = useState<IdeaStage>(idea?.stage ?? "refining_idea");
   const [authorizedUserIds, setAuthorizedUserIds] = useState<string[]>(
     idea?.authorized_users ?? []
   );
@@ -64,10 +66,12 @@ export default function CreateIdeaModal({
       setDescription(idea.description ?? "");
       setProjectId(idea.project_id ?? "");
       setVersionName(idea.version_name ?? "");
+      setStage(idea.stage ?? "refining_idea");
       setAuthorizedUserIds(idea.authorized_users ?? []);
     } else {
       setProjectId(defaultProjectId ?? "");
       setVersionName("");
+      setStage("refining_idea");
       setAuthorizedUserIds([]);
     }
   }, [idea, defaultProjectId]);
@@ -85,6 +89,7 @@ export default function CreateIdeaModal({
     setDescription("");
     setProjectId(defaultProjectId ?? "");
     setVersionName("");
+    setStage("refining_idea");
     setAuthorizedUserIds([]);
     setError(null);
   }
@@ -104,6 +109,7 @@ export default function CreateIdeaModal({
       ? await updateIdea(idea!.id, {
           name: name.trim(),
           description: description,
+          stage,
           project_id: projectId || null,
           version_name: versionName.trim() || null,
           authorized_users: authorizedUserIds,
@@ -111,6 +117,7 @@ export default function CreateIdeaModal({
       : await createIdea({
           name: name.trim(),
           description: description,
+          stage,
           project_id: projectId || undefined,
           version_name: versionName.trim() || undefined,
           authorized_users: authorizedUserIds,
@@ -200,6 +207,31 @@ export default function CreateIdeaModal({
               <option key={p.id} value={p.id}>
                 {p.name ?? "Untitled"}
               </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Stage */}
+        <div>
+          <label
+            htmlFor="idea-stage"
+            className="block text-sm font-medium text-text-primary mb-1.5"
+          >
+            Stage<span className="text-red-400">*</span>
+          </label>
+          <select
+            id="idea-stage"
+            value={stage}
+            onChange={(e) => setStage(e.target.value as IdeaStage)}
+            disabled={isSubmitting || !canEdit}
+            className={cn(
+              "w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-base text-text-primary",
+              "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
+              "disabled:opacity-50"
+            )}
+          >
+            {(Object.entries(IDEA_STAGE_LABELS) as [IdeaStage, string][]).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
             ))}
           </select>
         </div>
