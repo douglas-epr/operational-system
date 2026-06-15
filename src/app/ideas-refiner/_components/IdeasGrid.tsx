@@ -194,6 +194,7 @@ export default function IdeasGrid({
                 <IdeaCard
                   key={idea.id}
                   idea={idea}
+                  profiles={profiles}
                   isCreator={idea.created_by === currentUserId}
                   onSelect={() => handleSelectIdea(idea.id)}
                   onDeleteClick={() => setDeletingIdea(idea)}
@@ -326,6 +327,7 @@ const STAGE_STYLES: Record<IdeaStage, string> = {
 
 interface IdeaCardProps {
   idea: Idea;
+  profiles: UserProfile[];
   isCreator: boolean;
   onSelect: () => void;
   onDeleteClick: () => void;
@@ -334,9 +336,23 @@ interface IdeaCardProps {
   onBuildProjectClick: () => void;
 }
 
+const MAX_AVATARS = 3;
+
+function getInitials(p: UserProfile): string {
+  return [p.first_name?.[0], p.last_name?.[0]].filter(Boolean).join("").toUpperCase() || "?";
+}
+
 /** Single idea card displaying name and description. Click to open refinement. */
-function IdeaCard({ idea, isCreator, onSelect, onDeleteClick, onEditClick, onCopyClick, onBuildProjectClick }: IdeaCardProps) {
+function IdeaCard({ idea, profiles, isCreator, onSelect, onDeleteClick, onEditClick, onCopyClick, onBuildProjectClick }: IdeaCardProps) {
   const stage = idea.stage ?? "refining_idea";
+
+  const memberIds = [
+    ...(idea.created_by ? [idea.created_by] : []),
+    ...idea.authorized_users.filter((id) => id !== idea.created_by),
+  ];
+  const visibleIds = memberIds.slice(0, MAX_AVATARS);
+  const overflow = memberIds.length - MAX_AVATARS;
+
   return (
     <div
       className="group relative flex flex-col bg-surface border border-border rounded-xl p-5 transition-shadow hover:shadow-md cursor-pointer"
@@ -402,8 +418,45 @@ function IdeaCard({ idea, isCreator, onSelect, onDeleteClick, onEditClick, onCop
         }}
       />
 
+      {/* Member avatars — creator first, then authorized users */}
+      {memberIds.length > 0 && (
+        <div className="flex items-center mt-3 mb-1">
+          {visibleIds.map((uid, i) => {
+            const profile = profiles.find((p) => p.id === uid);
+            const isOwner = uid === idea.created_by;
+            return (
+              <div
+                key={uid}
+                title={profile ? [profile.first_name, profile.last_name].filter(Boolean).join(" ") : uid}
+                className={cn(
+                  "w-7 h-7 rounded-full border-2 border-surface overflow-hidden flex items-center justify-center text-[10px] font-semibold text-white shrink-0",
+                  i > 0 ? "-ml-2" : "",
+                  isOwner ? "bg-accent" : "bg-blue-700"
+                )}
+                style={{ zIndex: MAX_AVATARS - i }}
+              >
+                {profile?.picture ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={profile.picture} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span>{profile ? getInitials(profile) : "?"}</span>
+                )}
+              </div>
+            );
+          })}
+          {overflow > 0 && (
+            <div
+              className="w-7 h-7 rounded-full border-2 border-surface -ml-2 bg-muted flex items-center justify-center text-[10px] font-medium text-text-muted shrink-0"
+              style={{ zIndex: 0 }}
+            >
+              +{overflow}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Stage tag + Build Project button */}
-      <div className="flex items-center justify-between mt-3 gap-2">
+      <div className="flex items-center justify-between mt-2 gap-2">
         <span className={cn(
           "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border",
           STAGE_STYLES[stage]

@@ -13,6 +13,11 @@ import type {
   IdeaFull,
   IdeaReportAlignment,
   IdeaReportDebateTurn,
+  ColorToken,
+  TypographySystem,
+  SpacingSystem,
+  BorderRadiusSystem,
+  ShadowToken,
 } from "@/types/idea-refiner";
 import { IDEA_BLOCK_LABELS } from "@/types/idea-refiner";
 import { generateAiJsonResponse, generateAiTextResponse } from "@/lib/api/ai-dispatcher";
@@ -1160,6 +1165,99 @@ export async function triggerAiGeneration(
  * No LLM call — pure assembly. Mirrors the idea state-machine used by LLM
  * steps so the "AI is working…" overlay shows correctly on the client.
  */
+function buildVisualStylesHtml(s: {
+  logo_branding: string | null; color_palette: string | null;
+  product_feeling: string | null; brand_voice: string | null;
+  iconography_style: string | null; motion_principles: string | null;
+  primary_color: string | null; secondary_color: string | null;
+  accent_color: string | null; neutral_color: string | null;
+  color_tokens: ColorToken[] | null;
+  typography: TypographySystem | null;
+  spacing: SpacingSystem | null;
+  border_radius: BorderRadiusSystem | null;
+  shadows: ShadowToken[] | null;
+}): string {
+  const parts: string[] = [];
+
+  if (s.logo_branding?.trim()) parts.push(`<h3>Logo &amp; Branding</h3>${s.logo_branding}`);
+  if (s.brand_voice?.trim()) parts.push(`<h3>Brand Voice</h3>${s.brand_voice}`);
+
+  // Color system
+  const colorParts: string[] = [];
+  const baseColors = [
+    { label: "Primary", hex: s.primary_color },
+    { label: "Secondary", hex: s.secondary_color },
+    { label: "Accent", hex: s.accent_color },
+    { label: "Neutral", hex: s.neutral_color },
+  ].filter((c): c is { label: string; hex: string } => !!c.hex);
+
+  if (baseColors.length) {
+    const rows = baseColors.map(
+      (c) => `<tr><td><span style="color:${c.hex}">██████</span></td><td>${c.label}</td><td><code>${c.hex}</code></td></tr>`
+    ).join("");
+    colorParts.push(`<table><thead><tr><th>Swatch</th><th>Role</th><th>Hex</th></tr></thead><tbody>${rows}</tbody></table>`);
+  }
+
+  if (s.color_tokens?.length) {
+    const tokenRows = s.color_tokens.map((t) => {
+      const shadeSwatches = t.shades?.map((sh) => `<span style="color:${sh.hex}" title="${sh.label}: ${sh.hex}">█</span>`).join(" ") ?? "";
+      return `<tr><td><span style="color:${t.hex}">███</span></td><td><strong>${t.name}</strong></td><td><code>${t.hex}</code></td><td>${t.role}</td><td>${shadeSwatches}</td></tr>`;
+    }).join("");
+    colorParts.push(
+      `<p><strong>Color Tokens</strong></p><table><thead><tr><th>Swatch</th><th>Name</th><th>Hex</th><th>Role</th><th>Shades</th></tr></thead><tbody>${tokenRows}</tbody></table>`
+    );
+  }
+
+  if (s.color_palette?.trim()) colorParts.push(s.color_palette);
+  if (colorParts.length) parts.push(`<h3>Color System</h3>${colorParts.join("\n")}`);
+
+  // Typography
+  if (s.typography) {
+    const t = s.typography;
+    const typoParts: string[] = [];
+    const fontLine = [
+      t.heading_font && `Heading: <strong>${t.heading_font}</strong>`,
+      t.body_font && `Body: <strong>${t.body_font}</strong>`,
+      t.mono_font && `Mono: <strong>${t.mono_font}</strong>`,
+    ].filter(Boolean).join(" · ");
+    if (fontLine) typoParts.push(`<p>${fontLine}</p>`);
+    if (t.scale?.length) {
+      const scaleRows = t.scale.map(
+        (step) => `<tr><td>${step.name}</td><td>${step.size_px}px</td><td>${step.weight}</td><td>${step.line_height}</td></tr>`
+      ).join("");
+      typoParts.push(`<table><thead><tr><th>Scale</th><th>Size</th><th>Weight</th><th>Line Height</th></tr></thead><tbody>${scaleRows}</tbody></table>`);
+    }
+    if (typoParts.length) parts.push(`<h3>Typography</h3>${typoParts.join("\n")}`);
+  }
+
+  // Spacing & Border Radius
+  const layoutParts: string[] = [];
+  if (s.spacing?.scale?.length) {
+    layoutParts.push(`<p><strong>Spacing Scale</strong> (base unit: ${s.spacing.unit_px}px): ${s.spacing.scale.join(", ")}</p>`);
+  }
+  if (s.border_radius) {
+    const radiusRows = Object.entries(s.border_radius)
+      .map(([k, v]) => `<tr><td>${k}</td><td><code>${v}</code></td></tr>`).join("");
+    layoutParts.push(`<p><strong>Border Radius</strong></p><table><tbody>${radiusRows}</tbody></table>`);
+  }
+  if (layoutParts.length) parts.push(`<h3>Spacing &amp; Layout</h3>${layoutParts.join("\n")}`);
+
+  // Shadows (Elevation)
+  if (s.shadows?.length) {
+    const shadowRows = s.shadows.map(
+      (sh) => `<tr><td>${sh.name}</td><td><code>${sh.css_value}</code></td><td>${sh.usage}</td></tr>`
+    ).join("");
+    parts.push(`<h3>Elevation</h3><table><thead><tr><th>Name</th><th>CSS Value</th><th>Usage</th></tr></thead><tbody>${shadowRows}</tbody></table>`);
+  }
+
+  // Remaining narrative sections
+  if (s.iconography_style?.trim()) parts.push(`<h3>Iconography Style</h3>${s.iconography_style}`);
+  if (s.motion_principles?.trim()) parts.push(`<h3>Motion Principles</h3>${s.motion_principles}`);
+  if (s.product_feeling?.trim()) parts.push(`<h3>Product Feeling</h3>${s.product_feeling}`);
+
+  return parts.join("\n");
+}
+
 async function assemblePlaybookVersion(
   supabase: SupabaseClient,
   ideaId: string,
@@ -1181,7 +1279,7 @@ async function assemblePlaybookVersion(
         .maybeSingle(),
       supabase
         .from("idea_styles" as never)
-        .select("logo_branding, color_palette, product_feeling, brand_voice, iconography_style, motion_principles")
+        .select("*")
         .eq("idea_id", ideaId)
         .maybeSingle(),
       supabase
@@ -1218,13 +1316,17 @@ async function assemblePlaybookVersion(
       logo_branding: string | null; color_palette: string | null;
       product_feeling: string | null; brand_voice: string | null;
       iconography_style: string | null; motion_principles: string | null;
+      primary_color: string | null; secondary_color: string | null;
+      accent_color: string | null; neutral_color: string | null;
+      color_tokens: ColorToken[] | null;
+      typography: TypographySystem | null;
+      spacing: SpacingSystem | null;
+      border_radius: BorderRadiusSystem | null;
+      shadows: ShadowToken[] | null;
     } | null;
     if (stylesRow) {
-      const body = [
-        stylesRow.logo_branding, stylesRow.color_palette, stylesRow.product_feeling,
-        stylesRow.brand_voice, stylesRow.iconography_style, stylesRow.motion_principles,
-      ].filter(Boolean).join("\n");
-      if (body.trim()) sections.push(`<h2>Visual Styles</h2>${body}`);
+      const stylesHtml = buildVisualStylesHtml(stylesRow);
+      if (stylesHtml.trim()) sections.push(`<h2>Visual Styles</h2>${stylesHtml}`);
     }
 
     const dbRow = db as { tables_schema: string | null; relationships: string | null; notes: string | null } | null;
