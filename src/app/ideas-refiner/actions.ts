@@ -264,7 +264,7 @@ export async function buildProjectFromIdea(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error: stageErr } = await (supabase as any)
     .from("idea")
-    .update({ stage: "validating_market_and_building_product" })
+    .update({ stage: "validating_market_and_building_product", project_id: project.id })
     .eq("id", ideaId);
   if (stageErr) return { error: (stageErr as { message: string }).message };
 
