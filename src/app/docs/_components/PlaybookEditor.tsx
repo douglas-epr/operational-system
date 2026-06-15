@@ -12,7 +12,7 @@ import { CommentMarkExtension } from "./CommentMarkExtension";
 import DocumentPreviewModal from "./DocumentPreviewModal";
 import {
   addPlaybookComment,
-  createPlaybookVersion,
+  createIdeaPlaybookVersion,
   deletePlaybookVersion,
   savePlaybookVersion,
 } from "../actions";
@@ -32,6 +32,7 @@ function slugify(s: string): string {
 
 interface Props {
   projectId: string;
+  ideaId: string | null;
   versions: PlaybookVersion[];
   activeVersion: PlaybookVersion;
   onVersionChange: (id: string) => void;
@@ -54,6 +55,7 @@ interface Props {
 
 export default function PlaybookEditor({
   projectId,
+  ideaId,
   versions,
   activeVersion,
   onVersionChange,
@@ -255,7 +257,9 @@ export default function PlaybookEditor({
     if (!editorRef.current) return;
     startSaveNew(async () => {
       const html = editorRef.current!.getHTML();
-      const res = await createPlaybookVersion(projectId, html);
+      const res = ideaId
+        ? await createIdeaPlaybookVersion(ideaId, html)
+        : { error: "No idea linked to this project. Use 'Build from idea' to create a version." };
       if (res.error) flash("Error: " + res.error);
       else {
         flash("New version saved!");
@@ -297,7 +301,6 @@ export default function PlaybookEditor({
     try {
       const res = await addPlaybookComment({
         playbookId: activeVersion.id,
-        projectId,
         message: text,
         attachments: [],
       });
@@ -314,7 +317,7 @@ export default function PlaybookEditor({
       // Only admins / managers can persist the mark back into the playbook
       // version (RLS: only they can UPDATE). For everyone else, the anchor
       // highlight stays for the session and the comment itself is still
-      // saved to `project_playbook_comment`.
+      // saved to `idea_playbook_comment`.
       if (editable) {
         const html = editor.getHTML();
         await savePlaybookVersion(activeVersion.id, html);

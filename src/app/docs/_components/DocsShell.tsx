@@ -12,7 +12,6 @@ import type {
   PlaybookVersion,
   ProjectDailyFeedback,
   ProjectFile,
-  ProjectInvoice,
   ProjectLink,
   ProjectVideo,
 } from "@/types/docs";
@@ -23,7 +22,6 @@ import FilesTab from "./FilesTab";
 import LinksTab from "./LinksTab";
 import VideosTab from "./VideosTab";
 import DailyFeedbackTab from "./DailyFeedbackTab";
-import InvoicesTab from "./InvoicesTab";
 
 interface Props {
   projects: Project[];
@@ -42,7 +40,6 @@ interface Props {
   links: ProjectLink[];
   videos: ProjectVideo[];
   dailyFeedbacks: ProjectDailyFeedback[];
-  invoices: ProjectInvoice[];
   linkedIdeaId: string | null;
 }
 
@@ -63,7 +60,6 @@ export default function DocsShell({
   links,
   videos,
   dailyFeedbacks,
-  invoices,
   linkedIdeaId,
 }: Props) {
   const [search, setSearch] = useState("");
@@ -244,15 +240,6 @@ export default function DocsShell({
                 />
               )}
 
-              {activeTab === "invoices" && (
-                <InvoicesTab
-                  project={activeProject}
-                  profiles={profiles}
-                  invoices={invoices}
-                  currentUserId={currentUserId}
-                  isAdminOrManager={isAdminOrManager}
-                />
-              )}
             </div>
           </>
         )}

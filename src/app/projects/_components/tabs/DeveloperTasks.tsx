@@ -101,7 +101,7 @@ export default function DeveloperTasks({
   };
 
   const onUpdateAggregateEst = (
-    field: "client_developer_estimated_time" | "qa_developer_estimated_time" | "qa_tester_estimated_time" | "estimated_time",
+    field: "general_requests_estimated_time" | "estimated_time",
     value: number | null,
   ) => {
     startTransition(async () => {
@@ -179,25 +179,11 @@ export default function DeveloperTasks({
           Project Totals
         </div>
         <ProjectTotalRow
-          label="Client Requests (Developer)"
-          estimatedTime={project.client_developer_estimated_time}
-          realTime={project.client_developer_real_time}
+          label="General Requests"
+          estimatedTime={project.general_requests_estimated_time}
+          realTime={project.general_requests_real_time}
           estEditable={canEditTotals}
-          onEstChange={(v) => onUpdateAggregateEst("client_developer_estimated_time", v)}
-        />
-        <ProjectTotalRow
-          label="QA Requests (Developer)"
-          estimatedTime={project.qa_developer_estimated_time}
-          realTime={project.qa_developer_real_time}
-          estEditable={canEditTotals}
-          onEstChange={(v) => onUpdateAggregateEst("qa_developer_estimated_time", v)}
-        />
-        <ProjectTotalRow
-          label="QA Requests (QA Tester)"
-          estimatedTime={project.qa_tester_estimated_time}
-          realTime={project.qa_tester_real_time}
-          estEditable={canEditTotals}
-          onEstChange={(v) => onUpdateAggregateEst("qa_tester_estimated_time", v)}
+          onEstChange={(v) => onUpdateAggregateEst("general_requests_estimated_time", v)}
         />
         <ProjectTotalRow
           label="Project"

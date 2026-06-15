@@ -208,6 +208,7 @@ export interface VisualStylesShadow {
 export interface VisualStylesOutput {
   // Legacy rich-text (kept for backward compat)
   logo_branding: string;
+  color_palette: string;
   product_feeling: string;
   // Quick-access colors
   primary_color: string;

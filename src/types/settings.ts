@@ -68,13 +68,6 @@ export interface UserAiSettingsClient {
   openaiModel: string;
   geminiModel: string;
   claudeModel: string;
-  /**
-   * Whether the user has opted in to the agency-wide keys. When TRUE the
-   * resolver ignores their personal keys and uses `agency_ai_settings`.
-   * Forced FALSE for `referrer` and `lead` profiles. Default TRUE for
-   * fresh rows.
-   */
-  useAgencySettings: boolean;
 }
 
 /** Payload sent from the settings form to the server action. */
@@ -87,9 +80,6 @@ export interface SaveAiSettingsPayload {
   openaiModel: string;
   geminiModel: string;
   claudeModel: string;
-  /** Per-user "use agency keys" toggle. Server clamps to FALSE for
-   *  referrer / lead profiles regardless of what the client sent. */
-  useAgencySettings?: boolean;
 }
 
 // ── Agency record + agency-wide AI ───────────────────────────────────────────
@@ -109,27 +99,3 @@ export interface SaveAgencyInfoPayload {
   website?: string | null;
 }
 
-export interface SaveAgencyAiSettingsPayload {
-  activeService: AiService | null;
-  openaiApiKey?: string;
-  geminiApiKey?: string;
-  claudeApiKey?: string;
-  openaiModel: string;
-  geminiModel: string;
-  claudeModel: string;
-}
-
-/**
- * Public summary of the agency AI config exposed to non-admins so the
- * per-user form can render a "you're using agency keys for X" preview.
- * Never carries the raw API keys.
- */
-export interface AgencyAiSettingsSummary {
-  active_service: AiService | null;
-  has_openai_key: boolean;
-  has_gemini_key: boolean;
-  has_claude_key: boolean;
-  openai_model: string | null;
-  gemini_model: string | null;
-  claude_model: string | null;
-}

@@ -6,7 +6,7 @@ import type { UserType } from "@/types/projects";
 
 // ── Auth guard ─────────────────────────────────────────────────────────────────
 
-async function requireAdminOrManager() {
+async function requireAdmin() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated." };
@@ -17,7 +17,7 @@ async function requireAdminOrManager() {
     .eq("id", user.id)
     .single();
 
-  if (profile?.type !== "admin" && profile?.type !== "manager") {
+  if (profile?.type !== "admin") {
     return { error: "Insufficient permissions." };
   }
   return { error: null };
@@ -33,7 +33,7 @@ export async function createUser(data: {
   country: string;
   picture: string;
 }): Promise<{ error?: string }> {
-  const guard = await requireAdminOrManager();
+  const guard = await requireAdmin();
   if (guard.error) return { error: guard.error };
 
   const admin = createServiceClient();
@@ -82,7 +82,7 @@ export async function updateUser(
     picture: string;
   }
 ): Promise<{ error?: string }> {
-  const guard = await requireAdminOrManager();
+  const guard = await requireAdmin();
   if (guard.error) return { error: guard.error };
 
   const admin = createServiceClient();
@@ -105,7 +105,7 @@ export async function updateUser(
 // ── Delete user ────────────────────────────────────────────────────────────────
 
 export async function deleteUser(id: string): Promise<{ error?: string }> {
-  const guard = await requireAdminOrManager();
+  const guard = await requireAdmin();
   if (guard.error) return { error: guard.error };
 
   const admin = createServiceClient();
@@ -119,7 +119,7 @@ export async function deleteUser(id: string): Promise<{ error?: string }> {
 // ── Resend invitation ──────────────────────────────────────────────────────────
 
 export async function resendInvitation(email: string): Promise<{ error?: string }> {
-  const guard = await requireAdminOrManager();
+  const guard = await requireAdmin();
   if (guard.error) return { error: guard.error };
 
   const admin = createServiceClient();

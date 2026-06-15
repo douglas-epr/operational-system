@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Task, UserType, UserProfile } from "@/types/projects";
+import { PRIORITY_LABELS, PRIORITY_RANK, PRIORITY_COLOR, CATEGORY_LABELS } from "@/types/projects";
 import TaskModal from "../modals/TaskModal";
 import ConfirmDeleteModal from "../modals/ConfirmDeleteModal";
 import { deleteTask, updateTask } from "../../actions";
@@ -11,8 +12,7 @@ interface TasksKanbanProps {
   tasks: Task[];
   userType: UserType | null;
   projectId: string;
-  type: "client_requests" | "qa_requests";
-  onTrackQATime?: () => void;
+  type: "client_requests";
   profiles?: UserProfile[];
   currentUserId: string;
   milestones?: Task[];
@@ -51,7 +51,7 @@ interface CreateContext {
 }
 
 export default function TasksKanban({
-  tasks, userType, projectId, type, onTrackQATime, profiles = [], currentUserId, milestones = [], authorizedUserIds, unreadByTaskId = {},
+  tasks, userType, projectId, type, profiles = [], currentUserId, milestones = [], authorizedUserIds, unreadByTaskId = {},
 }: TasksKanbanProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -88,7 +88,12 @@ export default function TasksKanban({
     byStatus.set(t.status, col);
   });
   COLUMNS.forEach(({ key }) => {
-    byStatus.get(key)!.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    byStatus.get(key)!.sort((a, b) => {
+      const prA = a.priority_level ? (PRIORITY_RANK[a.priority_level] ?? 99) : 99;
+      const prB = b.priority_level ? (PRIORITY_RANK[b.priority_level] ?? 99) : 99;
+      if (prA !== prB) return prA - prB;
+      return (a.order ?? 0) - (b.order ?? 0);
+    });
   });
 
   const modalTask = taskModal.taskId ? (localTasks.find((t) => t.id === taskModal.taskId) ?? null) : null;
@@ -177,20 +182,6 @@ export default function TasksKanban({
 
   return (
     <div className="flex flex-col gap-4 p-4">
-      {type === "qa_requests" && canEdit && (
-        <div className="flex justify-end">
-          <button
-            onClick={onTrackQATime}
-            className="flex items-center gap-2 px-4 py-2 rounded-md bg-accent hover:bg-accent-hover text-white text-sm font-medium transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Track QA Time
-          </button>
-        </div>
-      )}
-
       <div className="flex gap-3 overflow-x-auto pb-2">
         {COLUMNS.map(({ key, label }) => {
           const col = byStatus.get(key) ?? [];
@@ -401,6 +392,20 @@ function KanbanCard({
             <span className="text-[10px] text-text-muted">{task.estimated_time.toFixed(0)}h est.</span>
           )}
         </div>
+        {(task.priority_level || task.category) && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {task.priority_level && (
+              <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded-full ${PRIORITY_COLOR[task.priority_level]}`}>
+                {PRIORITY_LABELS[task.priority_level]}
+              </span>
+            )}
+            {task.category && (
+              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-text-muted">
+                {CATEGORY_LABELS[task.category]}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

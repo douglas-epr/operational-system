@@ -9,6 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Idea, IdeaBlock, IdeaFull, ProjectOption } from "@/types/idea-refiner";
+import type { UserProfile } from "@/types/projects";
 import type { UserAiSettingsClient } from "@/types/settings";
 import { IDEA_BLOCK_LABELS, IDEA_BLOCKS_ORDERED, IDEA_BLOCK_STEPS } from "@/types/idea-refiner";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ import DatabaseStep from "./DatabaseStep";
 import VisualStylesStep from "./VisualStylesStep";
 import MilestonesAndTasksStep from "./MilestonesAndTasksStep";
 import ReportStep from "./ReportStep";
+import PlaybookStep from "./PlaybookStep";
 import AiConfigModal from "./AiConfigModal";
 import IdeaChatbot from "./IdeaChatbot";
 import IdeaDevilAdvocateChatbot from "./IdeaDevilAdvocateChatbot";
@@ -32,6 +34,7 @@ import IdeaDevilAdvocateChatbot from "./IdeaDevilAdvocateChatbot";
 interface SandboxPlannerShellProps {
   ideas: Idea[];
   projects: ProjectOption[];
+  profiles: UserProfile[];
   ideaFull: IdeaFull | null;
   initialTab: IdeaBlock;
   userName: string;
@@ -102,10 +105,13 @@ function computeUnlockedSteps(ideaFull: IdeaFull): Set<IdeaBlock> {
   const stylesHasContent = !!ideaFull.styles?.color_palette?.trim();
   if (databaseDone || stylesHasContent) unlocked.add("visual_styles");
 
-  // Project Milestones & Tasks is now the terminal step (Step 11).
+  // Project Milestones & Tasks is now Step 11.
   const stylesDone = !!ideaFull.styles?.color_palette?.trim();
   const milestonesHasContent = !!ideaFull.milestonesAndTasks?.content?.trim();
   if (stylesDone || milestonesHasContent) unlocked.add("milestones_and_tasks");
+
+  // Playbook (Step 12) unlocks once milestones have content OR a playbook version already exists.
+  if (milestonesHasContent || ideaFull.playbookVersions.length > 0) unlocked.add("playbook");
 
   return unlocked;
 }
@@ -114,6 +120,7 @@ function computeUnlockedSteps(ideaFull: IdeaFull): Set<IdeaBlock> {
 export default function SandboxPlannerShell({
   ideas,
   projects,
+  profiles,
   ideaFull,
   initialTab,
   userName,
@@ -212,6 +219,7 @@ export default function SandboxPlannerShell({
         <IdeasGrid
           ideas={ideas}
           projects={projects}
+          profiles={profiles}
           userName={userName}
           currentUserId={currentUserId}
           isAdminOrManager={isAdminOrManager}
@@ -278,13 +286,14 @@ export default function SandboxPlannerShell({
             {IDEA_BLOCK_LABELS[activeTab]}
           </h1>
           <p className="text-sm text-text-muted mt-1">
-            Step {stepInfo.step} of 11. {stepInfo.subtitle}
+            Step {stepInfo.step} of {IDEA_BLOCKS_ORDERED.length}. {stepInfo.subtitle}
           </p>
         </div>
         {activeTab === "ideas" && (
           <IdeasGrid
             ideas={ideas}
             projects={projects}
+            profiles={profiles}
             userName={userName}
             currentUserId={currentUserId}
             isAdminOrManager={isAdminOrManager}
@@ -323,6 +332,13 @@ export default function SandboxPlannerShell({
         )}
         {activeTab === "report" && (
           <ReportStep ideaFull={ideaFull} />
+        )}
+        {activeTab === "playbook" && (
+          <PlaybookStep
+            ideaFull={ideaFull}
+            isAdminOrManager={isAdminOrManager}
+            currentUserId={currentUserId}
+          />
         )}
       </div>
 

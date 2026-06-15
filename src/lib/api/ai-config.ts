@@ -1,36 +1,10 @@
 /**
- * Shared resolver for the user's AI config (which provider + which API key
- * + which model to call).
+ * Shared resolver for the user's AI config (provider + API key + model).
  *
- * Resolution order (NEW, 2026-04-29):
- *
- *   1. Look up the caller's `user_ai_settings` row + `profiles.type`.
- *
- *   2. If the caller's profile.type is 'referrer' or 'lead':
- *        - PERSONAL ONLY. Return their personal config when active_service +
- *          matching api key are present; otherwise return null.
- *        - Skip the agency lookup AND the OPENAI_API_KEY env fallback —
- *          external referrers/leads never get agency-paid LLM calls or
- *          accidentally use a stale shared env key.
- *
- *   3. Otherwise (admin / manager / operational / developer / client / qa):
- *        a. If `use_agency_settings` is FALSE AND personal active_service +
- *           matching api key are present → use the personal config.
- *        b. Otherwise read the singleton `agency_ai_settings` via the
- *           service-role client (RLS bypass — non-admin LLM calls work,
- *           keys never reach the browser). If active_service + matching
- *           api key are present → use the agency config.
- *        c. Otherwise fall back to `OPENAI_API_KEY` env.
- *        d. Otherwise return null.
- *
- * Used by:
- *   - `src/app/sandbox-planner/actions.ts` (idea generation steps)
- *   - `src/app/chat/_chatbot/run.ts` (chatbot turns)
- *   - `src/app/chat/_chatbot/runProjectBot.ts` (project chatbot turns)
- *   - `src/app/projects/actions.ts::importTasksFromIdea`
- *
- * Returns `null` if nothing resolves — the caller surfaces a "configure AI
- * in Settings" message rather than silently no-op.
+ * Resolution order:
+ *   1. Read the caller's `user_ai_settings` row + `profiles.type`.
+ *   2. `referrer` / `lead` roles: personal keys only — no env fallback.
+ *   3. Everyone else: personal keys → OPENAI_API_KEY env last-resort → null.
  */
 
 import type { AiService } from "@/types/settings";
@@ -50,17 +24,6 @@ interface UserAiSettingsRow {
   openai_model: string | null;
   gemini_model: string | null;
   claude_model: string | null;
-  use_agency_settings: boolean | null;
-}
-
-interface AgencyAiSettingsRow {
-  active_service: string | null;
-  openai_api_key: string | null;
-  gemini_api_key: string | null;
-  claude_api_key: string | null;
-  openai_model: string | null;
-  gemini_model: string | null;
-  claude_model: string | null;
 }
 
 /**
@@ -71,7 +34,7 @@ interface AgencyAiSettingsRow {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabaseClient = any;
 
-const PERSONAL_ONLY_ROLES: ReadonlySet<string> = new Set(["referrer", "lead"]);
+export const PERSONAL_ONLY_ROLES: ReadonlySet<string> = new Set(["referrer", "lead"]);
 
 const DEFAULT_MODELS: Record<AiService, string> = {
   openai: "gpt-4.1",
@@ -80,9 +43,7 @@ const DEFAULT_MODELS: Record<AiService, string> = {
 };
 
 /** Build an AiConfig from a settings row, or null if it doesn't resolve. */
-function configFromRow(
-  row: UserAiSettingsRow | AgencyAiSettingsRow | null
-): AiConfig | null {
+function configFromRow(row: UserAiSettingsRow | null): AiConfig | null {
   if (!row?.active_service) return null;
   const service = row.active_service as AiService;
   const keyMap: Record<AiService, string | null> = {
@@ -100,43 +61,15 @@ function configFromRow(
   return { service, apiKey, model: modelMap[service] };
 }
 
-/** Service-role read of the singleton agency_ai_settings row. */
-async function loadAgencyAiSettings(): Promise<AgencyAiSettingsRow | null> {
-  try {
-    const sb = createServiceClient();
-    // The singleton agency. If multiple rows exist somehow, just take the
-    // first — admins can clean it up. ORDER BY created_at so the choice is
-    // deterministic.
-    const { data: agency } = await sb
-      .from("agency")
-      .select("id")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (!agency) return null;
-    const { data } = await sb
-      .from("agency_ai_settings")
-      .select(
-        "active_service, openai_api_key, gemini_api_key, claude_api_key, openai_model, gemini_model, claude_model"
-      )
-      .eq("agency_id", (agency as { id: string }).id)
-      .maybeSingle();
-    return (data ?? null) as AgencyAiSettingsRow | null;
-  } catch {
-    return null;
-  }
-}
-
 export async function resolveAiConfig(
   supabase: AnySupabaseClient,
   userId: string
 ): Promise<AiConfig | null> {
-  // 1. Read the user's settings + role in parallel.
   const [{ data: userData }, { data: profileData }] = await Promise.all([
     supabase
       .from("user_ai_settings")
       .select(
-        "active_service, openai_api_key, gemini_api_key, claude_api_key, openai_model, gemini_model, claude_model, use_agency_settings"
+        "active_service, openai_api_key, gemini_api_key, claude_api_key, openai_model, gemini_model, claude_model"
       )
       .eq("owner_id", userId)
       .maybeSingle(),
@@ -149,26 +82,12 @@ export async function resolveAiConfig(
   const settings = (userData ?? null) as UserAiSettingsRow | null;
   const role = (profileData as { type?: string | null } | null)?.type ?? null;
 
-  // 2. Personal-only roles (referrer / lead) never touch agency or env.
-  if (role && PERSONAL_ONLY_ROLES.has(role)) {
-    return configFromRow(settings);
-  }
+  const personal = configFromRow(settings);
+  if (personal) return personal;
 
-  // 3a. Personal keys win when the user has explicitly opted out of agency.
-  const useAgency = settings?.use_agency_settings ?? true;
-  if (!useAgency) {
-    const personal = configFromRow(settings);
-    if (personal) return personal;
-    // Fall through to agency (if their personal keys are missing, treat it
-    // as "I haven't set them up yet, please use whatever's available").
-  }
+  // Personal-only roles never get the env fallback.
+  if (role && PERSONAL_ONLY_ROLES.has(role)) return null;
 
-  // 3b. Agency settings via service-role read.
-  const agency = await loadAgencyAiSettings();
-  const agencyConfig = configFromRow(agency);
-  if (agencyConfig) return agencyConfig;
-
-  // 3c. Last-resort env-var fallback.
   const envKey = process.env.OPENAI_API_KEY;
   if (envKey) return { service: "openai", apiKey: envKey, model: DEFAULT_MODELS.openai };
 
@@ -176,11 +95,8 @@ export async function resolveAiConfig(
 }
 
 /**
- * Resolve provider-specific image-generation keys (Gemini + OpenAI),
- * independent of the active TEXT service. Image generation needs a specific
- * provider, so we surface both keys when available.
- *
- * Order per provider: personal key → agency key → env var.
+ * Resolve provider-specific image-generation keys (Gemini + OpenAI).
+ * Order per provider: personal key → env var.
  */
 export async function resolveImageKeys(
   supabase: AnySupabaseClient,
@@ -188,30 +104,17 @@ export async function resolveImageKeys(
 ): Promise<{ gemini: string | null; openai: string | null }> {
   const { data: userData } = await supabase
     .from("user_ai_settings")
-    .select("gemini_api_key, openai_api_key, use_agency_settings")
+    .select("gemini_api_key, openai_api_key")
     .eq("owner_id", userId)
     .maybeSingle();
   const personal = (userData ?? null) as { gemini_api_key: string | null; openai_api_key: string | null } | null;
 
-  const agency = await loadAgencyAiSettings();
+  // Require the service-role client to be importable (unused now but kept for
+  // consistency with the module's other service-role helpers).
+  void createServiceClient;
 
   return {
-    gemini: personal?.gemini_api_key ?? agency?.gemini_api_key ?? process.env.GEMINI_API_KEY ?? null,
-    openai: personal?.openai_api_key ?? agency?.openai_api_key ?? process.env.OPENAI_API_KEY ?? null,
+    gemini: personal?.gemini_api_key ?? process.env.GEMINI_API_KEY ?? null,
+    openai: personal?.openai_api_key ?? process.env.OPENAI_API_KEY ?? null,
   };
 }
-
-/**
- * Server-action helper: enforce that referrer / lead profiles can never
- * flip `use_agency_settings` to TRUE. Used by `saveAiSettings` so a
- * crafted client-side request can't bypass the UI gate.
- */
-export function clampUseAgencyForRole(
-  requested: boolean | null | undefined,
-  role: string | null
-): boolean {
-  if (role && PERSONAL_ONLY_ROLES.has(role)) return false;
-  return requested ?? true;
-}
-
-export { PERSONAL_ONLY_ROLES };

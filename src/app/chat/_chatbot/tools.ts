@@ -428,7 +428,7 @@ export async function runTool(
                 "internal_goal", "internal_key_result", "internal_key_result_track",
                 "idea", "idea_icp", "client", "talent", "company",
                 "recommended_project", "prompt", "prompt_group", "sop", "lead",
-                "user_ai_settings", "agency", "agency_ai_settings",
+                "user_ai_settings", "agency",
                 "project_file", "project_link", "project_video", "project_daily_feedback",
               ],
               note: "fallback list — public_table_list RPC is not deployed",

@@ -83,24 +83,20 @@ const NAV_ITEMS: readonly NavItem[] = [
   { label: "Dashboard",            href: "/dashboard",            icon: IconGrid,       roles: ADMIN_MANAGER,                         group: "workspace" },
   { label: "Projects",             href: "/projects",             icon: IconBriefcase,  roles: ALL_STAFF_AND_CLIENTS,                 group: "workspace" },
   { label: "Internal Projects",    href: "/internal-projects",    icon: IconFolder,     roles: ADMIN_MANAGER_OPERATIONAL,             group: "workspace" },
-  { label: "Recommended Projects", href: "/recommended-projects", icon: IconStar,       roles: [...ADMIN_MANAGER_OPERATIONAL, "referrer"] as const, group: "workspace" },
 
   // Collaboration
   { label: "Chat",                 href: "/chat",                 icon: IconChatBubble, roles: ALL_STAFF_AND_CLIENTS,                 group: "collaboration" },
-  { label: "Docs",                 href: "/docs",                 icon: IconBook,       roles: ALL_STAFF_AND_CLIENTS,                 group: "collaboration" },
 
   // Operations
   { label: "OKRs",                 href: "/okrs",                 icon: IconTarget,     roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
-  { label: "SOPs",                 href: "/sops",                 icon: IconDocument,   roles: ALL_STAFF_AND_CLIENTS,                 group: "operations" },
-  { label: "Talent Pool",          href: "/talent-pool",          icon: IconUsers,      roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
-  { label: "Leads",                href: "/leads",                icon: IconChart,      roles: ADMIN_MANAGER_OPERATIONAL,             group: "operations" },
+  { label: "Documents",            href: "/sops",                 icon: IconDocument,   roles: ALL_STAFF_AND_CLIENTS,                 group: "operations" },
   { label: "Ideas Refiner",        href: "/ideas-refiner",        icon: IconLightbulb,  roles: ["admin","manager","operational","developer","client","lead"] as const, group: "operations" },
   { label: "Marketing",            href: "/marketing",            icon: IconMegaphone,  roles: ADMIN_MANAGER,                         group: "operations" },
 
   // Administration
-  { label: "Users",                href: "/users",                icon: IconPerson,     roles: ADMIN_MANAGER,                         group: "administration" },
+  { label: "Users",                href: "/users",                icon: IconPerson,     roles: ["admin"] as const,                    group: "administration" },
   { label: "Prompts",              href: "/prompts",              icon: IconPrompt,     roles: ADMIN_MANAGER,                         group: "administration" },
-  { label: "Feedback",             href: "/feedback",             icon: IconStarFilled, roles: ["admin","manager","operational","developer","client","qa","referrer","lead"] as const, group: "administration" },
+  { label: "Invoices",             href: "/invoices",             icon: IconDocument,   roles: ["admin","manager","operational","developer","client","qa","lead"] as const, group: "administration" },
   { label: "Settings",             href: "/settings",             icon: IconSettings,   roles: ["admin","manager","operational","developer","client","qa","lead"] as const, group: "administration" },
 ];
 
@@ -168,7 +164,7 @@ export default function Sidebar({ profile }: { profile: UserProfile | null }) {
   const visible: readonly NavItem[] =
     role === "referrer"
       ? [
-          { label: "Dashboard", href: "/recommended-projects", icon: IconGrid,       roles: ["referrer"] as const, group: "workspace" },
+          { label: "Dashboard", href: "/projects",             icon: IconGrid,       roles: ["referrer"] as const, group: "workspace" },
           { label: "Feedback",  href: "/feedback",             icon: IconStarFilled, roles: ["referrer"] as const, group: "administration" },
         ]
       : NAV_ITEMS.filter((item) => (role ? item.roles.includes(role) : false));

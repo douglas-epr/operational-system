@@ -46,8 +46,7 @@ export type DocsTabKey =
   | "files"
   | "links"
   | "videos"
-  | "daily_feedback"
-  | "invoices";
+  | "daily_feedback";
 
 export const DOCS_TAB_LABELS: Record<DocsTabKey, string> = {
   playbook:       "Playbook",
@@ -56,7 +55,6 @@ export const DOCS_TAB_LABELS: Record<DocsTabKey, string> = {
   links:          "Links",
   videos:         "Videos",
   daily_feedback: "Daily Feedback",
-  invoices:       "Invoices",
 };
 
 export const DOCS_TAB_ORDER: DocsTabKey[] = [
@@ -66,7 +64,6 @@ export const DOCS_TAB_ORDER: DocsTabKey[] = [
   "links",
   "videos",
   "daily_feedback",
-  "invoices",
 ];
 
 export interface DocsAttachment {
@@ -79,7 +76,7 @@ export interface DocsAttachment {
 
 export interface PlaybookVersion {
   id: string;
-  project_id: string | null;
+  idea_id: string | null;
   version_name: string | null;
   content: string | null;
   google_docs_url: string | null;
@@ -97,7 +94,6 @@ export const PLAYBOOK_COMMENT_STATUS_LABELS: Record<PlaybookCommentStatus, strin
 
 export interface PlaybookComment {
   id: string;
-  project_id: string;
   playbook_id: string;
   message: string | null;
   attachments: DocsAttachment[];
@@ -110,9 +106,8 @@ export interface PlaybookComment {
 
 export interface PlaybookCommentReply {
   id: string;
-  project_id: string;
   playbook_id: string;
-  project_playbook_comment_id: string;
+  idea_playbook_comment_id: string;
   message: string | null;
   attachments: DocsAttachment[];
   created_by: string;
@@ -190,11 +185,52 @@ export interface ProjectDailyFeedback {
   updated_at: string;
 }
 
-export interface ProjectInvoice {
+export interface InternalProjectFile {
   id: string;
-  project_id: string;
+  internal_project_id: string;
+  name: string;
+  attachments: DocsAttachment[];
   created_by: string;
-  authorized_users: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InternalProjectLink {
+  id: string;
+  internal_project_id: string;
+  name: string;
+  url: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InternalProjectVideo {
+  id: string;
+  internal_project_id: string | null;
+  name: string | null;
+  url: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InternalProjectDailyFeedback {
+  id: string;
+  internal_project_id: string | null;
+  date: string;
+  today_work: string | null;
+  tomorrow_work: string | null;
+  blockers: string | null;
+  video_and_links: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Invoice {
+  id: string;
+  created_by: string;
   code: string;
   company_or_user_name: string | null;
   document_number: string | null;

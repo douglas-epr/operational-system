@@ -9,6 +9,8 @@ import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Idea, ProjectOption } from "@/types/idea-refiner";
 import type { UserAiSettingsClient } from "@/types/settings";
+import type { UserProfile } from "@/types/projects";
+import type { UserMultiSelectOption } from "@/components/ui/UserMultiSelect";
 import { cn } from "@/lib/utils";
 import CreateIdeaModal from "./CreateIdeaModal";
 import AiSettingsModal from "./AiSettingsModal";
@@ -19,6 +21,7 @@ import { deleteIdea, duplicateIdea } from "../actions";
 interface IdeasGridProps {
   ideas: Idea[];
   projects: ProjectOption[];
+  profiles: UserProfile[];
   userName: string;
   currentUserId: string;
   isAdminOrManager: boolean;
@@ -35,6 +38,7 @@ interface IdeasGridProps {
 export default function IdeasGrid({
   ideas,
   projects,
+  profiles,
   userName,
   currentUserId,
   isAdminOrManager,
@@ -43,6 +47,12 @@ export default function IdeasGrid({
   hasAiConfigured,
   aiSettings,
 }: IdeasGridProps) {
+  const profileOptions: UserMultiSelectOption[] = profiles.map((p) => ({
+    id: p.id,
+    name: [p.first_name, p.last_name].filter(Boolean).join(" ") || p.id,
+    role: p.type ?? undefined,
+    picture: p.picture ?? undefined,
+  }));
   const router = useRouter();
   const searchParams = useSearchParams();
   const [modalOpen, setModalOpen] = useState(false);
@@ -180,6 +190,7 @@ export default function IdeasGrid({
                 <IdeaCard
                   key={idea.id}
                   idea={idea}
+                  isCreator={idea.created_by === currentUserId}
                   onSelect={() => handleSelectIdea(idea.id)}
                   onDeleteClick={() => setDeletingIdea(idea)}
                   onEditClick={() => setEditingIdea(idea)}
@@ -196,6 +207,7 @@ export default function IdeasGrid({
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         projects={projects}
+        profiles={profileOptions}
         defaultProjectId={defaultProjectId}
       />
 
@@ -204,6 +216,7 @@ export default function IdeasGrid({
         open={!!editingIdea}
         onClose={() => setEditingIdea(null)}
         projects={projects}
+        profiles={profileOptions}
         idea={editingIdea}
         currentUserId={currentUserId}
         isAdminOrManager={isAdminOrManager}
@@ -258,6 +271,7 @@ export default function IdeasGrid({
 
 interface IdeaCardProps {
   idea: Idea;
+  isCreator: boolean;
   onSelect: () => void;
   onDeleteClick: () => void;
   onEditClick: () => void;
@@ -265,7 +279,7 @@ interface IdeaCardProps {
 }
 
 /** Single idea card displaying name and description. Click to open refinement. */
-function IdeaCard({ idea, onSelect, onDeleteClick, onEditClick, onCopyClick }: IdeaCardProps) {
+function IdeaCard({ idea, isCreator, onSelect, onDeleteClick, onEditClick, onCopyClick }: IdeaCardProps) {
   return (
     <div
       className="group relative flex flex-col bg-surface border border-border rounded-xl p-5 transition-shadow hover:shadow-md cursor-pointer"
@@ -286,32 +300,36 @@ function IdeaCard({ idea, onSelect, onDeleteClick, onEditClick, onCopyClick }: I
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
           </svg>
         </button>
-        <button
-          type="button"
-          aria-label="Edit idea"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEditClick();
-          }}
-          className="p-1.5 rounded-md text-text-muted/70 hover:text-accent hover:bg-accent/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M16.732 3.732a2.5 2.5 0 113.536 3.536L7.5 20.036 3 21l.964-4.5L16.732 3.732z" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          aria-label="Delete idea"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteClick();
-          }}
-          className="p-1.5 rounded-md text-text-muted/70 hover:text-red-500 hover:bg-red-500/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-          </svg>
-        </button>
+        {isCreator && (
+          <button
+            type="button"
+            aria-label="Edit idea"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEditClick();
+            }}
+            className="p-1.5 rounded-md text-text-muted/70 hover:text-accent hover:bg-accent/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M16.732 3.732a2.5 2.5 0 113.536 3.536L7.5 20.036 3 21l.964-4.5L16.732 3.732z" />
+            </svg>
+          </button>
+        )}
+        {isCreator && (
+          <button
+            type="button"
+            aria-label="Delete idea"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteClick();
+            }}
+            className="p-1.5 rounded-md text-text-muted/70 hover:text-red-500 hover:bg-red-500/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        )}
       </div>
 
       <h3 className="text-sm font-semibold text-text-primary line-clamp-2 mb-0.5 pr-16">

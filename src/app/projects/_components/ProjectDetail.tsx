@@ -5,11 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Project, Task, UserType, TabKey, UserProfile } from "@/types/projects";
 import { getVisibleTabs, TAB_LABELS, getScheduleProgressBadge } from "@/types/projects";
-import StagesChecking from "./tabs/StagesChecking";
 import DeveloperTasks from "./tabs/DeveloperTasks";
 import TasksKanban from "./tabs/TasksKanban";
 import WorkingHoursModal from "./modals/WorkingHoursModal";
-import QATimeTrackerModal from "./modals/QATimeTrackerModal";
 import ProjectModal from "./modals/ProjectModal";
 
 interface ProjectDetailProps {
@@ -35,7 +33,6 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
   const defaultTab = visibleTabs.includes(initialTab) ? initialTab : visibleTabs[0];
   const [activeTab, setActiveTab] = useState<TabKey>(defaultTab);
   const [workingHoursOpen, setWorkingHoursOpen] = useState(false);
-  const [qaTrackerOpen, setQaTrackerOpen] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
 
   function handleTabChange(tab: TabKey) {
@@ -52,17 +49,12 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
   const progress = getScheduleProgressBadge(project, { totalEst, doneOrQaEst });
   const milestones = tasks.filter((t) => t.type === "developer_tasks" && t.level === "level_1" && !t.parent_task_id);
 
-  // Tab status badge counts (blue — shows actionable items count)
+  // Tab status badge counts (blue — actionable items count)
   const clientNotStarted = tasks.filter((t) => t.type === "client_requests" && t.status === "not_started").length;
-  const qaNotStarted = tasks.filter((t) => t.type === "qa_requests" && t.status === "not_started").length;
-  const qaReadyForQa = tasks.filter((t) => t.type === "qa_requests" && t.status === "ready_for_qa").length;
 
-  // Unread comment counts per tab (red — shows unread messages)
+  // Unread comment counts per tab (red — unread messages)
   const clientUnread = tasks
     .filter((t) => t.type === "client_requests")
-    .reduce((s, t) => s + (unreadByTaskId[t.id] ?? 0), 0);
-  const qaUnread = tasks
-    .filter((t) => t.type === "qa_requests")
     .reduce((s, t) => s + (unreadByTaskId[t.id] ?? 0), 0);
   const developerUnread = tasks
     .filter((t) => t.type === "developer_tasks")
@@ -72,16 +64,11 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
     if (tab === "client_requests" && (userType === "admin" || userType === "manager" || userType === "developer")) {
       return clientNotStarted;
     }
-    if (tab === "qa_requests") {
-      if (userType === "qa") return qaReadyForQa;
-      if (userType === "admin" || userType === "manager" || userType === "developer") return qaNotStarted;
-    }
     return 0;
   }
 
   function getTabUnread(tab: TabKey): number {
     if (tab === "client_requests") return clientUnread;
-    if (tab === "qa_requests")     return qaUnread;
     if (tab === "developer")       return developerUnread;
     return 0;
   }
@@ -170,12 +157,6 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
 
       {/* Tab content */}
       <div className="flex-1 overflow-auto">
-        {activeTab === "stages" && (
-          <StagesChecking
-            tasks={tasks}
-            projectStage={project.stage}
-          />
-        )}
         {activeTab === "developer" && (
           <DeveloperTasks
             tasks={tasks}
@@ -199,20 +180,6 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
             unreadByTaskId={unreadByTaskId}
           />
         )}
-        {activeTab === "qa_requests" && (
-          <TasksKanban
-            tasks={tasks}
-            userType={userType}
-            projectId={project.id}
-            type="qa_requests"
-            profiles={profiles}
-            currentUserId={currentUserId}
-            onTrackQATime={() => setQaTrackerOpen(true)}
-            milestones={milestones}
-            authorizedUserIds={project.authorized_users}
-            unreadByTaskId={unreadByTaskId}
-          />
-        )}
       </div>
 
       {/* Modals */}
@@ -221,12 +188,6 @@ export default function ProjectDetail({ project, tasks, userType, initialTab, pr
         onClose={() => setWorkingHoursOpen(false)}
         projectId={project.id}
         projectName={project.name ?? "Untitled"}
-      />
-      <QATimeTrackerModal
-        open={qaTrackerOpen}
-        onClose={() => setQaTrackerOpen(false)}
-        projectId={project.id}
-        milestones={milestones}
       />
       <ProjectModal
         open={projectModalOpen}

@@ -26,7 +26,7 @@ export interface ChatUrlState {
   setThread: (id: string | null) => void;
 }
 
-const VALID_BLOCKS: ChatBlock[] = ["projects", "projects_internal", "internal_projects", "private", "chatbot"];
+const VALID_BLOCKS: ChatBlock[] = ["projects", "internal_projects", "private", "chatbot"];
 const VALID_TABS: ChatTab[] = [
   "messages",
   "files",
@@ -34,7 +34,6 @@ const VALID_TABS: ChatTab[] = [
   "videos",
   "daily_feedback",
   "client_requests",
-  "qa_requests",
   "chatbot",
   "tasks",
 ];

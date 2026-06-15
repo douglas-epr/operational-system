@@ -4,6 +4,7 @@
  * Maps to Bubble data types: idea, idea_icp, idea_optimization_suggestion,
  * idea_product_definition_and_flows, idea_structure_and_align
  */
+import type { PlaybookVersion } from "./docs";
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 
@@ -19,7 +20,8 @@ export type IdeaBlock =
   | "database"
   | "visual_styles"
   | "milestones_and_tasks"
-  | "report";
+  | "report"
+  | "playbook";
 
 /** Maps to PostgreSQL enum os_idea_field */
 export type IdeaField =
@@ -51,6 +53,7 @@ export const IDEA_BLOCK_LABELS: Record<IdeaBlock, string> = {
   visual_styles: "Visual Styles",
   milestones_and_tasks: "Project Milestones & Tasks",
   report: "Report",
+  playbook: "Playbook",
 };
 
 /** Step number and subtitle for each block in the wizard flow. */
@@ -99,6 +102,10 @@ export const IDEA_BLOCK_STEPS: Record<IdeaBlock, { step: number; subtitle: strin
     step: 11,
     subtitle: "Project milestones, tasks, and time estimates.",
   },
+  playbook: {
+    step: 12,
+    subtitle: "Project playbook / build guide.",
+  },
 };
 
 /** Ordered list of idea blocks for tab rendering. */
@@ -114,6 +121,7 @@ export const IDEA_BLOCKS_ORDERED: IdeaBlock[] = [
   "database",
   "visual_styles",
   "milestones_and_tasks",
+  "playbook",
 ];
 
 // ── Database Row Interfaces ──────────────────────────────────────────────────
@@ -125,6 +133,7 @@ export interface Idea {
   created_by: string | null;
   name: string;
   version_name: string | null;
+  authorized_users: string[];
   score: number | null;
   description: string | null;
   success_metrics: string | null;
@@ -396,6 +405,7 @@ export interface IdeaFull {
   styles: IdeaStyles | null;
   milestonesAndTasks: IdeaMilestonesAndTasks | null;
   report: IdeaReport | null;
+  playbookVersions: PlaybookVersion[];
 }
 
 // ── Helper Types ─────────────────────────────────────────────────────────────

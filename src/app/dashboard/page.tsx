@@ -35,7 +35,7 @@ export default async function DashboardPage({
   // Gate: admin/manager only. The shared helper handles the unauthed
   // redirect AND every other role's role-specific landing page (per
   // src/lib/auth/page-gate.ts: developer/client/qa → /projects,
-  // operational → /internal-projects, referrer → /recommended-projects,
+  // operational → /internal-projects, referrer → /projects,
   // lead → /sandbox-planner).
   const { supabase, userId } = await requirePageAccess(["admin", "manager"]);
 
@@ -85,7 +85,7 @@ export default async function DashboardPage({
       supabase
         .from("project")
         .select(
-          "id, name, picture, status, stage, program, price, profit, referrer_commission, estimated_time, real_time, start_date_estimated, end_date_estimated, start_date_real, end_date_real, authorized_users, created_at"
+          "id, name, picture, status, estimated_time, real_time, start_date_estimated, end_date_estimated, start_date_real, end_date_real, authorized_users, created_at"
         )
         .order("created_at", { ascending: false }),
       supabase

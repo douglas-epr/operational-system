@@ -22,9 +22,9 @@ import MessageList, { type MessageListHandle } from "./MessageList";
 import MessageComposer from "./MessageComposer";
 import ThreadPanel from "./ThreadPanel";
 import ProjectTabsPanel from "./ProjectTabsPanel";
+import InternalProjectTabsPanel from "./InternalProjectTabsPanel";
 import ConversationMembersModal from "./modals/ConversationMembersModal";
 import ClientRequestsTab from "./tabs/ClientRequestsTab";
-import QARequestsTab from "./tabs/QARequestsTab";
 import ProjectChatbotTab from "./tabs/ProjectChatbotTab";
 import InternalProjectTasksTab from "./tabs/InternalProjectTasksTab";
 
@@ -63,11 +63,6 @@ export default function ConversationPane({
     setTabRedBadge((prev) => ({ ...prev, client_requests: red }));
   }, []);
 
-  const onQACounts = useCallback((blue: number, red: number) => {
-    setTabBlueBadge((prev) => ({ ...prev, qa_requests: blue }));
-    setTabRedBadge((prev) => ({ ...prev, qa_requests: red }));
-  }, []);
-
   // When a thread is opened, ThreadPanel marks its replies viewed. After
   // the thread closes (or even on open), we want the parent message's
   // `thread_unread_count` badge to drop, so bump the key to refetch.
@@ -92,27 +87,16 @@ export default function ConversationPane({
     };
   }, [block, conversationId]);
 
-  // Pre-fetch Client / QA Requests tab badge counts so the blue + red
-  // bubbles appear on the very first render — they used to only show up
-  // after the user clicked one of those tabs (the kanban wrappers were
-  // the only source of these numbers). The kanban wrappers still refresh
-  // the same state every 2 s once they mount.
-  const isProjectBlockNow = block === "projects" || block === "projects_internal";
+  // Pre-fetch General Requests tab badge counts so the blue + red
+  // bubbles appear on the very first render.
+  const isProjectBlockNow = block === "projects";
   useEffect(() => {
     if (!conversationId || !isProjectBlockNow) return;
     let cancelled = false;
     void getProjectChatTabCounts(conversationId).then((c) => {
       if (cancelled) return;
-      setTabBlueBadge((p) => ({
-        ...p,
-        client_requests: c.clientOpen,
-        qa_requests:     c.qaOpen,
-      }));
-      setTabRedBadge((p) => ({
-        ...p,
-        client_requests: c.clientUnread,
-        qa_requests:     c.qaUnread,
-      }));
+      setTabBlueBadge((p) => ({ ...p, client_requests: c.clientOpen }));
+      setTabRedBadge((p) => ({ ...p, client_requests: c.clientUnread }));
     });
     return () => {
       cancelled = true;
@@ -135,11 +119,10 @@ export default function ConversationPane({
     );
   }
 
-  const isProjectBlock = block === "projects" || block === "projects_internal";
+  const isProjectBlock = block === "projects";
   const isAdminOrManager = userType === "admin" || userType === "manager";
   const showGear = isProjectBlock && isAdminOrManager;
-  const channel: "external" | "internal" =
-    block === "projects" ? "external" : "internal";
+  const channel = "external" as const;
 
   return (
     <div className="flex flex-1 min-w-0 overflow-hidden">
@@ -208,8 +191,10 @@ export default function ConversationPane({
             internalProjectId={conversationId}
             currentUserId={currentUserId}
           />
+        ) : block === "internal_projects" ? (
+          <InternalProjectTabsPanel internalProjectId={conversationId} tab={tab} />
         ) : !isProjectBlock ? (
-          // Fallback for any unhandled tab on non-project blocks.
+          // Fallback for private block — show message list for any unhandled tab.
           <>
             <MessageList
               ref={messageListRef}
@@ -232,14 +217,6 @@ export default function ConversationPane({
             userType={userType}
             currentUserId={currentUserId}
             onCounts={onClientCounts}
-          />
-        ) : tab === "qa_requests" ? (
-          <QARequestsTab
-            projectId={conversationId}
-            block={block}
-            userType={userType}
-            currentUserId={currentUserId}
-            onCounts={onQACounts}
           />
         ) : tab === "chatbot" ? (
           <ProjectChatbotTab

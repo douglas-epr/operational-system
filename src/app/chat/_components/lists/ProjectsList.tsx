@@ -2,8 +2,9 @@
 
 /** Projects (external) list — column 2 content for block 1. */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ProjectListRow } from "@/types/chat";
+import { createClient } from "@/lib/supabase/client";
 import { listProjectConversations } from "../../actions";
 import UnreadBadge from "../UnreadBadge";
 
@@ -28,22 +29,34 @@ export default function ProjectsList({
   const [loading, setLoading] = useState(true);
   const hasFetched = useRef(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!hasFetched.current) setLoading(true);
+  const refresh = useCallback((isInitial = false) => {
+    if (isInitial && !hasFetched.current) setLoading(true);
     void listProjectConversations().then((data) => {
-      if (cancelled) return;
       hasFetched.current = true;
       setRows(data);
       setLoading(false);
-      if (onTotalUnread) {
-        onTotalUnread(data.reduce((s, r) => s + (r.unread_count ?? 0), 0));
-      }
+      if (onTotalUnread) onTotalUnread(data.reduce((s, r) => s + (r.unread_count ?? 0), 0));
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshTick, onTotalUnread]);
+  }, [onTotalUnread]);
+
+  useEffect(() => {
+    refresh(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTick]);
+
+  // Re-sort and update unread counts whenever a new message lands in any project.
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("projects-list-realtime")
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "conversation_project_external_message",
+      }, () => { refresh(); })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [refresh]);
 
   const q = filter.trim().toLowerCase();
   const filtered = q ? rows.filter((r) => (r.name ?? "").toLowerCase().includes(q)) : rows;

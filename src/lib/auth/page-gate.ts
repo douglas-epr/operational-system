@@ -45,7 +45,7 @@ const ROLE_FALLBACK: Record<UserRole, string> = {
   developer: "/projects",
   client: "/projects",
   qa: "/projects",
-  referrer: "/recommended-projects",
+  referrer: "/projects",
   lead: "/ideas-refiner",
 };
 

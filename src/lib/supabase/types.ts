@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.1"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -49,53 +69,6 @@ export type Database = {
           },
         ]
       }
-      agency_ai_settings: {
-        Row: {
-          active_service: Database["public"]["Enums"]["os_ai_service"] | null
-          agency_id: string
-          claude_api_key: string | null
-          claude_model: string | null
-          created_at: string
-          gemini_api_key: string | null
-          gemini_model: string | null
-          openai_api_key: string | null
-          openai_model: string | null
-          updated_at: string
-        }
-        Insert: {
-          active_service?: Database["public"]["Enums"]["os_ai_service"] | null
-          agency_id: string
-          claude_api_key?: string | null
-          claude_model?: string | null
-          created_at?: string
-          gemini_api_key?: string | null
-          gemini_model?: string | null
-          openai_api_key?: string | null
-          openai_model?: string | null
-          updated_at?: string
-        }
-        Update: {
-          active_service?: Database["public"]["Enums"]["os_ai_service"] | null
-          agency_id?: string
-          claude_api_key?: string | null
-          claude_model?: string | null
-          created_at?: string
-          gemini_api_key?: string | null
-          gemini_model?: string | null
-          openai_api_key?: string | null
-          openai_model?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agency_ai_settings_agency_id_fkey"
-            columns: ["agency_id"]
-            isOneToOne: true
-            referencedRelation: "agency"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       agreement_template: {
         Row: {
           content: string | null
@@ -130,132 +103,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      client: {
-        Row: {
-          country: string | null
-          created_at: string
-          created_by: string | null
-          email: string | null
-          id: string
-          linkedin: string | null
-          name: string | null
-          phone: string | null
-          picture: string | null
-        }
-        Insert: {
-          country?: string | null
-          created_at?: string
-          created_by?: string | null
-          email?: string | null
-          id?: string
-          linkedin?: string | null
-          name?: string | null
-          phone?: string | null
-          picture?: string | null
-        }
-        Update: {
-          country?: string | null
-          created_at?: string
-          created_by?: string | null
-          email?: string | null
-          id?: string
-          linkedin?: string | null
-          name?: string | null
-          phone?: string | null
-          picture?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      client_who_referred_this_talent: {
-        Row: {
-          client_id: string | null
-          code: string | null
-          created_at: string
-          created_by: string | null
-          description: string | null
-          id: string
-          level: Database["public"]["Enums"]["os_talent_level"] | null
-          score: number | null
-          talent_id: string | null
-          updated_at: string
-        }
-        Insert: {
-          client_id?: string | null
-          code?: string | null
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          level?: Database["public"]["Enums"]["os_talent_level"] | null
-          score?: number | null
-          talent_id?: string | null
-          updated_at?: string
-        }
-        Update: {
-          client_id?: string | null
-          code?: string | null
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          level?: Database["public"]["Enums"]["os_talent_level"] | null
-          score?: number | null
-          talent_id?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_who_referred_this_talent_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "client"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_who_referred_this_talent_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_who_referred_this_talent_talent_id_fkey"
-            columns: ["talent_id"]
-            isOneToOne: false
-            referencedRelation: "talent"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      company: {
-        Row: {
-          created_at: string
-          id: string
-          name: string | null
-          website: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          name?: string | null
-          website?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          name?: string | null
-          website?: string | null
-        }
-        Relationships: []
       }
       conversation_internal_project_message: {
         Row: {
@@ -304,6 +151,45 @@ export type Database = {
           },
           {
             foreignKeyName: "conversation_internal_project_message_owner_id_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_internal_project_message_emoji: {
+        Row: {
+          conversation_internal_project_message_id: string
+          created_at: string
+          created_by: string
+          emoji_code: string
+          id: string
+        }
+        Insert: {
+          conversation_internal_project_message_id: string
+          created_at?: string
+          created_by: string
+          emoji_code: string
+          id?: string
+        }
+        Update: {
+          conversation_internal_project_message_id?: string
+          created_at?: string
+          created_by?: string
+          emoji_code?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_internal_project_conversation_internal_projec_fkey"
+            columns: ["conversation_internal_project_message_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_internal_project_message"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_internal_project_message_emoji_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -368,6 +254,45 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "conversation_internal_project_message"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_internal_project_message_thread_emoji: {
+        Row: {
+          conversation_internal_project_message_thread_id: string
+          created_at: string
+          created_by: string
+          emoji_code: string
+          id: string
+        }
+        Insert: {
+          conversation_internal_project_message_thread_id: string
+          created_at?: string
+          created_by: string
+          emoji_code: string
+          id?: string
+        }
+        Update: {
+          conversation_internal_project_message_thread_id?: string
+          created_at?: string
+          created_by?: string
+          emoji_code?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_internal_projec_conversation_internal_projec_fkey1"
+            columns: ["conversation_internal_project_message_thread_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_internal_project_message_thread"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_internal_project_message_thread_em_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -453,6 +378,45 @@ export type Database = {
           },
         ]
       }
+      conversation_private_message_emoji: {
+        Row: {
+          conversation_private_message_id: string
+          created_at: string
+          created_by: string
+          emoji_code: string
+          id: string
+        }
+        Insert: {
+          conversation_private_message_id: string
+          created_at?: string
+          created_by: string
+          emoji_code: string
+          id?: string
+        }
+        Update: {
+          conversation_private_message_id?: string
+          created_at?: string
+          created_by?: string
+          emoji_code?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_private_message__conversation_private_message_fkey"
+            columns: ["conversation_private_message_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_private_message"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_private_message_emoji_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_private_message_thread: {
         Row: {
           attachments: Json
@@ -514,6 +478,45 @@ export type Database = {
           },
         ]
       }
+      conversation_private_message_thread_emoji: {
+        Row: {
+          conversation_private_message_thread_id: string
+          created_at: string
+          created_by: string
+          emoji_code: string
+          id: string
+        }
+        Insert: {
+          conversation_private_message_thread_id: string
+          created_at?: string
+          created_by: string
+          emoji_code: string
+          id?: string
+        }
+        Update: {
+          conversation_private_message_thread_id?: string
+          created_at?: string
+          created_by?: string
+          emoji_code?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_private_message_conversation_private_message_fkey1"
+            columns: ["conversation_private_message_thread_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_private_message_thread"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_private_message_thread_emoji_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       conversation_project_external_message: {
         Row: {
           attachments: Json
@@ -564,6 +567,45 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "project"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_project_external_message_emoji: {
+        Row: {
+          conversation_project_external_message_id: string
+          created_at: string
+          created_by: string
+          emoji_code: string
+          id: string
+        }
+        Insert: {
+          conversation_project_external_message_id: string
+          created_at?: string
+          created_by: string
+          emoji_code: string
+          id?: string
+        }
+        Update: {
+          conversation_project_external_message_id?: string
+          created_at?: string
+          created_by?: string
+          emoji_code?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_project_external_conversation_project_externa_fkey"
+            columns: ["conversation_project_external_message_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_project_external_message"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_project_external_message_emoji_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -629,117 +671,41 @@ export type Database = {
           },
         ]
       }
-      conversation_project_internal_message: {
+      conversation_project_external_message_thread_emoji: {
         Row: {
-          attachments: Json
-          author_type: Database["public"]["Enums"]["os_message_author_type"]
+          conversation_project_external_message_thread_id: string
           created_at: string
           created_by: string
+          emoji_code: string
           id: string
-          links: string[]
-          message: string
-          project_id: string
-          updated_at: string
-          viewed_by: string[]
         }
         Insert: {
-          attachments?: Json
-          author_type?: Database["public"]["Enums"]["os_message_author_type"]
+          conversation_project_external_message_thread_id: string
           created_at?: string
           created_by: string
+          emoji_code: string
           id?: string
-          links?: string[]
-          message: string
-          project_id: string
-          updated_at?: string
-          viewed_by?: string[]
         }
         Update: {
-          attachments?: Json
-          author_type?: Database["public"]["Enums"]["os_message_author_type"]
+          conversation_project_external_message_thread_id?: string
           created_at?: string
           created_by?: string
+          emoji_code?: string
           id?: string
-          links?: string[]
-          message?: string
-          project_id?: string
-          updated_at?: string
-          viewed_by?: string[]
         }
         Relationships: [
           {
-            foreignKeyName: "internal_conversation_project_message_owner_id_fkey"
+            foreignKeyName: "conversation_project_externa_conversation_project_externa_fkey1"
+            columns: ["conversation_project_external_message_thread_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_project_external_message_thread"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_project_external_message_thread_em_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "internal_conversation_project_message_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "project"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      conversation_project_internal_message_thread: {
-        Row: {
-          attachments: Json
-          created_at: string
-          created_by: string
-          id: string
-          links: string[]
-          message: string
-          parent_id: string
-          project_id: string
-          updated_at: string
-          viewed_by: string[]
-        }
-        Insert: {
-          attachments?: Json
-          created_at?: string
-          created_by: string
-          id?: string
-          links?: string[]
-          message: string
-          parent_id: string
-          project_id: string
-          updated_at?: string
-          viewed_by?: string[]
-        }
-        Update: {
-          attachments?: Json
-          created_at?: string
-          created_by?: string
-          id?: string
-          links?: string[]
-          message?: string
-          parent_id?: string
-          project_id?: string
-          updated_at?: string
-          viewed_by?: string[]
-        }
-        Relationships: [
-          {
-            foreignKeyName: "internal_conversation_project_message_thread_owner_id_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "internal_conversation_project_message_thread_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "conversation_project_internal_message"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "internal_conversation_project_message_thread_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "project"
             referencedColumns: ["id"]
           },
         ]
@@ -787,6 +753,7 @@ export type Database = {
       }
       idea: {
         Row: {
+          authorized_users: string[]
           created_at: string
           created_by: string | null
           current_ai_request_id: string | null
@@ -801,8 +768,10 @@ export type Database = {
           score: number | null
           success_metrics: string | null
           updated_at: string
+          version_name: string | null
         }
         Insert: {
+          authorized_users?: string[]
           created_at?: string
           created_by?: string | null
           current_ai_request_id?: string | null
@@ -817,8 +786,10 @@ export type Database = {
           score?: number | null
           success_metrics?: string | null
           updated_at?: string
+          version_name?: string | null
         }
         Update: {
+          authorized_users?: string[]
           created_at?: string
           created_by?: string | null
           current_ai_request_id?: string | null
@@ -833,6 +804,7 @@ export type Database = {
           score?: number | null
           success_metrics?: string | null
           updated_at?: string
+          version_name?: string | null
         }
         Relationships: [
           {
@@ -933,6 +905,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "idea_chatbot_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      idea_chatbot_devil_advocate: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          idea_id: string
+          message: string
+          type: Database["public"]["Enums"]["os_idea_chatbot_message_type"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id: string
+          message: string
+          type: Database["public"]["Enums"]["os_idea_chatbot_message_type"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id?: string
+          message?: string
+          type?: Database["public"]["Enums"]["os_idea_chatbot_message_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "idea_chatbot_devil_advocate_idea_id_fkey"
             columns: ["idea_id"]
             isOneToOne: false
             referencedRelation: "idea"
@@ -1196,6 +1206,183 @@ export type Database = {
           },
         ]
       }
+      idea_playbook_comment: {
+        Row: {
+          attachments: Json
+          created_at: string
+          created_by: string
+          id: string
+          idea_id: string | null
+          message: string | null
+          playbook_id: string
+          status: Database["public"]["Enums"]["os_playbook_comment_status"]
+          updated_at: string
+          viewed_by: string[]
+        }
+        Insert: {
+          attachments?: Json
+          created_at?: string
+          created_by: string
+          id?: string
+          idea_id?: string | null
+          message?: string | null
+          playbook_id: string
+          status?: Database["public"]["Enums"]["os_playbook_comment_status"]
+          updated_at?: string
+          viewed_by?: string[]
+        }
+        Update: {
+          attachments?: Json
+          created_at?: string
+          created_by?: string
+          id?: string
+          idea_id?: string | null
+          message?: string | null
+          playbook_id?: string
+          status?: Database["public"]["Enums"]["os_playbook_comment_status"]
+          updated_at?: string
+          viewed_by?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_playbook_comment_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_playbook_comment_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_playbook_comment_playbook_id_fkey"
+            columns: ["playbook_id"]
+            isOneToOne: false
+            referencedRelation: "idea_playbook_version"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      idea_playbook_comment_reply: {
+        Row: {
+          attachments: Json
+          created_at: string
+          created_by: string
+          id: string
+          idea_id: string | null
+          idea_playbook_comment_id: string
+          message: string | null
+          playbook_id: string
+          updated_at: string
+          viewed_by: string[]
+        }
+        Insert: {
+          attachments?: Json
+          created_at?: string
+          created_by: string
+          id?: string
+          idea_id?: string | null
+          idea_playbook_comment_id: string
+          message?: string | null
+          playbook_id: string
+          updated_at?: string
+          viewed_by?: string[]
+        }
+        Update: {
+          attachments?: Json
+          created_at?: string
+          created_by?: string
+          id?: string
+          idea_id?: string | null
+          idea_playbook_comment_id?: string
+          message?: string | null
+          playbook_id?: string
+          updated_at?: string
+          viewed_by?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_playbook_comment_reply_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_playbook_comment_reply_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_playbook_comment_reply_playbook_id_fkey"
+            columns: ["playbook_id"]
+            isOneToOne: false
+            referencedRelation: "idea_playbook_version"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_playbook_comment_reply_project_playbook_comment_id_fkey"
+            columns: ["idea_playbook_comment_id"]
+            isOneToOne: false
+            referencedRelation: "idea_playbook_comment"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      idea_playbook_version: {
+        Row: {
+          content: string | null
+          created_at: string
+          created_by: string
+          google_docs_url: string | null
+          id: string
+          idea_id: string | null
+          updated_at: string
+          version_name: string | null
+        }
+        Insert: {
+          content?: string | null
+          created_at?: string
+          created_by: string
+          google_docs_url?: string | null
+          id?: string
+          idea_id?: string | null
+          updated_at?: string
+          version_name?: string | null
+        }
+        Update: {
+          content?: string | null
+          created_at?: string
+          created_by?: string
+          google_docs_url?: string | null
+          id?: string
+          idea_id?: string | null
+          updated_at?: string
+          version_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_playbook_version_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_playbook_version_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       idea_prd: {
         Row: {
           app_overview: string | null
@@ -1264,27 +1451,33 @@ export type Database = {
       }
       idea_product_definition_and_flows: {
         Row: {
+          business_model: string | null
           created_at: string
           created_by: string | null
           features: string | null
+          go_to_market: string | null
           id: string
           idea_id: string | null
           summary: string | null
           updated_at: string
         }
         Insert: {
+          business_model?: string | null
           created_at?: string
           created_by?: string | null
           features?: string | null
+          go_to_market?: string | null
           id?: string
           idea_id?: string | null
           summary?: string | null
           updated_at?: string
         }
         Update: {
+          business_model?: string | null
           created_at?: string
           created_by?: string | null
           features?: string | null
+          go_to_market?: string | null
           id?: string
           idea_id?: string | null
           summary?: string | null
@@ -1309,8 +1502,14 @@ export type Database = {
       }
       idea_report: {
         Row: {
+          agreed_problem: string | null
+          agreed_solution: string | null
+          alignment: Json | null
           area_scores: Json | null
+          completeness_score: number | null
           created_at: string
+          debate_meta: Json | null
+          debate_transcript: Json | null
           final_score: number | null
           headline: string | null
           id: string
@@ -1320,13 +1519,21 @@ export type Database = {
           playbook_html: string | null
           playbook_subtitle: string | null
           playbook_title: string | null
+          recommendation: string | null
+          revised_description: string | null
           summary: string | null
           threshold_bucket: string | null
           updated_at: string
         }
         Insert: {
+          agreed_problem?: string | null
+          agreed_solution?: string | null
+          alignment?: Json | null
           area_scores?: Json | null
+          completeness_score?: number | null
           created_at?: string
+          debate_meta?: Json | null
+          debate_transcript?: Json | null
           final_score?: number | null
           headline?: string | null
           id?: string
@@ -1336,13 +1543,21 @@ export type Database = {
           playbook_html?: string | null
           playbook_subtitle?: string | null
           playbook_title?: string | null
+          recommendation?: string | null
+          revised_description?: string | null
           summary?: string | null
           threshold_bucket?: string | null
           updated_at?: string
         }
         Update: {
+          agreed_problem?: string | null
+          agreed_solution?: string | null
+          alignment?: Json | null
           area_scores?: Json | null
+          completeness_score?: number | null
           created_at?: string
+          debate_meta?: Json | null
+          debate_transcript?: Json | null
           final_score?: number | null
           headline?: string | null
           id?: string
@@ -1352,6 +1567,8 @@ export type Database = {
           playbook_html?: string | null
           playbook_subtitle?: string | null
           playbook_title?: string | null
+          recommendation?: string | null
+          revised_description?: string | null
           summary?: string | null
           threshold_bucket?: string | null
           updated_at?: string
@@ -1432,9 +1649,9 @@ export type Database = {
           color_tokens: Json | null
           created_at: string
           created_by: string | null
+          iconography_style: string | null
           id: string
           idea_id: string
-          iconography_style: string | null
           logo_branding: string | null
           motion_principles: string | null
           neutral_color: string | null
@@ -1454,9 +1671,9 @@ export type Database = {
           color_tokens?: Json | null
           created_at?: string
           created_by?: string | null
+          iconography_style?: string | null
           id?: string
           idea_id: string
-          iconography_style?: string | null
           logo_branding?: string | null
           motion_principles?: string | null
           neutral_color?: string | null
@@ -1476,9 +1693,9 @@ export type Database = {
           color_tokens?: Json | null
           created_at?: string
           created_by?: string | null
+          iconography_style?: string | null
           id?: string
           idea_id?: string
-          iconography_style?: string | null
           logo_branding?: string | null
           motion_principles?: string | null
           neutral_color?: string | null
@@ -1742,6 +1959,150 @@ export type Database = {
           },
         ]
       }
+      internal_project_daily_feedback: {
+        Row: {
+          blockers: string | null
+          created_at: string
+          created_by: string
+          date: string
+          id: string
+          internal_project_id: string
+          today_work: string | null
+          tomorrow_work: string | null
+          updated_at: string
+          video_and_links: string | null
+        }
+        Insert: {
+          blockers?: string | null
+          created_at?: string
+          created_by: string
+          date: string
+          id?: string
+          internal_project_id: string
+          today_work?: string | null
+          tomorrow_work?: string | null
+          updated_at?: string
+          video_and_links?: string | null
+        }
+        Update: {
+          blockers?: string | null
+          created_at?: string
+          created_by?: string
+          date?: string
+          id?: string
+          internal_project_id?: string
+          today_work?: string | null
+          tomorrow_work?: string | null
+          updated_at?: string
+          video_and_links?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_project_daily_feedback_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_project_daily_feedback_internal_project_id_fkey"
+            columns: ["internal_project_id"]
+            isOneToOne: false
+            referencedRelation: "internal_project"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      internal_project_file: {
+        Row: {
+          attachments: Json
+          created_at: string
+          created_by: string
+          id: string
+          internal_project_id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          attachments?: Json
+          created_at?: string
+          created_by: string
+          id?: string
+          internal_project_id: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          attachments?: Json
+          created_at?: string
+          created_by?: string
+          id?: string
+          internal_project_id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_project_file_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_project_file_internal_project_id_fkey"
+            columns: ["internal_project_id"]
+            isOneToOne: false
+            referencedRelation: "internal_project"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      internal_project_link: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          internal_project_id: string
+          name: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          internal_project_id: string
+          name: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          internal_project_id?: string
+          name?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_project_link_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_project_link_internal_project_id_fkey"
+            columns: ["internal_project_id"]
+            isOneToOne: false
+            referencedRelation: "internal_project"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       internal_project_task: {
         Row: {
           assignees: string[]
@@ -1966,6 +2327,934 @@ export type Database = {
           },
         ]
       }
+      internal_project_video: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          internal_project_id: string
+          name: string | null
+          updated_at: string
+          url: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          internal_project_id: string
+          name?: string | null
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          internal_project_id?: string
+          name?: string | null
+          updated_at?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_project_video_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_project_video_internal_project_id_fkey"
+            columns: ["internal_project_id"]
+            isOneToOne: false
+            referencedRelation: "internal_project"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice: {
+        Row: {
+          address: string | null
+          client_name: string | null
+          code: string
+          company_or_user_name: string | null
+          created_at: string
+          created_by: string
+          document_number: string | null
+          due_date: string | null
+          email: string | null
+          iban_code: string | null
+          id: string
+          phone: string | null
+          service_description: string | null
+          service_price: number | null
+          service_title: string | null
+          swift_code: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          client_name?: string | null
+          code: string
+          company_or_user_name?: string | null
+          created_at?: string
+          created_by: string
+          document_number?: string | null
+          due_date?: string | null
+          email?: string | null
+          iban_code?: string | null
+          id?: string
+          phone?: string | null
+          service_description?: string | null
+          service_price?: number | null
+          service_title?: string | null
+          swift_code?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          client_name?: string | null
+          code?: string
+          company_or_user_name?: string | null
+          created_at?: string
+          created_by?: string
+          document_number?: string | null
+          due_date?: string | null
+          email?: string | null
+          iban_code?: string | null
+          id?: string
+          phone?: string | null
+          service_description?: string | null
+          service_price?: number | null
+          service_title?: string | null
+          swift_code?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_invoice_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_ad_campaign: {
+        Row: {
+          ad_creative: Json
+          budget_cents: number
+          created_at: string
+          created_by: string | null
+          ended_at: string | null
+          id: string
+          idea_id: string
+          landing_id: string | null
+          name: string
+          platform: string
+          spend_cents: number
+          started_at: string | null
+          status: string
+          targeting_notes: string | null
+          updated_at: string
+          utm_campaign: string
+        }
+        Insert: {
+          ad_creative?: Json
+          budget_cents?: number
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          id?: string
+          idea_id: string
+          landing_id?: string | null
+          name: string
+          platform: string
+          spend_cents?: number
+          started_at?: string | null
+          status?: string
+          targeting_notes?: string | null
+          updated_at?: string
+          utm_campaign: string
+        }
+        Update: {
+          ad_creative?: Json
+          budget_cents?: number
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          id?: string
+          idea_id?: string
+          landing_id?: string | null
+          name?: string
+          platform?: string
+          spend_cents?: number
+          started_at?: string | null
+          status?: string
+          targeting_notes?: string | null
+          updated_at?: string
+          utm_campaign?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_ad_campaign_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mkt_ad_campaign_landing_id_fkey"
+            columns: ["landing_id"]
+            isOneToOne: false
+            referencedRelation: "mkt_landing"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_campaign: {
+        Row: {
+          channel: Database["public"]["Enums"]["mkt_channel"]
+          created_at: string
+          created_by: string | null
+          id: string
+          idea_id: string
+          name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          channel?: Database["public"]["Enums"]["mkt_channel"]
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id: string
+          name: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["mkt_channel"]
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id?: string
+          name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_campaign_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_content: {
+        Row: {
+          ai_generated: boolean
+          body: string | null
+          channels: string[]
+          created_at: string
+          created_by: string | null
+          external_post_ids: Json
+          id: string
+          idea_id: string
+          media_url: string | null
+          media_urls: string[]
+          posted_at: string | null
+          scheduled_at: string | null
+          status: Database["public"]["Enums"]["mkt_content_status"]
+          updated_at: string
+        }
+        Insert: {
+          ai_generated?: boolean
+          body?: string | null
+          channels?: string[]
+          created_at?: string
+          created_by?: string | null
+          external_post_ids?: Json
+          id?: string
+          idea_id: string
+          media_url?: string | null
+          media_urls?: string[]
+          posted_at?: string | null
+          scheduled_at?: string | null
+          status?: Database["public"]["Enums"]["mkt_content_status"]
+          updated_at?: string
+        }
+        Update: {
+          ai_generated?: boolean
+          body?: string | null
+          channels?: string[]
+          created_at?: string
+          created_by?: string | null
+          external_post_ids?: Json
+          id?: string
+          idea_id?: string
+          media_url?: string | null
+          media_urls?: string[]
+          posted_at?: string | null
+          scheduled_at?: string | null
+          status?: Database["public"]["Enums"]["mkt_content_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_content_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_decision_log: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          idea_id: string
+          metrics_snapshot: Json
+          rationale: string
+          verdict: Database["public"]["Enums"]["mkt_validation_status"]
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id: string
+          metrics_snapshot?: Json
+          rationale: string
+          verdict: Database["public"]["Enums"]["mkt_validation_status"]
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id?: string
+          metrics_snapshot?: Json
+          rationale?: string
+          verdict?: Database["public"]["Enums"]["mkt_validation_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_decision_log_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_event: {
+        Row: {
+          created_at: string
+          id: string
+          idea_id: string
+          landing_id: string | null
+          session_id: string | null
+          type: string
+          utm: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          idea_id: string
+          landing_id?: string | null
+          session_id?: string | null
+          type: string
+          utm?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          idea_id?: string
+          landing_id?: string | null
+          session_id?: string | null
+          type?: string
+          utm?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_event_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mkt_event_landing_id_fkey"
+            columns: ["landing_id"]
+            isOneToOne: false
+            referencedRelation: "mkt_landing"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_interview: {
+        Row: {
+          analysis: Json
+          analyzed_at: string | null
+          conducted_at: string | null
+          consent: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          idea_id: string
+          participant_name: string | null
+          participant_role: string | null
+          prospect_id: string | null
+          recording_url: string | null
+          segment: string | null
+          source: string
+          transcript: string | null
+          updated_at: string
+        }
+        Insert: {
+          analysis?: Json
+          analyzed_at?: string | null
+          conducted_at?: string | null
+          consent?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id: string
+          participant_name?: string | null
+          participant_role?: string | null
+          prospect_id?: string | null
+          recording_url?: string | null
+          segment?: string | null
+          source?: string
+          transcript?: string | null
+          updated_at?: string
+        }
+        Update: {
+          analysis?: Json
+          analyzed_at?: string | null
+          conducted_at?: string | null
+          consent?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id?: string
+          participant_name?: string | null
+          participant_role?: string | null
+          prospect_id?: string | null
+          recording_url?: string | null
+          segment?: string | null
+          source?: string
+          transcript?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_interview_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mkt_interview_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "mkt_prospect"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_landing: {
+        Row: {
+          capture_stages: string[]
+          code_html: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          idea_id: string
+          published: boolean
+          quiz_schema: Json
+          slug: string
+          survey_url: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          capture_stages?: string[]
+          code_html?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id: string
+          published?: boolean
+          quiz_schema?: Json
+          slug: string
+          survey_url?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          capture_stages?: string[]
+          code_html?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id?: string
+          published?: boolean
+          quiz_schema?: Json
+          slug?: string
+          survey_url?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_landing_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_outreach: {
+        Row: {
+          brevo_message_id: string | null
+          campaign_id: string
+          created_at: string
+          id: string
+          idea_id: string
+          opened_at: string | null
+          prospect_id: string
+          replied_at: string | null
+          reply_sentiment: string | null
+          scheduled_at: string | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["mkt_outreach_status"]
+          step_order: number
+          updated_at: string
+        }
+        Insert: {
+          brevo_message_id?: string | null
+          campaign_id: string
+          created_at?: string
+          id?: string
+          idea_id: string
+          opened_at?: string | null
+          prospect_id: string
+          replied_at?: string | null
+          reply_sentiment?: string | null
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["mkt_outreach_status"]
+          step_order?: number
+          updated_at?: string
+        }
+        Update: {
+          brevo_message_id?: string | null
+          campaign_id?: string
+          created_at?: string
+          id?: string
+          idea_id?: string
+          opened_at?: string | null
+          prospect_id?: string
+          replied_at?: string | null
+          reply_sentiment?: string | null
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["mkt_outreach_status"]
+          step_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_outreach_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "mkt_campaign"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mkt_outreach_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mkt_outreach_prospect_id_fkey"
+            columns: ["prospect_id"]
+            isOneToOne: false
+            referencedRelation: "mkt_prospect"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_prospect: {
+        Row: {
+          company: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          enrichment: Json
+          id: string
+          idea_id: string
+          linkedin_url: string | null
+          name: string | null
+          score: number | null
+          segment: string | null
+          source: string | null
+          source_run_id: string | null
+          status: string
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          company?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          enrichment?: Json
+          id?: string
+          idea_id: string
+          linkedin_url?: string | null
+          name?: string | null
+          score?: number | null
+          segment?: string | null
+          source?: string | null
+          source_run_id?: string | null
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          company?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          enrichment?: Json
+          id?: string
+          idea_id?: string
+          linkedin_url?: string | null
+          name?: string | null
+          score?: number | null
+          segment?: string | null
+          source?: string | null
+          source_run_id?: string | null
+          status?: string
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_prospect_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mkt_prospect_source_run_id_fkey"
+            columns: ["source_run_id"]
+            isOneToOne: false
+            referencedRelation: "mkt_source_run"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_research_cache: {
+        Row: {
+          digest: string
+          id: string
+          idea_id: string
+          raw: Json
+          scraped_at: string
+          source_key: string
+        }
+        Insert: {
+          digest?: string
+          id?: string
+          idea_id: string
+          raw?: Json
+          scraped_at?: string
+          source_key: string
+        }
+        Update: {
+          digest?: string
+          id?: string
+          idea_id?: string
+          raw?: Json
+          scraped_at?: string
+          source_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_research_cache_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_sequence_step: {
+        Row: {
+          ai_personalise: boolean
+          body_tpl: string | null
+          campaign_id: string
+          created_at: string
+          delay_days: number
+          id: string
+          idea_id: string
+          step_order: number
+          subject_tpl: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_personalise?: boolean
+          body_tpl?: string | null
+          campaign_id: string
+          created_at?: string
+          delay_days?: number
+          id?: string
+          idea_id: string
+          step_order?: number
+          subject_tpl?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_personalise?: boolean
+          body_tpl?: string | null
+          campaign_id?: string
+          created_at?: string
+          delay_days?: number
+          id?: string
+          idea_id?: string
+          step_order?: number
+          subject_tpl?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_sequence_step_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "mkt_campaign"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mkt_sequence_step_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_signal: {
+        Row: {
+          amount_cents: number | null
+          created_at: string
+          email: string | null
+          icp_fit: boolean | null
+          id: string
+          idea_id: string
+          landing_id: string | null
+          name: string | null
+          quiz_answers: Json
+          stripe_session_id: string | null
+          survey_answers: Json
+          type: Database["public"]["Enums"]["mkt_signal_type"]
+          utm: Json
+          verified_at: string | null
+        }
+        Insert: {
+          amount_cents?: number | null
+          created_at?: string
+          email?: string | null
+          icp_fit?: boolean | null
+          id?: string
+          idea_id: string
+          landing_id?: string | null
+          name?: string | null
+          quiz_answers?: Json
+          stripe_session_id?: string | null
+          survey_answers?: Json
+          type: Database["public"]["Enums"]["mkt_signal_type"]
+          utm?: Json
+          verified_at?: string | null
+        }
+        Update: {
+          amount_cents?: number | null
+          created_at?: string
+          email?: string | null
+          icp_fit?: boolean | null
+          id?: string
+          idea_id?: string
+          landing_id?: string | null
+          name?: string | null
+          quiz_answers?: Json
+          stripe_session_id?: string | null
+          survey_answers?: Json
+          type?: Database["public"]["Enums"]["mkt_signal_type"]
+          utm?: Json
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_signal_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mkt_signal_landing_id_fkey"
+            columns: ["landing_id"]
+            isOneToOne: false
+            referencedRelation: "mkt_landing"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_source_run: {
+        Row: {
+          apify_dataset_ref: string | null
+          channel: Database["public"]["Enums"]["mkt_channel"]
+          created_at: string
+          created_by: string | null
+          id: string
+          idea_id: string
+          query: Json
+          result_count: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          apify_dataset_ref?: string | null
+          channel: Database["public"]["Enums"]["mkt_channel"]
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id: string
+          query?: Json
+          result_count?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          apify_dataset_ref?: string | null
+          channel?: Database["public"]["Enums"]["mkt_channel"]
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id?: string
+          query?: Json
+          result_count?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_source_run_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_suppression: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          idea_id: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          idea_id: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          idea_id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_suppression_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_validation: {
+        Row: {
+          booking_url: string | null
+          created_at: string
+          created_by: string | null
+          decision_contract: Json
+          enabled_capture_stages: string[]
+          funnel_mode: Database["public"]["Enums"]["mkt_funnel_mode"]
+          icp_definition: Json
+          id: string
+          idea_id: string
+          positioning: string | null
+          reference_sources: Json
+          status: Database["public"]["Enums"]["mkt_validation_status"]
+          updated_at: string
+        }
+        Insert: {
+          booking_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          decision_contract?: Json
+          enabled_capture_stages?: string[]
+          funnel_mode?: Database["public"]["Enums"]["mkt_funnel_mode"]
+          icp_definition?: Json
+          id?: string
+          idea_id: string
+          positioning?: string | null
+          reference_sources?: Json
+          status?: Database["public"]["Enums"]["mkt_validation_status"]
+          updated_at?: string
+        }
+        Update: {
+          booking_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          decision_contract?: Json
+          enabled_capture_stages?: string[]
+          funnel_mode?: Database["public"]["Enums"]["mkt_funnel_mode"]
+          icp_definition?: Json
+          id?: string
+          idea_id?: string
+          positioning?: string | null
+          reference_sources?: Json
+          status?: Database["public"]["Enums"]["mkt_validation_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_validation_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: true
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       private_chatbot: {
         Row: {
           created_at: string
@@ -2047,6 +3336,7 @@ export type Database = {
           last_name: string | null
           picture: string | null
           signature: string | null
+          theme: Database["public"]["Enums"]["os_theme_choice"]
           type: Database["public"]["Enums"]["os_user_type"] | null
           updated_at: string
         }
@@ -2058,6 +3348,7 @@ export type Database = {
           last_name?: string | null
           picture?: string | null
           signature?: string | null
+          theme?: Database["public"]["Enums"]["os_theme_choice"]
           type?: Database["public"]["Enums"]["os_user_type"] | null
           updated_at?: string
         }
@@ -2069,6 +3360,7 @@ export type Database = {
           last_name?: string | null
           picture?: string | null
           signature?: string | null
+          theme?: Database["public"]["Enums"]["os_theme_choice"]
           type?: Database["public"]["Enums"]["os_user_type"] | null
           updated_at?: string
         }
@@ -2081,10 +3373,6 @@ export type Database = {
           change_automatically_milestone_start_end_dates: boolean
           change_automatically_project_estimated_time: boolean
           change_automatically_project_start_end_dates: boolean
-          client_developer_estimated_time: number | null
-          client_developer_real_time: number | null
-          client_who_recommended_id: string | null
-          company_that_recommended_id: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -2092,29 +3380,15 @@ export type Database = {
           end_date_real: string | null
           estimated_time: number | null
           external_conversation_authorized_users: string[]
+          general_requests_estimated_time: number | null
+          general_requests_real_time: number | null
           id: string
-          internal_conversation_authorized_users: string[]
           name: string | null
           picture: string | null
-          price: number | null
-          profit: number | null
-          program: Database["public"]["Enums"]["os_project_program"] | null
-          qa_developer_estimated_time: number | null
-          qa_developer_real_time: number | null
-          qa_tester_estimated_time: number | null
-          qa_tester_real_time: number | null
           real_time: number | null
-          recommended_by:
-            | Database["public"]["Enums"]["os_recommended_by"]
-            | null
-          referrer_commission: number | null
-          referrer_id: string | null
-          referrer_revenue: number | null
-          stage: Database["public"]["Enums"]["os_project_stage"] | null
           start_date_estimated: string | null
           start_date_real: string | null
           status: Database["public"]["Enums"]["os_project_status"]
-          talent_who_recommended_id: string | null
           updated_at: string
         }
         Insert: {
@@ -2123,10 +3397,6 @@ export type Database = {
           change_automatically_milestone_start_end_dates?: boolean
           change_automatically_project_estimated_time?: boolean
           change_automatically_project_start_end_dates?: boolean
-          client_developer_estimated_time?: number | null
-          client_developer_real_time?: number | null
-          client_who_recommended_id?: string | null
-          company_that_recommended_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -2134,29 +3404,15 @@ export type Database = {
           end_date_real?: string | null
           estimated_time?: number | null
           external_conversation_authorized_users?: string[]
+          general_requests_estimated_time?: number | null
+          general_requests_real_time?: number | null
           id?: string
-          internal_conversation_authorized_users?: string[]
           name?: string | null
           picture?: string | null
-          price?: number | null
-          profit?: number | null
-          program?: Database["public"]["Enums"]["os_project_program"] | null
-          qa_developer_estimated_time?: number | null
-          qa_developer_real_time?: number | null
-          qa_tester_estimated_time?: number | null
-          qa_tester_real_time?: number | null
           real_time?: number | null
-          recommended_by?:
-            | Database["public"]["Enums"]["os_recommended_by"]
-            | null
-          referrer_commission?: number | null
-          referrer_id?: string | null
-          referrer_revenue?: number | null
-          stage?: Database["public"]["Enums"]["os_project_stage"] | null
           start_date_estimated?: string | null
           start_date_real?: string | null
           status?: Database["public"]["Enums"]["os_project_status"]
-          talent_who_recommended_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -2165,10 +3421,6 @@ export type Database = {
           change_automatically_milestone_start_end_dates?: boolean
           change_automatically_project_estimated_time?: boolean
           change_automatically_project_start_end_dates?: boolean
-          client_developer_estimated_time?: number | null
-          client_developer_real_time?: number | null
-          client_who_recommended_id?: string | null
-          company_that_recommended_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -2176,65 +3428,23 @@ export type Database = {
           end_date_real?: string | null
           estimated_time?: number | null
           external_conversation_authorized_users?: string[]
+          general_requests_estimated_time?: number | null
+          general_requests_real_time?: number | null
           id?: string
-          internal_conversation_authorized_users?: string[]
           name?: string | null
           picture?: string | null
-          price?: number | null
-          profit?: number | null
-          program?: Database["public"]["Enums"]["os_project_program"] | null
-          qa_developer_estimated_time?: number | null
-          qa_developer_real_time?: number | null
-          qa_tester_estimated_time?: number | null
-          qa_tester_real_time?: number | null
           real_time?: number | null
-          recommended_by?:
-            | Database["public"]["Enums"]["os_recommended_by"]
-            | null
-          referrer_commission?: number | null
-          referrer_id?: string | null
-          referrer_revenue?: number | null
-          stage?: Database["public"]["Enums"]["os_project_stage"] | null
           start_date_estimated?: string | null
           start_date_real?: string | null
           status?: Database["public"]["Enums"]["os_project_status"]
-          talent_who_recommended_id?: string | null
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "project_client_who_recommended_id_fkey"
-            columns: ["client_who_recommended_id"]
-            isOneToOne: false
-            referencedRelation: "client"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_company_that_recommended_id_fkey"
-            columns: ["company_that_recommended_id"]
-            isOneToOne: false
-            referencedRelation: "company"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "project_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_referrer_id_fkey"
-            columns: ["referrer_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_talent_who_recommended_id_fkey"
-            columns: ["talent_who_recommended_id"]
-            isOneToOne: false
-            referencedRelation: "talent"
             referencedColumns: ["id"]
           },
         ]
@@ -2510,84 +3720,6 @@ export type Database = {
           },
         ]
       }
-      project_invoice: {
-        Row: {
-          address: string | null
-          client_name: string | null
-          code: string
-          company_or_user_name: string | null
-          created_at: string
-          created_by: string
-          document_number: string | null
-          due_date: string | null
-          email: string | null
-          iban_code: string | null
-          id: string
-          phone: string | null
-          project_id: string
-          service_description: string | null
-          service_price: number | null
-          service_title: string | null
-          swift_code: string | null
-          updated_at: string
-        }
-        Insert: {
-          address?: string | null
-          client_name?: string | null
-          code: string
-          company_or_user_name?: string | null
-          created_at?: string
-          created_by: string
-          document_number?: string | null
-          due_date?: string | null
-          email?: string | null
-          iban_code?: string | null
-          id?: string
-          phone?: string | null
-          project_id: string
-          service_description?: string | null
-          service_price?: number | null
-          service_title?: string | null
-          swift_code?: string | null
-          updated_at?: string
-        }
-        Update: {
-          address?: string | null
-          client_name?: string | null
-          code?: string
-          company_or_user_name?: string | null
-          created_at?: string
-          created_by?: string
-          document_number?: string | null
-          due_date?: string | null
-          email?: string | null
-          iban_code?: string | null
-          id?: string
-          phone?: string | null
-          project_id?: string
-          service_description?: string | null
-          service_price?: number | null
-          service_title?: string | null
-          swift_code?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_invoice_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_invoice_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "project"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       project_link: {
         Row: {
           created_at: string
@@ -2633,260 +3765,10 @@ export type Database = {
           },
         ]
       }
-      project_playbook_comment: {
-        Row: {
-          attachments: Json
-          created_at: string
-          created_by: string
-          id: string
-          message: string | null
-          playbook_id: string
-          project_id: string
-          status: Database["public"]["Enums"]["os_playbook_comment_status"]
-          updated_at: string
-          viewed_by: string[]
-        }
-        Insert: {
-          attachments?: Json
-          created_at?: string
-          created_by: string
-          id?: string
-          message?: string | null
-          playbook_id: string
-          project_id: string
-          status?: Database["public"]["Enums"]["os_playbook_comment_status"]
-          updated_at?: string
-          viewed_by?: string[]
-        }
-        Update: {
-          attachments?: Json
-          created_at?: string
-          created_by?: string
-          id?: string
-          message?: string | null
-          playbook_id?: string
-          project_id?: string
-          status?: Database["public"]["Enums"]["os_playbook_comment_status"]
-          updated_at?: string
-          viewed_by?: string[]
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_playbook_comment_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_playbook_comment_playbook_id_fkey"
-            columns: ["playbook_id"]
-            isOneToOne: false
-            referencedRelation: "project_playbook_version"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_playbook_comment_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "project"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      project_playbook_comment_reply: {
-        Row: {
-          attachments: Json
-          created_at: string
-          created_by: string
-          id: string
-          message: string | null
-          playbook_id: string
-          project_id: string
-          project_playbook_comment_id: string
-          updated_at: string
-          viewed_by: string[]
-        }
-        Insert: {
-          attachments?: Json
-          created_at?: string
-          created_by: string
-          id?: string
-          message?: string | null
-          playbook_id: string
-          project_id: string
-          project_playbook_comment_id: string
-          updated_at?: string
-          viewed_by?: string[]
-        }
-        Update: {
-          attachments?: Json
-          created_at?: string
-          created_by?: string
-          id?: string
-          message?: string | null
-          playbook_id?: string
-          project_id?: string
-          project_playbook_comment_id?: string
-          updated_at?: string
-          viewed_by?: string[]
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_playbook_comment_reply_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_playbook_comment_reply_playbook_id_fkey"
-            columns: ["playbook_id"]
-            isOneToOne: false
-            referencedRelation: "project_playbook_version"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_playbook_comment_reply_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "project"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_playbook_comment_reply_project_playbook_comment_id_fkey"
-            columns: ["project_playbook_comment_id"]
-            isOneToOne: false
-            referencedRelation: "project_playbook_comment"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      project_playbook_version: {
-        Row: {
-          content: string | null
-          created_at: string
-          created_by: string
-          google_docs_url: string | null
-          id: string
-          project_id: string | null
-          updated_at: string
-          version_name: string | null
-        }
-        Insert: {
-          content?: string | null
-          created_at?: string
-          created_by: string
-          google_docs_url?: string | null
-          id?: string
-          project_id?: string | null
-          updated_at?: string
-          version_name?: string | null
-        }
-        Update: {
-          content?: string | null
-          created_at?: string
-          created_by?: string
-          google_docs_url?: string | null
-          id?: string
-          project_id?: string | null
-          updated_at?: string
-          version_name?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_playbook_version_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_playbook_version_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "project"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      project_qa_time_track: {
-        Row: {
-          assignee_id: string | null
-          created_at: string
-          created_by: string | null
-          end_time_min: number | null
-          id: string
-          paid: boolean
-          project_id: string | null
-          start_date: string | null
-          start_time_min: number | null
-          task_id: string | null
-          time_spent_h: number | null
-          updated_at: string
-        }
-        Insert: {
-          assignee_id?: string | null
-          created_at?: string
-          created_by?: string | null
-          end_time_min?: number | null
-          id?: string
-          paid?: boolean
-          project_id?: string | null
-          start_date?: string | null
-          start_time_min?: number | null
-          task_id?: string | null
-          time_spent_h?: number | null
-          updated_at?: string
-        }
-        Update: {
-          assignee_id?: string | null
-          created_at?: string
-          created_by?: string | null
-          end_time_min?: number | null
-          id?: string
-          paid?: boolean
-          project_id?: string | null
-          start_date?: string | null
-          start_time_min?: number | null
-          task_id?: string | null
-          time_spent_h?: number | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "qa_time_track_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "qa_time_track_owner_user_id_fkey"
-            columns: ["assignee_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "qa_time_track_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "project"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "qa_time_track_task_id_fkey"
-            columns: ["task_id"]
-            isOneToOne: false
-            referencedRelation: "project_task"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       project_task: {
         Row: {
           assignees: string[]
+          category: Database["public"]["Enums"]["os_task_category"] | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -2898,7 +3780,9 @@ export type Database = {
           name: string | null
           order: number | null
           parent_task_id: string | null
-          priority_level: number | null
+          priority_level:
+            | Database["public"]["Enums"]["os_task_priority_level"]
+            | null
           project_id: string | null
           real_time: number | null
           start_date_estimated: string | null
@@ -2909,6 +3793,7 @@ export type Database = {
         }
         Insert: {
           assignees?: string[]
+          category?: Database["public"]["Enums"]["os_task_category"] | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -2920,7 +3805,9 @@ export type Database = {
           name?: string | null
           order?: number | null
           parent_task_id?: string | null
-          priority_level?: number | null
+          priority_level?:
+            | Database["public"]["Enums"]["os_task_priority_level"]
+            | null
           project_id?: string | null
           real_time?: number | null
           start_date_estimated?: string | null
@@ -2931,6 +3818,7 @@ export type Database = {
         }
         Update: {
           assignees?: string[]
+          category?: Database["public"]["Enums"]["os_task_category"] | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -2942,7 +3830,9 @@ export type Database = {
           name?: string | null
           order?: number | null
           parent_task_id?: string | null
-          priority_level?: number | null
+          priority_level?:
+            | Database["public"]["Enums"]["os_task_priority_level"]
+            | null
           project_id?: string | null
           real_time?: number | null
           start_date_estimated?: string | null
@@ -3228,7 +4118,6 @@ export type Database = {
       }
       sop: {
         Row: {
-          authorized_user_types: Database["public"]["Enums"]["os_user_type"][]
           authorized_users: string[]
           created_at: string
           created_by: string | null
@@ -3239,7 +4128,6 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          authorized_user_types?: Database["public"]["Enums"]["os_user_type"][]
           authorized_users?: string[]
           created_at?: string
           created_by?: string | null
@@ -3250,7 +4138,6 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          authorized_user_types?: Database["public"]["Enums"]["os_user_type"][]
           authorized_users?: string[]
           created_at?: string
           created_by?: string | null
@@ -3304,8 +4191,6 @@ export type Database = {
       }
       sop_version: {
         Row: {
-          authorized_user_types: Database["public"]["Enums"]["os_user_type"][]
-          authorized_users: string[]
           content: string | null
           created_at: string
           created_by: string | null
@@ -3315,8 +4200,6 @@ export type Database = {
           version_name: string
         }
         Insert: {
-          authorized_user_types?: Database["public"]["Enums"]["os_user_type"][]
-          authorized_users?: string[]
           content?: string | null
           created_at?: string
           created_by?: string | null
@@ -3326,8 +4209,6 @@ export type Database = {
           version_name: string
         }
         Update: {
-          authorized_user_types?: Database["public"]["Enums"]["os_user_type"][]
-          authorized_users?: string[]
           content?: string | null
           created_at?: string
           created_by?: string | null
@@ -3353,238 +4234,6 @@ export type Database = {
           },
         ]
       }
-      talent: {
-        Row: {
-          authority_level:
-            | Database["public"]["Enums"]["os_talent_authority_level"]
-            | null
-          code: string | null
-          code_expires_at: string | null
-          country: string | null
-          created_at: string
-          created_by: string | null
-          current_company_id: string | null
-          current_job_position: string | null
-          email: string | null
-          id: string
-          level: Database["public"]["Enums"]["os_talent_level"] | null
-          linkedin: string | null
-          name: string | null
-          phone: string | null
-          picture: string | null
-          portfolio: string | null
-          referred_by_id: string | null
-          updated_at: string
-          user_account_id: string | null
-        }
-        Insert: {
-          authority_level?:
-            | Database["public"]["Enums"]["os_talent_authority_level"]
-            | null
-          code?: string | null
-          code_expires_at?: string | null
-          country?: string | null
-          created_at?: string
-          created_by?: string | null
-          current_company_id?: string | null
-          current_job_position?: string | null
-          email?: string | null
-          id?: string
-          level?: Database["public"]["Enums"]["os_talent_level"] | null
-          linkedin?: string | null
-          name?: string | null
-          phone?: string | null
-          picture?: string | null
-          portfolio?: string | null
-          referred_by_id?: string | null
-          updated_at?: string
-          user_account_id?: string | null
-        }
-        Update: {
-          authority_level?:
-            | Database["public"]["Enums"]["os_talent_authority_level"]
-            | null
-          code?: string | null
-          code_expires_at?: string | null
-          country?: string | null
-          created_at?: string
-          created_by?: string | null
-          current_company_id?: string | null
-          current_job_position?: string | null
-          email?: string | null
-          id?: string
-          level?: Database["public"]["Enums"]["os_talent_level"] | null
-          linkedin?: string | null
-          name?: string | null
-          phone?: string | null
-          picture?: string | null
-          portfolio?: string | null
-          referred_by_id?: string | null
-          updated_at?: string
-          user_account_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "talent_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "talent_current_company_id_fkey"
-            columns: ["current_company_id"]
-            isOneToOne: false
-            referencedRelation: "company"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "talent_referred_by_id_fkey"
-            columns: ["referred_by_id"]
-            isOneToOne: false
-            referencedRelation: "talent"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "talent_user_account_id_fkey"
-            columns: ["user_account_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      talent_programming_language: {
-        Row: {
-          created_at: string
-          id: string
-          programming_language:
-            | Database["public"]["Enums"]["os_programming_language"]
-            | null
-          score: number | null
-          talent_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          programming_language?:
-            | Database["public"]["Enums"]["os_programming_language"]
-            | null
-          score?: number | null
-          talent_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          programming_language?:
-            | Database["public"]["Enums"]["os_programming_language"]
-            | null
-          score?: number | null
-          talent_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "talent_programming_language_talent_id_fkey"
-            columns: ["talent_id"]
-            isOneToOne: false
-            referencedRelation: "talent"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      talent_referred_by: {
-        Row: {
-          code: string | null
-          created_at: string
-          created_by: string | null
-          description: string | null
-          id: string
-          level: Database["public"]["Enums"]["os_talent_level"] | null
-          referred_by_id: string | null
-          score: number | null
-          talent_id: string | null
-          updated_at: string
-        }
-        Insert: {
-          code?: string | null
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          level?: Database["public"]["Enums"]["os_talent_level"] | null
-          referred_by_id?: string | null
-          score?: number | null
-          talent_id?: string | null
-          updated_at?: string
-        }
-        Update: {
-          code?: string | null
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          level?: Database["public"]["Enums"]["os_talent_level"] | null
-          referred_by_id?: string | null
-          score?: number | null
-          talent_id?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "talent_referred_by_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "talent_referred_by_referred_by_id_fkey"
-            columns: ["referred_by_id"]
-            isOneToOne: false
-            referencedRelation: "talent"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "talent_referred_by_talent_id_fkey"
-            columns: ["talent_id"]
-            isOneToOne: false
-            referencedRelation: "talent"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      talent_tool: {
-        Row: {
-          created_at: string
-          id: string
-          score: number | null
-          talent_id: string
-          tool: Database["public"]["Enums"]["os_tool"] | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          score?: number | null
-          talent_id: string
-          tool?: Database["public"]["Enums"]["os_tool"] | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          score?: number | null
-          talent_id?: string
-          tool?: Database["public"]["Enums"]["os_tool"] | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "talent_tool_talent_id_fkey"
-            columns: ["talent_id"]
-            isOneToOne: false
-            referencedRelation: "talent"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       user_ai_settings: {
         Row: {
           active_service: Database["public"]["Enums"]["os_ai_service"] | null
@@ -3597,7 +4246,6 @@ export type Database = {
           openai_model: string | null
           owner_id: string
           updated_at: string
-          use_agency_settings: boolean
         }
         Insert: {
           active_service?: Database["public"]["Enums"]["os_ai_service"] | null
@@ -3610,7 +4258,6 @@ export type Database = {
           openai_model?: string | null
           owner_id: string
           updated_at?: string
-          use_agency_settings?: boolean
         }
         Update: {
           active_service?: Database["public"]["Enums"]["os_ai_service"] | null
@@ -3623,7 +4270,6 @@ export type Database = {
           openai_model?: string | null
           owner_id?: string
           updated_at?: string
-          use_agency_settings?: boolean
         }
         Relationships: [
           {
@@ -3747,6 +4393,26 @@ export type Database = {
         | "done"
         | "blocked"
         | "archived"
+      mkt_channel:
+        | "email"
+        | "linkedin"
+        | "google_maps"
+        | "instagram"
+        | "facebook"
+        | "reddit"
+        | "x"
+        | "social_discovery"
+      mkt_content_status: "draft" | "scheduled" | "posted" | "failed"
+      mkt_funnel_mode: "b2b_outreach" | "consumer_capture" | "hybrid"
+      mkt_outreach_status:
+        | "queued"
+        | "sent"
+        | "opened"
+        | "replied"
+        | "bounced"
+        | "unsub"
+      mkt_signal_type: "quiz" | "waitlist" | "preorder"
+      mkt_validation_status: "validating" | "killed" | "doubling_down"
       os_agreement_status:
         | "not_available"
         | "ready_to_sign"
@@ -3780,6 +4446,7 @@ export type Database = {
         | "visual_styles"
         | "milestones_and_tasks"
         | "report"
+        | "playbook"
       os_idea_chatbot_message_type: "user" | "chatbot"
       os_idea_field:
         | "product_overview"
@@ -3868,30 +4535,6 @@ export type Database = {
         | "d_lang"
         | "fortran"
         | "cobol"
-      os_project_program:
-        | "sandbox_launch"
-        | "market_ready_product"
-        | "scale_ready_system"
-        | "subscription"
-      os_project_stage:
-        | "discovery_call"
-        | "system_activation"
-        | "nda"
-        | "info_gathering_meeting"
-        | "client_slack_channel"
-        | "playbook"
-        | "proposal"
-        | "service_agreement"
-        | "kickoff_meeting"
-        | "initial_invoice"
-        | "screens_development"
-        | "prototype_development"
-        | "video_explaining"
-        | "developer_search_onboarding"
-        | "app_development"
-        | "launch_handoff"
-        | "final_invoice"
-        | "completed"
       os_project_status:
         | "prospecting"
         | "not_started"
@@ -3900,7 +4543,6 @@ export type Database = {
         | "blocked"
         | "archived"
         | "lost_deal"
-      os_recommended_by: "dev_agency_owner" | "client"
       os_talent_authority_level:
         | "rock_star"
         | "known"
@@ -3914,6 +4556,14 @@ export type Database = {
         | "senior"
         | "mid_level"
         | "junior"
+      os_task_category:
+        | "main_task"
+        | "bug"
+        | "ui_ux_improvement"
+        | "performance_improvement"
+        | "code_improvement"
+        | "new_feature"
+        | "security_vulnerability"
       os_task_level: "level_1" | "level_2" | "level_3" | "level_4"
       os_task_name:
         | "milestone_1_sign_in_sign_up"
@@ -3930,6 +4580,7 @@ export type Database = {
         | "medium"
         | "low"
         | "trivial"
+      os_task_priority_level: "critical" | "high" | "medium" | "low" | "trivial"
       os_task_status:
         | "not_started"
         | "in_progress"
@@ -3942,6 +4593,7 @@ export type Database = {
         | "developer_tasks"
         | "client_requests"
         | "qa_requests"
+      os_theme_choice: "light" | "dark"
       os_tool:
         | "replit"
         | "bubble"
@@ -4168,6 +4820,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       agency_role: ["admin", "manager", "content_creator"],
@@ -4189,6 +4844,28 @@ export const Constants = {
         "blocked",
         "archived",
       ],
+      mkt_channel: [
+        "email",
+        "linkedin",
+        "google_maps",
+        "instagram",
+        "facebook",
+        "reddit",
+        "x",
+        "social_discovery",
+      ],
+      mkt_content_status: ["draft", "scheduled", "posted", "failed"],
+      mkt_funnel_mode: ["b2b_outreach", "consumer_capture", "hybrid"],
+      mkt_outreach_status: [
+        "queued",
+        "sent",
+        "opened",
+        "replied",
+        "bounced",
+        "unsub",
+      ],
+      mkt_signal_type: ["quiz", "waitlist", "preorder"],
+      mkt_validation_status: ["validating", "killed", "doubling_down"],
       os_agreement_status: [
         "not_available",
         "ready_to_sign",
@@ -4225,6 +4902,7 @@ export const Constants = {
         "visual_styles",
         "milestones_and_tasks",
         "report",
+        "playbook",
       ],
       os_idea_chatbot_message_type: ["user", "chatbot"],
       os_idea_field: [
@@ -4320,32 +4998,6 @@ export const Constants = {
         "fortran",
         "cobol",
       ],
-      os_project_program: [
-        "sandbox_launch",
-        "market_ready_product",
-        "scale_ready_system",
-        "subscription",
-      ],
-      os_project_stage: [
-        "discovery_call",
-        "system_activation",
-        "nda",
-        "info_gathering_meeting",
-        "client_slack_channel",
-        "playbook",
-        "proposal",
-        "service_agreement",
-        "kickoff_meeting",
-        "initial_invoice",
-        "screens_development",
-        "prototype_development",
-        "video_explaining",
-        "developer_search_onboarding",
-        "app_development",
-        "launch_handoff",
-        "final_invoice",
-        "completed",
-      ],
       os_project_status: [
         "prospecting",
         "not_started",
@@ -4355,7 +5007,6 @@ export const Constants = {
         "archived",
         "lost_deal",
       ],
-      os_recommended_by: ["dev_agency_owner", "client"],
       os_talent_authority_level: [
         "rock_star",
         "known",
@@ -4370,6 +5021,15 @@ export const Constants = {
         "senior",
         "mid_level",
         "junior",
+      ],
+      os_task_category: [
+        "main_task",
+        "bug",
+        "ui_ux_improvement",
+        "performance_improvement",
+        "code_improvement",
+        "new_feature",
+        "security_vulnerability",
       ],
       os_task_level: ["level_1", "level_2", "level_3", "level_4"],
       os_task_name: [
@@ -4389,6 +5049,7 @@ export const Constants = {
         "low",
         "trivial",
       ],
+      os_task_priority_level: ["critical", "high", "medium", "low", "trivial"],
       os_task_status: [
         "not_started",
         "in_progress",
@@ -4403,6 +5064,7 @@ export const Constants = {
         "client_requests",
         "qa_requests",
       ],
+      os_theme_choice: ["light", "dark"],
       os_tool: [
         "replit",
         "bubble",
@@ -4510,3 +5172,4 @@ export const Constants = {
     },
   },
 } as const
+

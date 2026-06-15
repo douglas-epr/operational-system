@@ -9,16 +9,19 @@ import type {
   TaskStatus,
   TaskType,
   TaskLevel,
+  TaskPriority,
+  TaskCategory,
   TimeTrack,
   UserProfile,
 } from "@/types/projects";
-import { TIME_OPTIONS, minToTimeStr, timeStrToMin } from "@/types/projects";
+import { TIME_OPTIONS, minToTimeStr, timeStrToMin, PRIORITY_LABELS, CATEGORY_LABELS } from "@/types/projects";
 import {
   createTask,
   updateTask,
   upsertTimeEntry,
   deleteTimeEntry,
   getTaskTimeEntries,
+  createTaskComment,
   type TaskInput,
 } from "../../actions";
 import RichTextEditor from "@/app/ideas-refiner/_components/RichTextEditor";
@@ -41,7 +44,7 @@ interface TaskModalProps {
   /** Existing time track entries for this task */
   timeEntries?: TimeTrack[];
   currentUserId: string;
-  /** Available milestones for client/qa_requests task creation */
+  /** Available milestones for client_requests task creation */
   milestones?: Task[];
   /** Pre-set status when creating from a Kanban column */
   defaultStatus?: TaskStatus;
@@ -105,11 +108,22 @@ export default function TaskModal({
   const [assigneeIds, setAssigneeIds] = useState<string[]>(
     task?.task_assignees?.map((a) => a.user_id) ?? []
   );
+  const [priorityLevel, setPriorityLevel] = useState<TaskPriority | "">(
+    task?.priority_level ?? (type === "client_requests" ? "medium" : "critical")
+  );
+  const [category, setCategory] = useState<TaskCategory | "">(
+    task?.category ?? (type === "client_requests" ? "bug" : "main_task")
+  );
+
   // Milestone picker for client/qa requests
-  const showMilestonePicker = !isEdit && (type === "client_requests" || type === "qa_requests") && milestones.length > 0;
+  const showMilestonePicker = !isEdit && type === "client_requests" && milestones.length > 0;
   const [selectedMilestoneId, setSelectedMilestoneId] = useState<string>(
     parentTaskId ?? milestones[0]?.id ?? ""
   );
+
+  // Draft chat messages (create mode only — flushed after task is saved)
+  const [draftMessages, setDraftMessages] = useState<string[]>([]);
+  const [draftInput, setDraftInput] = useState("");
 
   // Local time entries state
   const [entries, setEntries] = useState<LocalTimeEntry[]>(
@@ -178,6 +192,8 @@ export default function TaskModal({
         end_date_real: endReal || null,
         order: task?.order ?? defaultOrder ?? null,
         assignee_ids: assigneeIds,
+        priority_level: (priorityLevel || null) as TaskPriority | null,
+        category: (category || null) as TaskCategory | null,
       };
 
       let taskId = task?.id;
@@ -204,6 +220,13 @@ export default function TaskModal({
           end_time_min: entry.endMin,
           time_spent_h: computeSpent(entry.startMin, entry.endMin),
         });
+      }
+
+      // Flush buffered chat messages from create mode
+      if (!isEdit && taskId) {
+        for (const msg of draftMessages) {
+          await createTaskComment(taskId, projectId, msg, []);
+        }
       }
 
       router.refresh();
@@ -260,6 +283,28 @@ export default function TaskModal({
               selectedIds={assigneeIds}
               onChange={setAssigneeIds}
             />
+          </div>
+        </div>
+
+        {/* Priority Level + Category */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Priority Level</label>
+            <select value={priorityLevel} onChange={(e) => setPriorityLevel(e.target.value as TaskPriority)} className="input-field">
+              <option value="">— None —</option>
+              {(Object.keys(PRIORITY_LABELS) as TaskPriority[]).map((p) => (
+                <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-text-secondary mb-1 block">Category</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value as TaskCategory)} className="input-field">
+              <option value="">— None —</option>
+              {(Object.keys(CATEGORY_LABELS) as TaskCategory[]).map((c) => (
+                <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -372,16 +417,56 @@ export default function TaskModal({
         {/* Chat */}
         <div>
           <p className="text-xs font-medium text-text-secondary mb-2">Chat</p>
-          {!isEdit || !task ? (
-            <div className="flex flex-col items-center justify-center py-6 text-text-muted rounded-md border border-border bg-muted/30">
-              <p className="text-xs">Save the task first to start chatting.</p>
-            </div>
-          ) : (
+          {isEdit && task ? (
             <TaskChat
               taskId={task.id}
               projectId={projectId}
               currentUserId={currentUserId}
             />
+          ) : (
+            <div className="rounded-md border border-border overflow-hidden flex flex-col">
+              <div className="flex flex-col gap-2 p-3 max-h-[200px] overflow-y-auto bg-muted/20 min-h-[60px]">
+                {draftMessages.length === 0 ? (
+                  <p className="text-xs text-text-muted text-center py-2">No messages yet — messages will be saved with the task.</p>
+                ) : (
+                  draftMessages.map((msg, i) => (
+                    <div key={i} className="flex justify-end">
+                      <span className="rounded-2xl rounded-br-sm bg-accent text-white text-xs px-3 py-2 whitespace-pre-wrap break-words max-w-[85%]">{msg}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/30">
+                <input
+                  type="text"
+                  value={draftInput}
+                  onChange={(e) => setDraftInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && draftInput.trim()) {
+                      e.preventDefault();
+                      setDraftMessages((prev) => [...prev, draftInput.trim()]);
+                      setDraftInput("");
+                    }
+                  }}
+                  placeholder="Type here..."
+                  className="flex-1 bg-transparent text-xs text-text-primary placeholder:text-text-muted outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!draftInput.trim()) return;
+                    setDraftMessages((prev) => [...prev, draftInput.trim()]);
+                    setDraftInput("");
+                  }}
+                  disabled={!draftInput.trim()}
+                  className="p-1.5 rounded-md bg-accent hover:bg-accent-hover text-white transition-colors disabled:opacity-40"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.269 20.876L5.999 12zm0 0h7.5" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

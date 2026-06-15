@@ -20,13 +20,21 @@ interface Options {
   onMessageInsert: (row: ChatMessage) => void;
   /** Called for thread inserts so the parent's thread_count can be bumped. */
   onThreadInsert?: (row: { id: string; parent_id: string }) => void;
+  /** Called whenever an emoji reaction is added or removed on any message in
+   *  this conversation, so the caller can refresh the reactions map.
+   *  messageId is null on DELETE if REPLICA IDENTITY FULL is not yet active —
+   *  callers must handle null by refreshing all visible messages. */
+  onEmojiChange?: (messageId: string | null) => void;
 }
 
-export function useRealtimeMessages({ block, conversationId, onMessageInsert, onThreadInsert }: Options) {
+export function useRealtimeMessages({ block, conversationId, onMessageInsert, onThreadInsert, onEmojiChange }: Options) {
   useEffect(() => {
     if (!conversationId) return;
     const supabase = createClient();
     const tables = BLOCK_TABLES[block];
+    const emojiTable = `${tables.msg}_emoji`;
+    const emojiFk    = `${tables.msg}_id`;
+
     const channel = supabase
       .channel(`chat:${block}:${conversationId}`)
       .on(
@@ -69,9 +77,31 @@ export function useRealtimeMessages({ block, conversationId, onMessageInsert, on
           onThreadInsert({ id: row.id as string, parent_id: row.parent_id as string });
         }
       )
+      // Emoji reactions: subscribe to INSERT and DELETE so all users see
+      // reactions in real time (not just the person who added them).
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: emojiTable },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          onEmojiChange?.(row[emojiFk] as string);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: emojiTable },
+        (payload) => {
+          const row = payload.old as Record<string, unknown>;
+          // With REPLICA IDENTITY FULL the FK column is present; without it
+          // payload.old only has the PK so emojiFk is undefined — pass null
+          // so the caller knows to refresh all visible messages.
+          const msgId = (row[emojiFk] as string | undefined) ?? null;
+          onEmojiChange?.(msgId);
+        }
+      )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [block, conversationId, onMessageInsert, onThreadInsert]);
+  }, [block, conversationId, onMessageInsert, onThreadInsert, onEmojiChange]);
 }

@@ -1,23 +1,22 @@
 "use client";
 
 /**
- * ConversationsSidebar — Slack-style sectioned list.
+ * ConversationsSidebar — Slack-style sectioned list with per-section scroll.
  *
- * One filter input on top, then collapsible sections (one per visible
- * block). Tighter row density and refined active/hover states give the
- * surface a Slack-like read.
+ * One filter input on top, then collapsible sections (one per visible block).
+ * Each expanded section has its own overflow-y-auto scroll area so long
+ * conversation lists don't collapse the other sections out of view.
  *
- * Visibility rules (mirror the previous BlockSidebar):
- *   client / qa            → projects, private, chatbot
- *   developer              → projects, projects_internal, private, chatbot
- *   admin/manager/operational → all 5
+ * Visibility rules:
+ *   client / qa            → projects, private
+ *   developer              → projects, private
+ *   admin/manager/operational → projects, internal_projects, private, chatbot
  */
 
 import { useEffect, useMemo, useState } from "react";
 import type { ChatBlock } from "@/types/chat";
 import { BLOCK_LABELS } from "@/types/chat";
 import ProjectsList from "./lists/ProjectsList";
-import ProjectsInternalList from "./lists/ProjectsInternalList";
 import InternalProjectsList from "./lists/InternalProjectsList";
 import PrivateList from "./lists/PrivateList";
 import ChatbotList from "./lists/ChatbotList";
@@ -25,7 +24,6 @@ import UnreadBadge from "./UnreadBadge";
 import { markConversationViewed } from "../actions";
 import {
   BriefcaseIcon,
-  LockIcon,
   FolderIcon,
   UserIcon,
   SparkleIcon,
@@ -44,20 +42,15 @@ interface Props {
 
 const ALL_BLOCKS: ChatBlock[] = [
   "projects",
-  "projects_internal",
   "internal_projects",
   "private",
   "chatbot",
 ];
 
 function visibleBlocksFor(userType: string): ChatBlock[] {
-  if (userType === "client" || userType === "qa") {
-    return ["projects", "private", "chatbot"];
-  }
-  if (userType === "developer") {
-    return ["projects", "projects_internal", "private", "chatbot"];
-  }
-  return ALL_BLOCKS;
+  const isStaff = ["admin", "manager", "operational"].includes(userType);
+  if (isStaff) return ALL_BLOCKS;
+  return ["projects", "private"];
 }
 
 export default function ConversationsSidebar({
@@ -73,7 +66,6 @@ export default function ConversationsSidebar({
   const [unreadByBlock, setUnreadByBlock] = useState<Record<string, number>>({});
   const [refreshTickByBlock, setRefreshTickByBlock] = useState<Record<ChatBlock, number>>({
     projects: 0,
-    projects_internal: 0,
     internal_projects: 0,
     private: 0,
     chatbot: 0,
@@ -115,7 +107,6 @@ export default function ConversationsSidebar({
     const t = setInterval(() => {
       setRefreshTickByBlock((prev) => ({
         projects: prev.projects + 1,
-        projects_internal: prev.projects_internal + 1,
         internal_projects: prev.internal_projects + 1,
         private: prev.private + 1,
         chatbot: prev.chatbot + 1,
@@ -130,7 +121,6 @@ export default function ConversationsSidebar({
       setUnreadByBlock((prev) => (prev[b] === n ? prev : { ...prev, [b]: n }));
     return {
       projects: make("projects"),
-      projects_internal: make("projects_internal"),
       internal_projects: make("internal_projects"),
       private: make("private"),
       chatbot: make("chatbot"),
@@ -159,14 +149,17 @@ export default function ConversationsSidebar({
         </div>
       </div>
 
-      {/* ── Sections ───────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto py-1">
+      {/* ── Sections (each expanded section gets its own scroll) ──── */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden py-1">
         {visible.map((b) => {
           const isCollapsed = collapsed[b];
           return (
-            <section key={b} className="px-2 mb-1">
+            <section
+              key={b}
+              className={`px-2 mb-1 ${!isCollapsed ? "flex flex-col flex-1 min-h-0" : ""}`}
+            >
               <header
-                className="flex items-center gap-1.5 px-2 h-7 cursor-pointer select-none rounded-md hover:bg-muted/40 transition-colors"
+                className="flex items-center gap-1.5 px-2 h-7 cursor-pointer select-none rounded-md hover:bg-muted/40 transition-colors shrink-0"
                 onClick={() => toggle(b)}
               >
                 <ChevronRightIcon
@@ -183,21 +176,12 @@ export default function ConversationsSidebar({
                 <UnreadBadge count={unreadByBlock[b] ?? 0} />
               </header>
               {!isCollapsed && (
-                <div className="pt-0.5 pb-1.5">
+                <div className="flex-1 min-h-0 overflow-y-auto pt-0.5 pb-1.5">
                   {b === "projects" && (
                     <ProjectsList
                       filter={filter}
                       activeId={activeBlock === b ? activeConversationId : null}
                       refreshTick={refreshTickByBlock.projects}
-                      onSelect={(id) => onSelect(b, id)}
-                      onTotalUnread={setBlockTotal[b]}
-                    />
-                  )}
-                  {b === "projects_internal" && (
-                    <ProjectsInternalList
-                      filter={filter}
-                      activeId={activeBlock === b ? activeConversationId : null}
-                      refreshTick={refreshTickByBlock.projects_internal}
                       onSelect={(id) => onSelect(b, id)}
                       onTotalUnread={setBlockTotal[b]}
                     />
@@ -243,8 +227,6 @@ function BlockIcon({ block }: { block: ChatBlock }) {
   switch (block) {
     case "projects":
       return <BriefcaseIcon className={cls} strokeWidth={1.8} />;
-    case "projects_internal":
-      return <LockIcon className={cls} strokeWidth={1.8} />;
     case "internal_projects":
       return <FolderIcon className={cls} strokeWidth={1.8} />;
     case "private":

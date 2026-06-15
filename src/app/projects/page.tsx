@@ -48,12 +48,12 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
     const [{ data: projectData }, { data: tasksData }, { data: unreadData }] = await Promise.all([
       supabase
         .from("project")
-        .select("id, name, picture, status, stage, program, description, price, referrer_commission, start_date_real, end_date_real, start_date_estimated, end_date_estimated, estimated_time, real_time, authorized_users, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, recommended_by, talent_who_recommended_id, client_who_recommended_id, company_that_recommended_id, referrer_id, created_at, client_developer_estimated_time, client_developer_real_time, qa_developer_estimated_time, qa_developer_real_time, qa_tester_estimated_time, qa_tester_real_time")
+        .select("id, name, picture, status, description, start_date_real, end_date_real, start_date_estimated, end_date_estimated, estimated_time, real_time, authorized_users, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, created_at, general_requests_estimated_time, general_requests_real_time")
         .eq("id", projectId)
         .single(),
       supabase
         .from("project_task")
-        .select("id, project_id, parent_task_id, name, order, start_date_estimated, end_date_estimated, start_date_real, end_date_real, real_time, estimated_time, type, level, status, assignees, created_by")
+        .select("id, project_id, parent_task_id, name, order, start_date_estimated, end_date_estimated, start_date_real, end_date_real, real_time, estimated_time, type, level, status, priority_level, category, assignees, created_by")
         .eq("project_id", projectId),
       supabase
         .from("project_task_comment")
@@ -72,7 +72,7 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
     // [{ user_id, profiles }]` shape the UI consumers expect (Part 2
     // item 10/34). Done client-side via a single profiles fetch instead
     // of a per-task embed.
-    const rawTasks = (tasksData ?? []) as Array<Record<string, unknown> & { assignees?: string[] }>;
+    const rawTasks = (tasksData ?? []) as unknown as Array<Record<string, unknown> & { assignees?: string[] }>;
     const allAssigneeIds = Array.from(
       new Set(rawTasks.flatMap((t) => (t.assignees ?? []) as string[]))
     );
@@ -100,8 +100,8 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
       unreadByTaskId[row.task_id] = (unreadByTaskId[row.task_id] ?? 0) + 1;
     }
 
-    const validTabs: TabKey[] = ["stages", "developer", "client_requests", "qa_requests"];
-    const initialTab: TabKey = validTabs.includes(tabParam as TabKey) ? (tabParam as TabKey) : "stages";
+    const validTabs: TabKey[] = ["developer", "client_requests"];
+    const initialTab: TabKey = validTabs.includes(tabParam as TabKey) ? (tabParam as TabKey) : "developer";
 
     return (
       <PageShell profile={profile} fullBleed flush>
@@ -122,7 +122,7 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
   const [{ data: projectsData }, { data: taskAggData }] = await Promise.all([
     supabase
       .from("project")
-      .select("id, name, picture, status, stage, program, description, price, referrer_commission, start_date_real, end_date_real, start_date_estimated, end_date_estimated, estimated_time, real_time, authorized_users, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, recommended_by, talent_who_recommended_id, client_who_recommended_id, company_that_recommended_id, referrer_id, created_at")
+      .select("id, name, picture, status, description, start_date_real, end_date_real, start_date_estimated, end_date_estimated, estimated_time, real_time, authorized_users, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, created_at")
       .order("created_at", { ascending: false }),
     supabase
       .from("project_task")

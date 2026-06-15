@@ -15,11 +15,14 @@ import { createIdea, updateIdea } from "../actions";
 import { cn } from "@/lib/utils";
 import RichTextEditor from "./RichTextEditor";
 import { isBlankHtml } from "../_hooks/useAutoTriggerAi";
+import UserMultiSelect from "@/components/ui/UserMultiSelect";
+import type { UserMultiSelectOption } from "@/components/ui/UserMultiSelect";
 
 interface CreateIdeaModalProps {
   open: boolean;
   onClose: () => void;
   projects: ProjectOption[];
+  profiles: UserMultiSelectOption[];
   /** Pre-select this project in the dropdown (from URL ?project= param). */
   defaultProjectId?: string;
   /** When provided, the modal renders in edit-mode for this idea. */
@@ -33,6 +36,7 @@ export default function CreateIdeaModal({
   open,
   onClose,
   projects,
+  profiles,
   defaultProjectId,
   idea = null,
   currentUserId,
@@ -40,13 +44,17 @@ export default function CreateIdeaModal({
 }: CreateIdeaModalProps) {
   const router = useRouter();
   const isEdit = idea !== null;
-  // In edit mode, only allow editing if the user is admin/manager or the idea creator.
-  const canEdit = !isEdit || isAdminOrManager || (!!currentUserId && idea?.created_by === currentUserId);
+  // In edit mode, only the creator can edit (admin/manager no longer bypass this).
+  const canEdit = !isEdit || (!!currentUserId && idea?.created_by === currentUserId);
 
   const [name, setName] = useState(idea?.name ?? "");
   const [description, setDescription] = useState(idea?.description ?? "");
   const [projectId, setProjectId] = useState(
     idea?.project_id ?? defaultProjectId ?? ""
+  );
+  const [versionName, setVersionName] = useState(idea?.version_name ?? "");
+  const [authorizedUserIds, setAuthorizedUserIds] = useState<string[]>(
+    idea?.authorized_users ?? []
   );
 
   // Sync when the editing target or default project changes.
@@ -55,8 +63,12 @@ export default function CreateIdeaModal({
       setName(idea.name ?? "");
       setDescription(idea.description ?? "");
       setProjectId(idea.project_id ?? "");
+      setVersionName(idea.version_name ?? "");
+      setAuthorizedUserIds(idea.authorized_users ?? []);
     } else {
       setProjectId(defaultProjectId ?? "");
+      setVersionName("");
+      setAuthorizedUserIds([]);
     }
   }, [idea, defaultProjectId]);
 
@@ -72,6 +84,8 @@ export default function CreateIdeaModal({
     setName("");
     setDescription("");
     setProjectId(defaultProjectId ?? "");
+    setVersionName("");
+    setAuthorizedUserIds([]);
     setError(null);
   }
 
@@ -91,11 +105,15 @@ export default function CreateIdeaModal({
           name: name.trim(),
           description: description,
           project_id: projectId || null,
+          version_name: versionName.trim() || null,
+          authorized_users: authorizedUserIds,
         })
       : await createIdea({
           name: name.trim(),
           description: description,
           project_id: projectId || undefined,
+          version_name: versionName.trim() || undefined,
+          authorized_users: authorizedUserIds,
         });
 
     setIsSubmitting(false);
@@ -184,6 +202,41 @@ export default function CreateIdeaModal({
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Version Name */}
+        <div>
+          <label
+            htmlFor="idea-version-name"
+            className="block text-sm font-medium text-text-primary mb-1.5"
+          >
+            Version Name
+          </label>
+          <input
+            id="idea-version-name"
+            type="text"
+            value={versionName}
+            onChange={(e) => setVersionName(e.target.value)}
+            placeholder="Auto-generated if left blank"
+            disabled={isSubmitting || !canEdit}
+            className={cn(
+              "w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-base text-text-primary placeholder:text-text-muted",
+              "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
+              "disabled:opacity-50"
+            )}
+          />
+        </div>
+
+        {/* Authorized Users */}
+        <div>
+          <UserMultiSelect
+            label="Authorized Users"
+            value={authorizedUserIds}
+            onChange={setAuthorizedUserIds}
+            options={profiles}
+            placeholder="Add people who can access this idea"
+            disabled={isSubmitting || !canEdit}
+          />
         </div>
 
         {/* Error message */}

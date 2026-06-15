@@ -26,7 +26,6 @@ interface Props {
   comment: PlaybookComment;
   replies: PlaybookCommentReply[];
   profiles: UserProfile[];
-  projectId: string;
   currentUserId: string;
   isAdminOrManager: boolean;
   onClose: () => void;
@@ -36,7 +35,6 @@ export default function CommentThreadPanel({
   comment,
   replies,
   profiles,
-  projectId,
   currentUserId,
   isAdminOrManager,
   onClose,
@@ -86,7 +84,7 @@ export default function CommentThreadPanel({
         continue;
       }
       const ext = file.name.includes(".") ? file.name.split(".").pop() : "";
-      const path = `${projectId}/${comment.id}/${crypto.randomUUID()}${ext ? "." + ext : ""}`;
+      const path = `${comment.playbook_id}/${comment.id}/${crypto.randomUUID()}${ext ? "." + ext : ""}`;
       const { error } = await supabase.storage
         .from(BUCKET)
         .upload(path, file, { upsert: false, contentType: file.type || undefined });
@@ -137,7 +135,6 @@ export default function CommentThreadPanel({
       const res = await addPlaybookCommentReply({
         commentId: comment.id,
         playbookId: comment.playbook_id,
-        projectId,
         message: msg,
         attachments: pending,
       });

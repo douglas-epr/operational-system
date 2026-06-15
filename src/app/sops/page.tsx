@@ -35,7 +35,7 @@ export default async function SopsPage({ searchParams }: Props) {
   // not a join table — Part 2 item 43+45).
   const { data: sopsRaw } = await supabase
     .from("sop")
-    .select("id, name, order, authorized_users, authorized_user_types, created_at, created_by, tags")
+    .select("id, name, order, authorized_users, created_at, created_by, tags")
     .order("order", { ascending: true });
 
   // Fetch all tags first so we can hydrate the array of UUIDs into
@@ -48,14 +48,13 @@ export default async function SopsPage({ searchParams }: Props) {
   const tagById = new Map(allTags.map((t) => [t.id, t]));
 
   const sops: SopWithTags[] = (sopsRaw ?? []).map((s: any) => ({
-    id:                    s.id,
-    name:                  s.name,
-    order:                 s.order,
-    authorized_users:      s.authorized_users ?? [],
-    authorized_user_types: s.authorized_user_types ?? [],
-    created_at:            s.created_at,
-    created_by:            s.created_by ?? null,
-    tags:                  ((s.tags ?? []) as string[])
+    id:               s.id,
+    name:             s.name,
+    order:            s.order,
+    authorized_users: s.authorized_users ?? [],
+    created_at:       s.created_at,
+    created_by:       s.created_by ?? null,
+    tags:             ((s.tags ?? []) as string[])
       .map((id) => tagById.get(id))
       .filter(Boolean) as SopTag[],
   }));

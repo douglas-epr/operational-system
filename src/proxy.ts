@@ -6,20 +6,17 @@ import { NextResponse, type NextRequest } from "next/server";
  * - Refreshes the auth token on every request so Server Components can read the session.
  * - Redirects unauthenticated users to /signin (except public routes).
  * - Redirects already-authenticated users away from /signin.
- * - Locks `referrer`-type users to /recommended-projects (their dashboard).
- *   Bubble equivalent: page-level "Current User's Type is referrer → go to
- *   referrer-dashboard" workflows in `paginas.md` L2962.
+ * - Locks `referrer`-type users to /projects (their landing page) + feedback.
  */
 
-// Paths a referrer is allowed to reach. Anything else → /recommended-projects.
+// Paths a referrer is allowed to reach. Anything else → /projects.
 // /profile is allowed so the user popover (Sign Out / Profile) keeps working.
-// /talent-profile is the public share-link flow.
 const REFERRER_ALLOW_PREFIXES = [
-  "/recommended-projects",
+  "/projects",
+  "/feedback",
   "/profile",
   "/signin",
   "/reset_pw",
-  "/talent-profile",
   "/auth",
   "/api",
 ];
@@ -93,7 +90,7 @@ export async function proxy(request: NextRequest) {
       );
       if (!allowed) {
         return NextResponse.redirect(
-          new URL("/recommended-projects", request.url)
+          new URL("/projects", request.url)
         );
       }
     }

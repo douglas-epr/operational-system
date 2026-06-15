@@ -25,12 +25,17 @@ import {
   type ChatbotMessageRow,
   type ChatMessage,
   type ChatThreadMessage,
+  type EmojiReaction,
   type InternalProjectListRow,
   type PrivateConversationRow,
   type ProjectListRow,
 } from "@/types/chat";
 import type {
   DocsAttachment,
+  InternalProjectDailyFeedback,
+  InternalProjectFile,
+  InternalProjectLink,
+  InternalProjectVideo,
   ProjectDailyFeedback,
   ProjectFile,
   ProjectLink,
@@ -94,7 +99,7 @@ async function unreadByScope(
   // Requests or QA Requests task on that project. The chat list bubble is
   // the user's "anything new on this project" indicator — task-thread
   // comments belong in it just as much as conversation messages do.
-  const includeTaskComments = block === "projects" || block === "projects_internal";
+  const includeTaskComments = block === "projects";
 
   const promises: Promise<{ data: unknown }>[] = [
     supabase
@@ -113,7 +118,7 @@ async function unreadByScope(
         .from("project_task_comment")
         .select("project_id, created_by, viewed_by, project_task!inner(type)")
         .in("project_id", scopeIds)
-        .in("project_task.type", ["client_requests", "qa_requests"])
+        .in("project_task.type", ["client_requests"])
     );
   }
   const results = await Promise.all(promises);
@@ -148,31 +153,39 @@ async function unreadByScope(
 export async function listProjectConversations(): Promise<ProjectListRow[]> {
   const ctx = await requireChatUser();
   if ("error" in ctx) return [];
+  // RLS now handles all visibility: admin sees all; everyone else sees only
+  // projects where their uid is in authorized_users (migration 20260616000000).
   const { data } = await ctx.supabase
     .from("project")
-    .select("id, name, picture, external_conversation_authorized_users")
-    .order("name");
-  const rows = (data ?? []) as Array<
-    ProjectListRow & { external_conversation_authorized_users: string[] | null }
-  >;
-  // Admin/manager see every project (RLS already allows it via
-  // is_admin_or_manager() — no per-row membership check needed).
-  // Other staff and clients are clamped to projects where they're a member
-  // of the external conversation.
-  const isElevated = ctx.userType === "admin" || ctx.userType === "manager";
-  const visible = rows.filter((p) =>
-    isElevated
-      ? true
-      : Array.isArray(p.external_conversation_authorized_users) &&
-        p.external_conversation_authorized_users.includes(ctx.userId)
-  );
+    .select("id, name, picture");
+  const rows = (data ?? []) as ProjectListRow[];
+  if (rows.length === 0) return [];
+
+  // Sort by most-recently-active conversation (last message timestamp desc).
+  const { data: lastMsgsData } = await ctx.supabase
+    .from("conversation_project_external_message")
+    .select("project_id, created_at")
+    .in("project_id", rows.map((p) => p.id))
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  const latestByProject = new Map<string, string>();
+  for (const m of (lastMsgsData ?? []) as Array<{ project_id: string; created_at: string }>) {
+    if (!latestByProject.has(m.project_id)) latestByProject.set(m.project_id, m.created_at);
+  }
+  rows.sort((a, b) => {
+    const aT = latestByProject.get(a.id) ?? "";
+    const bT = latestByProject.get(b.id) ?? "";
+    if (bT !== aT) return bT < aT ? -1 : 1;
+    return (a.name ?? "").localeCompare(b.name ?? "");
+  });
+
   const unread = await unreadByScope(
     ctx.supabase,
     ctx.userId,
     "projects",
-    visible.map((p) => p.id)
+    rows.map((p) => p.id)
   );
-  return visible.map((p) => ({
+  return rows.map((p) => ({
     id: p.id,
     name: p.name,
     picture: p.picture,
@@ -180,38 +193,6 @@ export async function listProjectConversations(): Promise<ProjectListRow[]> {
   }));
 }
 
-export async function listProjectsInternalConversations(): Promise<ProjectListRow[]> {
-  const ctx = await requireChatUser();
-  if ("error" in ctx) return [];
-  // Clients & QA never see the internal channel.
-  if (ctx.userType === "client" || ctx.userType === "qa") return [];
-  const { data } = await ctx.supabase
-    .from("project")
-    .select("id, name, picture, internal_conversation_authorized_users")
-    .order("name");
-  const rows = (data ?? []) as Array<
-    ProjectListRow & { internal_conversation_authorized_users: string[] | null }
-  >;
-  const isElevated = ctx.userType === "admin" || ctx.userType === "manager";
-  const visible = rows.filter((p) =>
-    isElevated
-      ? true
-      : Array.isArray(p.internal_conversation_authorized_users) &&
-        p.internal_conversation_authorized_users.includes(ctx.userId)
-  );
-  const unread = await unreadByScope(
-    ctx.supabase,
-    ctx.userId,
-    "projects_internal",
-    visible.map((p) => p.id)
-  );
-  return visible.map((p) => ({
-    id: p.id,
-    name: p.name,
-    picture: p.picture,
-    unread_count: unread.get(p.id) ?? 0,
-  }));
-}
 
 export async function listInternalProjectConversations(): Promise<InternalProjectListRow[]> {
   const ctx = await requireChatUser();
@@ -220,9 +201,28 @@ export async function listInternalProjectConversations(): Promise<InternalProjec
   if (!["admin", "manager", "operational"].includes(ctx.userType)) return [];
   const { data } = await ctx.supabase
     .from("internal_project")
-    .select("id, name")
-    .order("name");
+    .select("id, name");
   const rows = (data ?? []) as InternalProjectListRow[];
+  if (rows.length === 0) return [];
+
+  // Sort by most-recently-active conversation (last message timestamp desc).
+  const { data: lastMsgsData } = await ctx.supabase
+    .from("conversation_internal_project_message")
+    .select("internal_project_id, created_at")
+    .in("internal_project_id", rows.map((r) => r.id))
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  const latestByProject = new Map<string, string>();
+  for (const m of (lastMsgsData ?? []) as Array<{ internal_project_id: string; created_at: string }>) {
+    if (!latestByProject.has(m.internal_project_id)) latestByProject.set(m.internal_project_id, m.created_at);
+  }
+  rows.sort((a, b) => {
+    const aT = latestByProject.get(a.id) ?? "";
+    const bT = latestByProject.get(b.id) ?? "";
+    if (bT !== aT) return bT < aT ? -1 : 1;
+    return (a.name ?? "").localeCompare(b.name ?? "");
+  });
+
   const unread = await unreadByScope(
     ctx.supabase,
     ctx.userId,
@@ -340,19 +340,14 @@ export async function listSelectablePrivatePeers(): Promise<
   // Non-elevated: gather peers via projects the caller is a member of.
   const { data: projectsData } = await ctx.supabase
     .from("project")
-    .select(
-      "external_conversation_authorized_users, internal_conversation_authorized_users"
-    );
+    .select("external_conversation_authorized_users");
   const peerIds = new Set<string>();
   for (const row of (projectsData ?? []) as Array<{
     external_conversation_authorized_users: string[] | null;
-    internal_conversation_authorized_users: string[] | null;
   }>) {
     const ext = row.external_conversation_authorized_users ?? [];
-    const intl = row.internal_conversation_authorized_users ?? [];
-    if (!ext.includes(ctx.userId) && !intl.includes(ctx.userId)) continue;
+    if (!ext.includes(ctx.userId)) continue;
     for (const id of ext) if (id !== ctx.userId) peerIds.add(id);
-    for (const id of intl) if (id !== ctx.userId) peerIds.add(id);
   }
   if (peerIds.size === 0) return [];
   const { data } = await ctx.supabase
@@ -454,21 +449,18 @@ export async function createPrivateConversation(
 
 const MARK_RPC: Record<Exclude<ChatBlock, "chatbot">, string> = {
   projects: "mark_external_project_messages_viewed",
-  projects_internal: "mark_internal_project_messages_viewed",
   internal_projects: "mark_conversation_internal_project_messages_viewed",
   private: "mark_private_conversation_messages_viewed",
 };
 
 const MARK_RPC_PARAM: Record<Exclude<ChatBlock, "chatbot">, string> = {
   projects: "p_project_id",
-  projects_internal: "p_project_id",
   internal_projects: "p_internal_project_id",
   private: "p_conversation_id",
 };
 
 const MARK_THREAD_RPC: Record<Exclude<ChatBlock, "chatbot">, string> = {
   projects: "mark_external_project_thread_viewed",
-  projects_internal: "mark_internal_project_thread_viewed",
   internal_projects: "mark_conversation_internal_project_thread_viewed",
   private: "mark_private_conversation_thread_viewed",
 };
@@ -530,12 +522,10 @@ export async function getProjectChatTabCounts(
 ): Promise<{
   clientOpen: number;
   clientUnread: number;
-  qaOpen: number;
-  qaUnread: number;
 }> {
   const ctx = await requireChatUser();
   if ("error" in ctx) {
-    return { clientOpen: 0, clientUnread: 0, qaOpen: 0, qaUnread: 0 };
+    return { clientOpen: 0, clientUnread: 0 };
   }
 
   const [{ data: tasks }, { data: comments }] = await Promise.all([
@@ -543,28 +533,20 @@ export async function getProjectChatTabCounts(
       .from("project_task")
       .select("id, type, status")
       .eq("project_id", projectId)
-      .in("type", ["client_requests", "qa_requests"]),
+      .eq("type", "client_requests"),
     ctx.supabase
       .from("project_task_comment")
       .select("project_id, created_by, viewed_by, project_task!inner(type)")
       .eq("project_id", projectId)
-      .in("project_task.type", ["client_requests", "qa_requests"]),
+      .eq("project_task.type", "client_requests"),
   ]);
 
   let clientOpen = 0;
-  let qaOpen = 0;
   for (const t of (tasks ?? []) as Array<{ type: string; status: string }>) {
     if (t.type === "client_requests" && t.status === "not_started") clientOpen++;
-    if (
-      t.type === "qa_requests" &&
-      (t.status === "not_started" || t.status === "ready_for_qa")
-    ) {
-      qaOpen++;
-    }
   }
 
   let clientUnread = 0;
-  let qaUnread = 0;
   for (const c of (comments ?? []) as Array<{
     created_by: string | null;
     viewed_by: string[] | null;
@@ -574,10 +556,9 @@ export async function getProjectChatTabCounts(
     if (c.created_by === ctx.userId) continue;
     if ((c.viewed_by ?? []).includes(ctx.userId)) continue;
     if (c.project_task.type === "client_requests") clientUnread++;
-    else if (c.project_task.type === "qa_requests") qaUnread++;
   }
 
-  return { clientOpen, clientUnread, qaOpen, qaUnread };
+  return { clientOpen, clientUnread };
 }
 
 // ── Messages ────────────────────────────────────────────────────────────────
@@ -1373,7 +1354,6 @@ function blockToProjectBotScope(
   block: Exclude<ChatBlock, "chatbot">
 ): ProjectChatbotScope | null {
   if (block === "projects") return "external";
-  if (block === "projects_internal") return "internal";
   return null;
 }
 
@@ -1439,4 +1419,356 @@ export async function sendProjectChatbotMessage(
     userMsg: userRow as ProjectChatbotMessageRow,
     botMsg: turn.botMsg,
   };
+}
+
+// ── Internal-project file / link / video / daily-feedback tabs ───────────────
+
+export async function getInternalProjectMeta(
+  _internalProjectId: string
+): Promise<{
+  profiles: Array<{ id: string; first_name: string | null; last_name: string | null; picture: string | null }>;
+  currentUserId: string;
+  isAdminOrManager: boolean;
+}> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { profiles: [], currentUserId: "", isAdminOrManager: false };
+  const { data: profiles } = await ctx.supabase
+    .from("profiles")
+    .select("id, first_name, last_name, picture");
+  return {
+    profiles: (profiles ?? []) as Array<{ id: string; first_name: string | null; last_name: string | null; picture: string | null }>,
+    currentUserId: ctx.userId,
+    isAdminOrManager: ctx.userType === "admin" || ctx.userType === "manager",
+  };
+}
+
+export async function getInternalProjectFiles(internalProjectId: string): Promise<InternalProjectFile[]> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (ctx.supabase as any)
+    .from("internal_project_file")
+    .select("id, internal_project_id, name, attachments, created_by, created_at, updated_at")
+    .eq("internal_project_id", internalProjectId)
+    .order("created_at", { ascending: false });
+  return ((data ?? []) as unknown as Array<Omit<InternalProjectFile, "attachments"> & { attachments: unknown }>).map((f) => ({
+    ...f,
+    attachments: Array.isArray(f.attachments) ? (f.attachments as DocsAttachment[]) : [],
+  }));
+}
+
+export async function createInternalProjectFile(input: {
+  internalProjectId: string;
+  name: string;
+  attachments: DocsAttachment[];
+}): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any)
+    .from("internal_project_file")
+    .insert({ internal_project_id: input.internalProjectId, name: input.name, attachments: input.attachments, created_by: ctx.userId });
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function updateInternalProjectFile(
+  id: string,
+  input: { name: string; attachments: DocsAttachment[] }
+): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any)
+    .from("internal_project_file")
+    .update({ name: input.name, attachments: input.attachments })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function deleteInternalProjectFile(id: string): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any).from("internal_project_file").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function getInternalProjectLinks(internalProjectId: string): Promise<InternalProjectLink[]> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (ctx.supabase as any)
+    .from("internal_project_link")
+    .select("id, internal_project_id, name, url, created_by, created_at, updated_at")
+    .eq("internal_project_id", internalProjectId)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as unknown as InternalProjectLink[];
+}
+
+export async function createInternalProjectLink(input: {
+  internalProjectId: string;
+  name: string;
+  url: string;
+}): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any)
+    .from("internal_project_link")
+    .insert({ internal_project_id: input.internalProjectId, name: input.name, url: input.url, created_by: ctx.userId });
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function updateInternalProjectLink(
+  id: string,
+  input: { name: string; url: string }
+): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any)
+    .from("internal_project_link")
+    .update({ name: input.name, url: input.url })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function deleteInternalProjectLink(id: string): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any).from("internal_project_link").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function getInternalProjectVideos(internalProjectId: string): Promise<InternalProjectVideo[]> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (ctx.supabase as any)
+    .from("internal_project_video")
+    .select("id, internal_project_id, name, url, created_by, created_at, updated_at")
+    .eq("internal_project_id", internalProjectId)
+    .order("created_at", { ascending: false });
+  return (data ?? []) as unknown as InternalProjectVideo[];
+}
+
+export async function createInternalProjectVideo(input: {
+  internalProjectId: string;
+  name: string;
+  url: string;
+}): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any)
+    .from("internal_project_video")
+    .insert({ internal_project_id: input.internalProjectId, name: input.name, url: input.url, created_by: ctx.userId });
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function updateInternalProjectVideo(
+  id: string,
+  input: { name: string; url: string }
+): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any)
+    .from("internal_project_video")
+    .update({ name: input.name, url: input.url })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function deleteInternalProjectVideo(id: string): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any).from("internal_project_video").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function getInternalProjectDailyFeedbacks(internalProjectId: string): Promise<InternalProjectDailyFeedback[]> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (ctx.supabase as any)
+    .from("internal_project_daily_feedback")
+    .select("id, internal_project_id, date, today_work, tomorrow_work, blockers, video_and_links, created_by, created_at, updated_at")
+    .eq("internal_project_id", internalProjectId)
+    .order("date", { ascending: false });
+  return (data ?? []) as unknown as InternalProjectDailyFeedback[];
+}
+
+export async function createInternalProjectDailyFeedback(input: {
+  internalProjectId: string;
+  date: string;
+  today_work: string | null;
+  tomorrow_work: string | null;
+  blockers: string | null;
+  video_and_links: string | null;
+}): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  const { internalProjectId, ...rest } = input;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any)
+    .from("internal_project_daily_feedback")
+    .insert({ internal_project_id: internalProjectId, created_by: ctx.userId, ...rest });
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function updateInternalProjectDailyFeedback(
+  id: string,
+  input: {
+    date: string;
+    today_work: string | null;
+    tomorrow_work: string | null;
+    blockers: string | null;
+    video_and_links: string | null;
+  }
+): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any)
+    .from("internal_project_daily_feedback")
+    .update(input)
+    .eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+export async function deleteInternalProjectDailyFeedback(id: string): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (ctx.supabase as any).from("internal_project_daily_feedback").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+// ── Emoji reactions ───────────────────────────────────────────────────────────
+
+/**
+ * Load emoji reactions for a batch of message IDs.
+ * Works for both top-level messages (isThread=false) and thread replies
+ * (isThread=true). Returns a map keyed by message id → sorted reaction list.
+ * `user_reacted` is pre-computed so the client doesn't need to know the userId.
+ */
+export async function getReactions(
+  block: Exclude<ChatBlock, "chatbot">,
+  messageIds: string[],
+  isThread: boolean,
+): Promise<Record<string, EmojiReaction[]>> {
+  if (messageIds.length === 0) return {};
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return {};
+
+  const { msg, thread } = BLOCK_TABLES[block];
+  const baseTable = isThread ? thread : msg;
+  const tableName  = `${baseTable}_emoji`;
+  const fkCol      = `${baseTable}_id`;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (ctx.supabase as any)
+    .from(tableName)
+    .select(`${fkCol}, created_by, emoji_code, profiles(first_name, last_name)`)
+    .in(fkCol, messageIds);
+
+  const rows = (data ?? []) as Array<{
+    [key: string]: unknown;
+    created_by: string;
+    emoji_code: string;
+    profiles: { first_name: string | null; last_name: string | null } | null;
+  }>;
+
+  // Group by (messageId, emoji_code) → aggregate
+  const grouped: Record<string, Record<string, { count: number; user_ids: string[]; user_names: string[] }>> = {};
+  for (const r of rows) {
+    const msgId   = r[fkCol] as string;
+    const code    = r.emoji_code;
+    const name    = `${r.profiles?.first_name ?? ""} ${r.profiles?.last_name ?? ""}`.trim() || "User";
+    if (!grouped[msgId]) grouped[msgId] = {};
+    if (!grouped[msgId][code]) grouped[msgId][code] = { count: 0, user_ids: [], user_names: [] };
+    grouped[msgId][code].count++;
+    grouped[msgId][code].user_ids.push(r.created_by);
+    grouped[msgId][code].user_names.push(name);
+  }
+
+  const out: Record<string, EmojiReaction[]> = {};
+  for (const [msgId, emojiMap] of Object.entries(grouped)) {
+    out[msgId] = Object.entries(emojiMap).map(([emoji_code, agg]) => ({
+      emoji_code,
+      count: agg.count,
+      user_names: agg.user_names,
+      user_reacted: agg.user_ids.includes(ctx.userId),
+    }));
+  }
+  return out;
+}
+
+/**
+ * Toggle an emoji reaction on a message. If the caller has already reacted
+ * with this emoji it is removed; otherwise it is added. One reaction per
+ * (message, user, emoji_code) is enforced by a DB unique constraint.
+ */
+export async function toggleEmoji(
+  block: Exclude<ChatBlock, "chatbot">,
+  messageId: string,
+  emojiCode: string,
+  isThread: boolean,
+): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+
+  const { msg, thread } = BLOCK_TABLES[block];
+  const baseTable = isThread ? thread : msg;
+  const tableName  = `${baseTable}_emoji`;
+  const fkCol      = `${baseTable}_id`;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = ctx.supabase as any;
+
+  const { data: existing } = await supabase
+    .from(tableName)
+    .select("id")
+    .eq(fkCol, messageId)
+    .eq("created_by", ctx.userId)
+    .eq("emoji_code", emojiCode)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase.from(tableName).delete().eq("id", existing.id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await supabase
+      .from(tableName)
+      .insert({ [fkCol]: messageId, created_by: ctx.userId, emoji_code: emojiCode });
+    if (error) return { error: error.message };
+  }
+  return {};
 }

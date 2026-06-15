@@ -3,11 +3,12 @@
 /**
  * ThreadPanel — right-side drawer that shows a single message and its
  * thread replies. Activated by ?thread=<message-id>.
+ * Supports emoji reactions on both the parent message and each reply.
  */
 
-import { useEffect, useState } from "react";
-import type { ChatBlock, ChatMessage, ChatThreadMessage } from "@/types/chat";
-import { getMessages, getThreadMessages, markThreadViewed } from "../actions";
+import { useCallback, useEffect, useState } from "react";
+import type { ChatBlock, ChatMessage, ChatThreadMessage, EmojiReaction } from "@/types/chat";
+import { getMessages, getReactions, getThreadMessages, markThreadViewed, toggleEmoji } from "../actions";
 import MessageItem from "./MessageItem";
 import MessageComposer from "./MessageComposer";
 
@@ -20,9 +21,11 @@ interface Props {
 }
 
 export default function ThreadPanel({ block, conversationId, threadId, currentUserId, onClose }: Props) {
-  const [parent, setParent] = useState<ChatMessage | null>(null);
+  const [parent, setParent]   = useState<ChatMessage | null>(null);
   const [replies, setReplies] = useState<ChatThreadMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [parentReactions, setParentReactions]   = useState<EmojiReaction[]>([]);
+  const [replyReactionsMap, setReplyReactionsMap] = useState<Record<string, EmojiReaction[]>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -30,23 +33,42 @@ export default function ThreadPanel({ block, conversationId, threadId, currentUs
     void Promise.all([
       getMessages(block, conversationId, {}),
       getThreadMessages(block, threadId),
-    ]).then(([all, thrds]) => {
+    ]).then(async ([all, thrds]) => {
       if (cancelled) return;
-      setParent(all.find((m) => m.id === threadId) ?? null);
+      const p = all.find((m) => m.id === threadId) ?? null;
+      setParent(p);
       setReplies(thrds);
       setLoading(false);
+      // Load reactions for parent message and all replies in parallel.
+      const empty: Record<string, EmojiReaction[]> = {};
+      const [msgR, threadR] = await Promise.all([
+        p ? getReactions(block, [threadId], false) : Promise.resolve(empty),
+        thrds.length > 0 ? getReactions(block, thrds.map((r) => r.id), true) : Promise.resolve(empty),
+      ]);
+      if (!cancelled) {
+        setParentReactions(msgR[threadId] ?? []);
+        setReplyReactionsMap(threadR);
+      }
     });
-    // Mark every reply on this thread as viewed for the caller, so the
-    // per-message thread bubble drops as soon as they open the drawer.
     void markThreadViewed(block, threadId);
     return () => {
       cancelled = true;
     };
   }, [block, conversationId, threadId]);
 
-  // Optimistic poll on focus — replies don't fire realtime per-thread (we
-  // only subscribe at the conversation level), so refetch when the panel is
-  // opened. Future: scope a thread-level channel if traffic warrants it.
+  const handleToggleParentEmoji = useCallback(async (code: string) => {
+    const res = await toggleEmoji(block, threadId, code, false);
+    if (res.error) return;
+    const updated = await getReactions(block, [threadId], false);
+    setParentReactions(updated[threadId] ?? []);
+  }, [block, threadId]);
+
+  const handleToggleReplyEmoji = useCallback(async (replyId: string, code: string) => {
+    const res = await toggleEmoji(block, replyId, code, true);
+    if (res.error) return;
+    const updated = await getReactions(block, [replyId], true);
+    setReplyReactionsMap((prev) => ({ ...prev, ...updated }));
+  }, [block]);
 
   return (
     <aside className="w-[360px] shrink-0 border-l border-border bg-elevated flex flex-col">
@@ -66,6 +88,8 @@ export default function ThreadPanel({ block, conversationId, threadId, currentUs
               block={block}
               message={parent}
               isOwn={parent.created_by === currentUserId}
+              reactions={parentReactions}
+              onToggleEmoji={(code) => handleToggleParentEmoji(code)}
             />
             <div className="px-4 py-1 text-[11px] text-text-muted border-y border-border">
               {replies.length} {replies.length === 1 ? "reply" : "replies"}
@@ -77,6 +101,8 @@ export default function ThreadPanel({ block, conversationId, threadId, currentUs
                 message={r}
                 isOwn={r.created_by === currentUserId}
                 isThread
+                reactions={replyReactionsMap[r.id]}
+                onToggleEmoji={(code) => handleToggleReplyEmoji(r.id, code)}
               />
             ))}
           </>

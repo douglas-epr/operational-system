@@ -53,8 +53,7 @@ export default function ChatShell({
   // bounce to the default block.
   useEffect(() => {
     const forbidden =
-      (url.block === "projects_internal" && (userType === "client" || userType === "qa")) ||
-      (url.block === "internal_projects" && !["admin", "manager", "operational"].includes(userType));
+      url.block === "internal_projects" && !["admin", "manager", "operational"].includes(userType);
     if (forbidden) {
       router.replace("/chat", { scroll: false });
     }

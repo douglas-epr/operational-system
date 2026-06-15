@@ -3,8 +3,8 @@
 import { useState, useRef, useTransition, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Project, UserType, UserProfile, ProjectStatus, ProjectProgram, ProjectStage } from "@/types/projects";
-import { getScheduleProgressBadge, PROGRAM_LABELS, STAGE_LABELS, STAGE_ORDER } from "@/types/projects";
+import type { Project, UserType, UserProfile, ProjectStatus } from "@/types/projects";
+import { getScheduleProgressBadge } from "@/types/projects";
 import ProjectModal from "./modals/ProjectModal";
 import ConfirmDeleteModal from "./modals/ConfirmDeleteModal";
 import { deleteProject, updateProject } from "../actions";
@@ -66,8 +66,6 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [programFilter, setProgramFilter] = useState<string>("all");
-  const [stageFilter, setStageFilter] = useState<string>("all");
 
   // Modal state
   const [projectModal, setProjectModal] = useState<{ open: boolean; project: Project | null }>({ open: false, project: null });
@@ -116,8 +114,6 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
   const filtered = projects.filter((p) => {
     if (search && !(p.name ?? "").toLowerCase().includes(search.toLowerCase())) return false;
     if (statusFilter !== "all" && p.status !== statusFilter) return false;
-    if (programFilter !== "all" && p.program !== programFilter) return false;
-    if (stageFilter !== "all" && p.stage !== stageFilter) return false;
     return true;
   });
 
@@ -156,22 +152,6 @@ export default function ProjectsList({ projects, userType, profiles, taskProgres
             options={[
               { value: "all", label: "All Statuses" },
               ...STATUS_OPTIONS,
-            ]}
-          />
-          <Select
-            value={programFilter}
-            onChange={(e) => setProgramFilter(e.target.value)}
-            options={[
-              { value: "all", label: "All Programs" },
-              ...Object.entries(PROGRAM_LABELS).map(([k, v]) => ({ value: k, label: v })),
-            ]}
-          />
-          <Select
-            value={stageFilter}
-            onChange={(e) => setStageFilter(e.target.value)}
-            options={[
-              { value: "all", label: "All Stages" },
-              ...STAGE_ORDER.map((s) => ({ value: s, label: STAGE_LABELS[s] })),
             ]}
           />
         </div>

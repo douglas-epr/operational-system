@@ -87,9 +87,9 @@ export default function PlaybookTab({
 
   const repliesByComment = new Map<string, PlaybookCommentReply[]>();
   for (const r of replies) {
-    const list = repliesByComment.get(r.project_playbook_comment_id) ?? [];
+    const list = repliesByComment.get(r.idea_playbook_comment_id) ?? [];
     list.push(r);
-    repliesByComment.set(r.project_playbook_comment_id, list);
+    repliesByComment.set(r.idea_playbook_comment_id, list);
   }
 
   const selectedComment =
@@ -110,6 +110,7 @@ export default function PlaybookTab({
     return (
       <EmptyState
         project={project}
+        ideaId={linkedIdeaId}
         isAdminOrManager={isAdminOrManager}
       />
     );
@@ -124,6 +125,7 @@ export default function PlaybookTab({
       <div className="flex-1 min-w-0">
         <PlaybookEditor
           projectId={project.id}
+          ideaId={linkedIdeaId}
           versions={versions}
           activeVersion={activeVersion}
           onVersionChange={setActiveVersionId}
@@ -146,7 +148,6 @@ export default function PlaybookTab({
             comment={selectedComment}
             replies={repliesByComment.get(selectedComment.id) ?? []}
             profiles={profiles}
-            projectId={project.id}
             currentUserId={currentUserId}
             isAdminOrManager={isAdminOrManager}
             onClose={() => setSelectedCommentId(null)}
@@ -159,9 +160,11 @@ export default function PlaybookTab({
 
 function EmptyState({
   project,
+  ideaId,
   isAdminOrManager,
 }: {
   project: Project;
+  ideaId: string | null;
   isAdminOrManager: boolean;
 }) {
   return (
@@ -175,7 +178,7 @@ function EmptyState({
         </p>
         {isAdminOrManager && (
           <div className="flex items-center justify-center gap-2 flex-wrap">
-            <InitialVersionButton projectId={project.id} />
+            {ideaId && <InitialVersionButton ideaId={ideaId} />}
             <BuildFromIdeaButton projectId={project.id} variant="primary" />
           </div>
         )}
@@ -184,7 +187,7 @@ function EmptyState({
   );
 }
 
-function InitialVersionButton({ projectId }: { projectId: string }) {
+function InitialVersionButton({ ideaId }: { ideaId: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   return (
@@ -192,8 +195,8 @@ function InitialVersionButton({ projectId }: { projectId: string }) {
       disabled={loading}
       onClick={async () => {
         setLoading(true);
-        const { createPlaybookVersion } = await import("../actions");
-        const res = await createPlaybookVersion(projectId, "<p>Start writing…</p>");
+        const { createIdeaPlaybookVersion } = await import("../actions");
+        const res = await createIdeaPlaybookVersion(ideaId, "<p>Start writing…</p>");
         setLoading(false);
         if (res.error) alert(res.error);
         else router.refresh();

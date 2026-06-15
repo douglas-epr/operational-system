@@ -6,10 +6,10 @@ import PageHeader from "@/components/layout/PageHeader";
 import UsersList from "./_components/UsersList";
 
 export default async function UsersPage() {
-  // Gate: admin/manager only. Other roles get role-specific redirects
-  // (operational → /internal-projects, dev/client/qa → /projects,
-  // referrer → /recommended-projects, lead → /sandbox-planner).
-  const { supabase, userId } = await requirePageAccess(["admin", "manager"]);
+  // Gate: admin only. Other roles (incl. manager) get role-specific
+  // redirects via the shared helper (manager → /dashboard, operational →
+  // /internal-projects, dev/client/qa → /projects, lead → /ideas-refiner).
+  const { supabase, userId } = await requirePageAccess(["admin"]);
 
   // Fetch current user profile (for the Sidebar avatar/name).
   const { data: profile } = await supabase

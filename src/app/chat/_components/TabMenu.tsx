@@ -1,15 +1,14 @@
 "use client";
 
 /**
- * TabMenu — Messages / Files / Links / Videos / Daily Feedback.
+ * TabMenu — Messages / Files / Links / Videos / Daily Feedback / Tasks.
  *
  * Sits above the message stream. URL-driven (?tab=…).
  *
- * Block-aware: only Projects and Projects Internal show all 5 tabs (those
- * are the conversation flavors that have a 1:1 mapping to a project, and
- * therefore can show the project's Files / Links / Videos / Daily Feedback
- * sub-pages — the same UIs /docs uses). Internal Projects and Private
- * conversations only show Messages.
+ * Block-aware:
+ *   - projects          → all doc tabs + General Requests + Chatbot
+ *   - internal_projects → Messages / Files / Links / Videos / Daily Feedback / Tasks
+ *   - private / chatbot → Messages only
  */
 
 import type { ChatBlock, ChatTab } from "@/types/chat";
@@ -28,25 +27,21 @@ const DOC_TABS: ChatTab[] = ["messages", "files", "links", "videos", "daily_feed
 
 /**
  * Per the UX spec: only project-scoped blocks expose the doc-style tabs.
- * Plus per-role visibility for the Client Requests / QA Requests / Chatbot
- * tabs — admins/managers/operationals/developers see Client + QA + Chatbot,
- * clients see Client + Chatbot, QA see QA + Chatbot.
+ * Plus per-role visibility for the General Requests / Chatbot tabs —
+ * admins/managers/operationals/developers/clients/qa all see General Requests + Chatbot.
  */
 export function tabsForBlock(
   block: Exclude<ChatBlock, "chatbot">,
   userType: string | null
 ): ChatTab[] {
   if (block === "internal_projects") {
-    // Internal Projects (company initiatives) get Messages + Tasks.
-    return ["messages", "tasks"];
+    return ["messages", "files", "links", "videos", "daily_feedback", "tasks"];
   }
-  if (block !== "projects" && block !== "projects_internal") return ["messages"];
+  if (block !== "projects") return ["messages"];
   const role = userType ?? "";
-  if (["admin", "manager", "operational", "developer"].includes(role)) {
-    return [...DOC_TABS, "client_requests", "qa_requests", "chatbot"];
+  if (["admin", "manager", "operational", "developer", "client", "qa"].includes(role)) {
+    return [...DOC_TABS, "client_requests", "chatbot"];
   }
-  if (role === "client") return [...DOC_TABS, "client_requests", "chatbot"];
-  if (role === "qa") return [...DOC_TABS, "qa_requests", "chatbot"];
   return DOC_TABS;
 }
 

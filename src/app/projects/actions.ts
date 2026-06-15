@@ -4,15 +4,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type {
   ProjectStatus,
-  ProjectProgram,
-  ProjectStage,
-  RecommendedBy,
   TaskStatus,
   TaskType,
   TaskLevel,
-  Talent,
-  TalentLevel,
-  TalentAuthorityLevel,
+  TaskPriority,
+  TaskCategory,
 } from "@/types/projects";
 
 // ── Project CRUD ──────────────────────────────────────────────────────────────
@@ -20,12 +16,8 @@ import type {
 export interface ProjectInput {
   name: string;
   status: ProjectStatus;
-  program: ProjectProgram | null;
-  stage: ProjectStage | null;
   estimated_time: number | null;
   real_time: number | null;
-  price: number | null;
-  referrer_commission: number | null;
   start_date_estimated: string | null;
   end_date_estimated: string | null;
   start_date_real: string | null;
@@ -36,11 +28,6 @@ export interface ProjectInput {
   change_automatically_milestone_estimated_time: boolean;
   change_automatically_project_start_end_dates: boolean;
   change_automatically_milestone_start_end_dates: boolean;
-  recommended_by: RecommendedBy | null;
-  talent_who_recommended_id: string | null;
-  client_who_recommended_id: string | null;
-  company_that_recommended_id: string | null;
-  referrer_id: string | null;
 }
 
 export async function createProject(data: ProjectInput): Promise<{ error?: string; id?: string }> {
@@ -96,20 +83,23 @@ export interface TaskInput {
   end_date_real: string | null;
   order: number | null;
   assignee_ids: string[];
+  priority_level?: TaskPriority | null;
+  category?: TaskCategory | null;
 }
 
 export async function createTask(data: TaskInput): Promise<{ error?: string; id?: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
-  const { assignee_ids, ...taskData } = data;
+  const { assignee_ids, priority_level, category, ...taskData } = data;
 
   // assignees is now a UUID[] column on task — write the array directly,
   // no separate join-table insert. (Part 2 item 10 + 31.)
   // created_by is required so that client/QA delete-own RLS works.
-  const { data: row, error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: row, error } = await (supabase as any)
     .from("project_task")
-    .insert({ ...taskData, assignees: assignee_ids, created_by: user.id })
+    .insert({ ...taskData, assignees: assignee_ids, created_by: user.id, priority_level: priority_level ?? null, category: category ?? null })
     .select("id")
     .single();
   if (error) return { error: error.message };
@@ -128,11 +118,13 @@ export async function updateTask(
   data: Partial<TaskInput>
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
-  const { assignee_ids, ...taskData } = data;
+  const { assignee_ids, priority_level, category, ...taskData } = data;
 
   // Merge the assignees write into the same UPDATE — one round-trip.
   const updatePayload: Record<string, unknown> = { ...taskData };
   if (assignee_ids !== undefined) updatePayload.assignees = assignee_ids;
+  if (priority_level !== undefined) updatePayload.priority_level = priority_level;
+  if (category !== undefined) updatePayload.category = category;
   if (Object.keys(updatePayload).length > 0) {
     const { error } = await supabase.from("project_task").update(updatePayload).eq("id", id);
     if (error) return { error: error.message };
@@ -187,7 +179,6 @@ export async function deleteTask(id: string): Promise<{ error?: string }> {
   await Promise.all([
     supabase.from("project_task_comment").delete().in("task_id", allIds),
     supabase.from("project_task_time_track").delete().in("task_id", allIds),
-    supabase.from("project_qa_time_track").delete().in("task_id", allIds),
   ]);
 
   // Nullify parent references then batch delete
@@ -221,7 +212,7 @@ export async function recalculateAggregates(projectId: string): Promise<void> {
   // Fetch project flags + the user-entered aggregate estimates
   const { data: project } = await supabase
     .from("project")
-    .select("id, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, client_developer_estimated_time, qa_developer_estimated_time, qa_tester_estimated_time")
+    .select("id, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, general_requests_estimated_time")
     .eq("id", projectId)
     .single();
   if (!project) return;
@@ -230,13 +221,9 @@ export async function recalculateAggregates(projectId: string): Promise<void> {
     change_automatically_milestone_estimated_time: boolean;
     change_automatically_project_start_end_dates: boolean;
     change_automatically_milestone_start_end_dates: boolean;
-    client_developer_estimated_time: number | null;
-    qa_developer_estimated_time: number | null;
-    qa_tester_estimated_time: number | null;
+    general_requests_estimated_time: number | null;
   };
-  const clientDeveloperEst = p.client_developer_estimated_time ?? 0;
-  const qaDeveloperEst = p.qa_developer_estimated_time ?? 0;
-  const qaTesterEst = p.qa_tester_estimated_time ?? 0;
+  const generalRequestsEst = p.general_requests_estimated_time ?? 0;
 
   // Fetch all tasks for the project
   const { data: tasks } = await supabase
@@ -352,13 +339,12 @@ export async function recalculateAggregates(projectId: string): Promise<void> {
   }
 
   // Project-level aggregates.
-  // Aggregate est columns (client_developer, qa_developer, qa_tester) are
-  // user-entered on the project row — we never overwrite them from task sums.
+  // general_requests_estimated_time is user-entered on the project row — never overwritten from task sums.
   const projectUpdate: Record<string, unknown> = {};
 
   if (p.change_automatically_project_estimated_time) {
     const milestonesSum = milestones.reduce((s, m) => s + (taskMap.get(m.id)!.estimated_time ?? 0), 0);
-    const total = milestonesSum + clientDeveloperEst + qaDeveloperEst + qaTesterEst;
+    const total = milestonesSum + generalRequestsEst;
     projectUpdate.estimated_time = total || null;
   }
   if (p.change_automatically_project_start_end_dates) {
@@ -388,12 +374,11 @@ export async function recalculateRealTime(projectId: string): Promise<void> {
     .eq("project_id", projectId);
   if (!tasks) return;
 
-  const [{ data: timeEntries }, { data: qaTimeEntries }] = await Promise.all([
-    supabase.from("project_task_time_track").select("task_id, time_spent_h, start_date").eq("project_id", projectId),
-    supabase.from("project_qa_time_track").select("task_id, time_spent_h, start_date").eq("project_id", projectId),
-  ]);
+  const { data: timeEntries } = await supabase
+    .from("project_task_time_track")
+    .select("task_id, time_spent_h, start_date")
+    .eq("project_id", projectId);
   const ttEntries = timeEntries ?? [];
-  const qaEntries = qaTimeEntries ?? [];
   const taskById = new Map(tasks.map((t) => [t.id, t]));
 
   // Per-task aggregation from time_track (own entries only)
@@ -479,23 +464,15 @@ export async function recalculateRealTime(projectId: string): Promise<void> {
     const level2RealTime = [...descIds]
       .filter((tid) => taskById.get(tid)?.level === "level_2")
       .reduce((s, tid) => s + (taskTimeMap.get(tid)?.total ?? 0), 0);
-    const milestoneQaRealTime = qaEntries
-      .filter((e) => e.task_id && descIds.has(e.task_id))
-      .reduce((s, e) => s + (e.time_spent_h ?? 0), 0);
-    await supabase.from("project_task").update({ real_time: (level2RealTime + milestoneQaRealTime) || 0 }).eq("id", m.id);
+    await supabase.from("project_task").update({ real_time: level2RealTime || 0 }).eq("id", m.id);
   }
 
   // Project-level real-time aggregates
   const clientDeveloperReal = ttEntries
     .filter((e) => e.task_id && taskById.get(e.task_id)?.type === "client_requests")
     .reduce((s, e) => s + (e.time_spent_h ?? 0), 0);
-  const qaDeveloperReal = ttEntries
-    .filter((e) => e.task_id && taskById.get(e.task_id)?.type === "qa_requests")
-    .reduce((s, e) => s + (e.time_spent_h ?? 0), 0);
-  const qaTesterReal = qaEntries.reduce((s, e) => s + (e.time_spent_h ?? 0), 0);
 
-  // Project-level start/end real dates: min/max over all time_track entries
-  // linked to this project (developer + qa).
+  // Project-level start/end real dates: min/max over all time_track entries.
   let projectMin: string | null = null;
   let projectMax: string | null = null;
   for (const e of ttEntries) {
@@ -503,16 +480,9 @@ export async function recalculateRealTime(projectId: string): Promise<void> {
     if (!projectMin || e.start_date < projectMin) projectMin = e.start_date;
     if (!projectMax || e.start_date > projectMax) projectMax = e.start_date;
   }
-  for (const e of qaEntries) {
-    if (!e.start_date) continue;
-    if (!projectMin || e.start_date < projectMin) projectMin = e.start_date;
-    if (!projectMax || e.start_date > projectMax) projectMax = e.start_date;
-  }
 
   const projectUpdate: Record<string, unknown> = {
-    client_developer_real_time: clientDeveloperReal || null,
-    qa_developer_real_time: qaDeveloperReal || null,
-    qa_tester_real_time: qaTesterReal || null,
+    general_requests_real_time: clientDeveloperReal || null,
     start_date_real: projectMin,
     end_date_real: projectMax,
   };
@@ -531,9 +501,7 @@ export async function recalculateRealTime(projectId: string): Promise<void> {
 // ── Project-level aggregate estimated time (user-entered) ────────────────────
 
 type ProjectAggregateEstField =
-  | "client_developer_estimated_time"
-  | "qa_developer_estimated_time"
-  | "qa_tester_estimated_time"
+  | "general_requests_estimated_time"
   | "estimated_time";
 
 export async function updateProjectAggregateEstimate(
@@ -554,13 +522,6 @@ export async function updateProjectAggregateEstimate(
   }
   revalidatePath("/projects");
   return {};
-}
-
-export async function updateProjectQaTesterEstimatedTime(
-  projectId: string,
-  value: number | null
-): Promise<{ error?: string }> {
-  return updateProjectAggregateEstimate(projectId, "qa_tester_estimated_time", value);
 }
 
 // ── Developer Time Track ──────────────────────────────────────────────────────
@@ -613,64 +574,6 @@ export async function upsertTimeEntry(entry: TimeEntryInput): Promise<{ error?: 
 export async function deleteTimeEntry(id: string, projectId: string): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase.from("project_task_time_track").delete().eq("id", id);
-  if (error) return { error: error.message };
-  await recalculateRealTime(projectId);
-  revalidatePath("/projects");
-  return {};
-}
-
-// ── QA Time Track ─────────────────────────────────────────────────────────────
-
-export interface QATimeEntryInput {
-  id?: string;
-  task_id: string;
-  project_id: string;
-  start_date: string;
-  start_time_min: number;
-  end_time_min: number;
-  time_spent_h: number;
-}
-
-export async function upsertQATimeEntry(
-  entry: QATimeEntryInput
-): Promise<{ error?: string; id?: string }> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated" };
-
-  const payload = {
-    // qa_time_track.owner_user_id → assignee_id (B8 item 42).
-    assignee_id: user.id,
-    task_id: entry.task_id,
-    project_id: entry.project_id,
-    start_date: entry.start_date,
-    start_time_min: entry.start_time_min,
-    end_time_min: entry.end_time_min,
-    time_spent_h: entry.time_spent_h,
-  };
-
-  if (entry.id) {
-    const { error } = await supabase.from("project_qa_time_track").update(payload).eq("id", entry.id);
-    if (error) return { error: error.message };
-    await recalculateRealTime(entry.project_id);
-    revalidatePath("/projects");
-    return { id: entry.id };
-  }
-
-  const { data: row, error } = await supabase
-    .from("project_qa_time_track")
-    .insert(payload)
-    .select("id")
-    .single();
-  if (error) return { error: error.message };
-  await recalculateRealTime(entry.project_id);
-  revalidatePath("/projects");
-  return { id: row.id };
-}
-
-export async function deleteQATimeEntry(id: string, projectId: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("project_qa_time_track").delete().eq("id", id);
   if (error) return { error: error.message };
   await recalculateRealTime(projectId);
   revalidatePath("/projects");
@@ -769,102 +672,6 @@ export async function getTaskTimeEntries(taskId: string) {
     .eq("task_id", taskId)
     .order("start_date", { ascending: true });
   return (data ?? []) as unknown as import("@/types/projects").TimeTrack[];
-}
-
-// ── Talent ────────────────────────────────────────────────────────────────────
-
-export async function searchTalents(query: string): Promise<Talent[]> {
-  if (!query.trim()) return [];
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("talent")
-    .select("id, name, email, level, current_company_id")
-    .ilike("name", `%${query.trim()}%`)
-    .limit(10);
-  return (data ?? []) as unknown as Talent[];
-}
-
-export async function getTalentById(id: string): Promise<Talent | null> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("talent")
-    .select("id, name, email, level, current_company_id")
-    .eq("id", id)
-    .single();
-  return (data ?? null) as unknown as Talent | null;
-}
-
-export interface TalentInput {
-  name: string;
-  email: string | null;
-  level: TalentLevel | null;
-  authority_level: TalentAuthorityLevel | null;
-  current_company_id: string | null;
-}
-
-export async function createTalent(data: TalentInput): Promise<{ error?: string; id?: string; talent?: Talent }> {
-  const supabase = await createClient();
-  const { data: row, error } = await supabase
-    .from("talent")
-    .insert(data)
-    .select("id, name, email, level, current_company_id")
-    .single();
-  if (error) return { error: error.message };
-  return { id: (row as any).id, talent: row as unknown as Talent };
-}
-
-// ── Company ───────────────────────────────────────────────────────────────────
-
-export async function searchCompanies(query: string): Promise<{ id: string; name: string }[]> {
-  if (!query.trim()) return [];
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("company")
-    .select("id, name")
-    .ilike("name", `%${query.trim()}%`)
-    .limit(10);
-  return (data ?? []) as { id: string; name: string }[];
-}
-
-export async function createCompany(name: string, website?: string | null): Promise<{ error?: string; id?: string }> {
-  const supabase = await createClient();
-  const { data: row, error } = await supabase
-    .from("company")
-    .insert({ name, website: website ?? null })
-    .select("id")
-    .single();
-  if (error) return { error: error.message };
-  return { id: row.id };
-}
-
-// ── Client (search for "Recommended by → Client" picker) ─────────────────────
-
-export interface ClientLite {
-  id: string;
-  name: string | null;
-  picture: string | null;
-}
-
-export async function searchClients(query: string): Promise<ClientLite[]> {
-  if (!query.trim()) return [];
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("client")
-    .select("id, name, picture")
-    .ilike("name", `%${query.trim()}%`)
-    .order("name")
-    .limit(10);
-  return (data ?? []) as ClientLite[];
-}
-
-export async function getClientById(id: string): Promise<ClientLite | null> {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("client")
-    .select("id, name, picture")
-    .eq("id", id)
-    .single();
-  return (data ?? null) as ClientLite | null;
 }
 
 // ── Import tasks from an idea ─────────────────────────────────────────────────
@@ -1059,10 +866,8 @@ export async function importTasksFromIdea(
   //    (typical idea: 3–8 milestones with 4–10 tasks each) and the
   //    implementation stays simple.
 
-  // Accumulate special task times (in minutes) for project aggregate update.
+  // Accumulate client_requests task times (in minutes) for project aggregate update.
   let clientDevMins = 0;
-  let qaDevMins = 0;
-  let qaTesterMins = 0;
 
   // All imported tasks belong to the milestone view → always developer_tasks.
   // Special task names are identified only for project aggregate accumulation.
@@ -1121,13 +926,8 @@ export async function importTasksFromIdea(
       // Accumulate RAW minutes from AI (before /60) for project aggregate fields.
       const rawMins = typeof t.estimated_time_minutes === "number" ? t.estimated_time_minutes : 0;
       const tt = (t.task_type ?? "").toLowerCase();
-      const tn = taskName.toLowerCase();
-      if (tt === "client_requests" || tn === "client requests (developer)") {
+      if (tt === "client_requests") {
         clientDevMins += rawMins;
-      } else if (tt === "qa_developer" || tn === "qa requests (developer)") {
-        qaDevMins += rawMins;
-      } else if (tt === "qa_tester" || tn === "qa requests (qa tester)") {
-        qaTesterMins += rawMins;
       }
 
       const { error: tErr } = await supabase
@@ -1152,11 +952,9 @@ export async function importTasksFromIdea(
     }
   }
 
-  // 6. Write project-level aggregate fields for Client/QA tasks (stored in hours).
+  // 6. Write project-level aggregate field for General Requests tasks (stored in hours).
   const projectAggUpdate: Record<string, number> = {};
-  if (clientDevMins > 0) projectAggUpdate.client_developer_estimated_time = clientDevMins / 60;
-  if (qaDevMins > 0)     projectAggUpdate.qa_developer_estimated_time     = qaDevMins / 60;
-  if (qaTesterMins > 0)  projectAggUpdate.qa_tester_estimated_time        = qaTesterMins / 60;
+  if (clientDevMins > 0) projectAggUpdate.general_requests_estimated_time = clientDevMins / 60;
   if (Object.keys(projectAggUpdate).length > 0) {
     await supabase.from("project").update(projectAggUpdate).eq("id", projectId);
   }

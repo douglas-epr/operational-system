@@ -28,46 +28,52 @@ export async function savePlaybookVersion(
   versionId: string,
   content: string
 ): Promise<{ error?: string }> {
-  const { supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
-  if (authErr) return { error: authErr };
-  const { error } = await supabase
-    .from("project_playbook_version")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase
+    .from("idea_playbook_version")
     .update({ content, updated_at: new Date().toISOString() })
     .eq("id", versionId);
   if (error) return { error: error.message };
   revalidatePath("/docs");
+  revalidatePath("/ideas-refiner");
   return {};
 }
 
 export async function deletePlaybookVersion(versionId: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("project_playbook_version").delete().eq("id", versionId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = await createClient() as any;
+  const { error } = await supabase.from("idea_playbook_version").delete().eq("id", versionId);
   if (error) return { error: error.message };
   revalidatePath("/docs");
+  revalidatePath("/ideas-refiner");
   return {};
 }
 
-export async function createPlaybookVersion(
-  projectId: string,
+export async function createIdeaPlaybookVersion(
+  ideaId: string,
   content: string
 ): Promise<{ error?: string; version?: { id: string; version_name: string | null; created_at: string; updated_at: string } }> {
-  const { user, supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
-  if (authErr) return { error: authErr };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { supabase: sb, user } = result;
 
-  const { count } = await supabase
-    .from("project_playbook_version")
+  const { count } = await sb
+    .from("idea_playbook_version")
     .select("id", { count: "exact", head: true })
-    .eq("project_id", projectId);
+    .eq("idea_id", ideaId);
 
   const versionName = `Version ${(count ?? 0) + 1}`;
 
-  const { data, error } = await supabase
-    .from("project_playbook_version")
+  const { data, error } = await sb
+    .from("idea_playbook_version")
     .insert({
-      project_id: projectId,
+      idea_id: ideaId,
       version_name: versionName,
       content,
-      created_by: user!.id,
+      created_by: user.id,
       updated_at: new Date().toISOString(),
     })
     .select("id, version_name, created_at, updated_at")
@@ -75,6 +81,7 @@ export async function createPlaybookVersion(
 
   if (error) return { error: error.message };
   revalidatePath("/docs");
+  revalidatePath("/ideas-refiner");
   return { version: data };
 }
 
@@ -82,21 +89,20 @@ export async function createPlaybookVersion(
 
 export async function addPlaybookComment(input: {
   playbookId: string;
-  projectId: string;
   message: string;
   attachments: DocsAttachment[];
 }): Promise<{ error?: string; comment?: { id: string } }> {
-  const { user, supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
-  if (authErr) return { error: authErr };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
 
-  const { data, error } = await supabase
-    .from("project_playbook_comment")
+  const { data, error } = await result.supabase
+    .from("idea_playbook_comment")
     .insert({
       playbook_id: input.playbookId,
-      project_id:  input.projectId,
       message:     input.message,
       attachments: input.attachments as unknown as Json,
-      created_by:  user!.id,
+      created_by:  result.user.id,
     })
     .select("id")
     .single();
@@ -110,13 +116,14 @@ export async function editPlaybookComment(
   id: string,
   patch: { message?: string; attachments?: DocsAttachment[] }
 ): Promise<{ error?: string }> {
-  const { supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
-  if (authErr) return { error: authErr };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.message !== undefined) updates.message = patch.message;
   if (patch.attachments !== undefined) updates.attachments = patch.attachments as unknown as Json;
-  const { error } = await supabase
-    .from("project_playbook_comment")
+  const { error } = await result.supabase
+    .from("idea_playbook_comment")
     .update(updates)
     .eq("id", id);
   if (error) return { error: error.message };
@@ -125,10 +132,11 @@ export async function editPlaybookComment(
 }
 
 export async function deletePlaybookComment(id: string): Promise<{ error?: string }> {
-  const { supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
-  if (authErr) return { error: authErr };
-  const { error } = await supabase
-    .from("project_playbook_comment")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase
+    .from("idea_playbook_comment")
     .delete()
     .eq("id", id);
   if (error) return { error: error.message };
@@ -140,10 +148,11 @@ export async function setPlaybookCommentStatus(
   id: string,
   status: PlaybookCommentStatus,
 ): Promise<{ error?: string }> {
-  const { supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
-  if (authErr) return { error: authErr };
-  const { error } = await supabase
-    .from("project_playbook_comment")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase
+    .from("idea_playbook_comment")
     .update({ status, updated_at: new Date().toISOString() })
     .eq("id", id);
   if (error) return { error: error.message };
@@ -156,22 +165,21 @@ export async function setPlaybookCommentStatus(
 export async function addPlaybookCommentReply(input: {
   commentId: string;
   playbookId: string;
-  projectId: string;
   message: string;
   attachments: DocsAttachment[];
 }): Promise<{ error?: string; reply?: { id: string } }> {
-  const { user, supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
-  if (authErr) return { error: authErr };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
 
-  const { data, error } = await supabase
-    .from("project_playbook_comment_reply")
+  const { data, error } = await result.supabase
+    .from("idea_playbook_comment_reply")
     .insert({
-      project_playbook_comment_id: input.commentId,
-      playbook_id:                 input.playbookId,
-      project_id:                  input.projectId,
-      message:                     input.message,
-      attachments:                 input.attachments as unknown as Json,
-      created_by:                  user!.id,
+      idea_playbook_comment_id: input.commentId,
+      playbook_id:              input.playbookId,
+      message:                  input.message,
+      attachments:              input.attachments as unknown as Json,
+      created_by:               result.user.id,
     })
     .select("id")
     .single();
@@ -185,12 +193,13 @@ export async function editPlaybookCommentReply(
   id: string,
   patch: { message?: string; attachments?: DocsAttachment[] }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = await createClient() as any;
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.message !== undefined) updates.message = patch.message;
   if (patch.attachments !== undefined) updates.attachments = patch.attachments as unknown as Json;
   const { error } = await supabase
-    .from("project_playbook_comment_reply")
+    .from("idea_playbook_comment_reply")
     .update(updates)
     .eq("id", id);
   if (error) return { error: error.message };
@@ -199,9 +208,10 @@ export async function editPlaybookCommentReply(
 }
 
 export async function deletePlaybookCommentReply(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = await createClient() as any;
   const { error } = await supabase
-    .from("project_playbook_comment_reply")
+    .from("idea_playbook_comment_reply")
     .delete()
     .eq("id", id);
   if (error) return { error: error.message };
@@ -640,73 +650,6 @@ export async function deleteDailyFeedback(id: string): Promise<{ error?: string 
   return {};
 }
 
-// ── Invoices (Docs › Invoices tab) ─────────────────────────────────────────────
-
-export interface InvoicePayload {
-  code: string;
-  company_or_user_name: string | null;
-  document_number: string | null;
-  address: string | null;
-  phone: string | null;
-  email: string | null;
-  client_name: string | null;
-  service_price: number | null;
-  due_date: string | null;
-  service_title: string | null;
-  service_description: string | null;
-  swift_code: string | null;
-  iban_code: string | null;
-}
-
-export async function createProjectInvoice(input: {
-  projectId: string;
-  data: InvoicePayload;
-}): Promise<{ error?: string; invoice?: { id: string } }> {
-  const { user, supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
-  if (authErr) return { error: authErr };
-
-  const { data, error } = await supabase
-    .from("project_invoice")
-    .insert({
-      project_id: input.projectId,
-      created_by: user!.id,
-      ...input.data,
-      updated_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-
-  if (error) return { error: error.message };
-  revalidatePath("/docs");
-  return { invoice: data };
-}
-
-export async function updateProjectInvoice(
-  id: string,
-  patch: Partial<InvoicePayload>,
-): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const [k, v] of Object.entries(patch)) {
-    if (v !== undefined) updates[k] = v;
-  }
-  const { error } = await supabase
-    .from("project_invoice")
-    .update(updates)
-    .eq("id", id);
-  if (error) return { error: error.message };
-  revalidatePath("/docs");
-  return {};
-}
-
-export async function deleteProjectInvoice(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("project_invoice").delete().eq("id", id);
-  if (error) return { error: error.message };
-  revalidatePath("/docs");
-  return {};
-}
-
 // ── Playbook from Sandbox idea ────────────────────────────────────────────────
 
 function section(title: string, body: string | null | undefined): string {
@@ -1034,7 +977,7 @@ export async function buildPlaybookFromIdea(
   const ai = await resolveAiConfig(supabaseUser, user.id);
   if (!ai) {
     // No AI configured — save the raw compiled HTML directly.
-    return createPlaybookVersion(projectId, rawHtml);
+    return createIdeaPlaybookVersion(ideaId, rawHtml);
   }
 
   const promptTemplate = await getPlaybookPromptTemplate();
@@ -1049,7 +992,7 @@ export async function buildPlaybookFromIdea(
     ? aiRes.text
     : rawHtml;
 
-  return createPlaybookVersion(projectId, html);
+  return createIdeaPlaybookVersion(ideaId, html);
 }
 
 // ── Idea picker (used by BuildFromIdeaModal) ───────────────────────────────────

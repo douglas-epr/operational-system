@@ -61,7 +61,7 @@ export default function ProjectChatbotTab({ projectId, block, currentUserId }: P
 
   // Realtime subscription so concurrent members see the same conversation.
   useEffect(() => {
-    if (block !== "projects" && block !== "projects_internal") return;
+    if (block !== "projects") return;
     const table = TABLE_BY_BLOCK[block];
     const supabase = createClient();
     const channel = supabase
@@ -107,10 +107,10 @@ export default function ProjectChatbotTab({ projectId, block, currentUserId }: P
   }
 
   // Project-block guard so the runtime never tries to write to a private bot.
-  if (block !== "projects" && block !== "projects_internal") {
+  if (block !== "projects") {
     return (
       <div className="flex-1 flex items-center justify-center text-sm text-text-muted">
-        Chatbot is only available on Projects / Projects Internal.
+        Chatbot is only available on Projects.
       </div>
     );
   }

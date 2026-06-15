@@ -42,6 +42,8 @@ export async function createIdea(data: {
   name: string;
   description: string;
   project_id?: string;
+  version_name?: string;
+  authorized_users?: string[];
 }): Promise<{ error?: string; id?: string }> {
   const supabase = await createClient();
   const {
@@ -55,6 +57,8 @@ export async function createIdea(data: {
       name: data.name,
       description: data.description,
       project_id: data.project_id || null,
+      version_name: data.version_name || null,
+      authorized_users: data.authorized_users ?? [],
       created_by: user.id,
     })
     .select("id")
@@ -93,7 +97,11 @@ export async function duplicateIdea(ideaId: string): Promise<{ error?: string; i
   if (!full) return { error: "Idea not found" };
 
   // Create the new idea — omit version_name so the DB trigger assigns it.
-  const { data: newIdeaRow, error: ideaErr } = await supabase
+  // current_block_ended may be "playbook" which the generated types don't yet
+  // include (migration applied; types not regenerated). Cast client to any.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anySupabase = supabase as any;
+  const { data: newIdeaRow, error: ideaErr } = await anySupabase
     .from("idea")
     .insert({
       name: full.idea.name,
@@ -871,6 +879,7 @@ Target Audience: {{target_audience}}
 
 Return a JSON object with EXACTLY these keys (no extra keys, no omissions):
 - "logo_branding": Rich HTML describing the conceptual logo, app name styling, icon/symbol concepts, and overall brand style.
+- "color_palette": Rich HTML describing the Color Narrative — the story and meaning behind the chosen colors, emotional associations, usage philosophy, and how the palette reflects the brand personality.
 - "product_feeling": Rich HTML describing the product feeling for different contexts (admin UI, user-facing, mobile) and how the visual identity creates the intended emotional response.
 - "primary_color": Hex string (e.g. "#3B82F6") — main brand color.
 - "secondary_color": Hex string — secondary brand color.
@@ -930,6 +939,11 @@ export async function triggerAiGeneration(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
+
+  // Playbook is a content assembly (no LLM call) — handle before AI-config resolution.
+  if (step === "playbook") {
+    return assemblePlaybookVersion(supabase, ideaId, user.id);
+  }
 
   // Resolve AI configuration
   const aiConfig = await resolveAiConfig(supabase, user.id);
@@ -1089,6 +1103,132 @@ export async function triggerAiGeneration(
 }
 
 // ── AI Generation Helpers (private) ──────────────────────────────────────────
+
+/**
+ * Assembles a Build Guide playbook version from the stored content of the
+ * PRD, Visual Styles, Database, and Milestones & Tasks steps.
+ * No LLM call — pure assembly. Mirrors the idea state-machine used by LLM
+ * steps so the "AI is working…" overlay shows correctly on the client.
+ */
+async function assemblePlaybookVersion(
+  supabase: SupabaseClient,
+  ideaId: string,
+  userId: string
+): Promise<{ error?: string }> {
+  const requestId = crypto.randomUUID();
+
+  await supabase
+    .from("idea")
+    .update({ current_blocks_updating: "playbook", current_ai_request_id: requestId })
+    .eq("id", ideaId);
+
+  try {
+    const [{ data: prd }, { data: styles }, { data: db }, { data: milestones }] = await Promise.all([
+      supabase
+        .from("idea_prd" as never)
+        .select("app_overview, objectives, priority_personas, essential_features, user_flow, non_functional_reqs, out_of_scope, success_indicators, phasing_notes")
+        .eq("idea_id", ideaId)
+        .maybeSingle(),
+      supabase
+        .from("idea_styles" as never)
+        .select("logo_branding, color_palette, product_feeling, brand_voice, iconography_style, motion_principles")
+        .eq("idea_id", ideaId)
+        .maybeSingle(),
+      supabase
+        .from("idea_database" as never)
+        .select("tables_schema, relationships, notes")
+        .eq("idea_id", ideaId)
+        .maybeSingle(),
+      supabase
+        .from("idea_milestones_and_tasks" as never)
+        .select("content")
+        .eq("idea_id", ideaId)
+        .maybeSingle(),
+    ]);
+
+    const sections: string[] = [];
+
+    const prdRow = prd as {
+      app_overview: string | null; objectives: string | null;
+      priority_personas: string | null; essential_features: string | null;
+      user_flow: string | null; non_functional_reqs: string | null;
+      out_of_scope: string | null; success_indicators: string | null;
+      phasing_notes: string | null;
+    } | null;
+    if (prdRow) {
+      const body = [
+        prdRow.app_overview, prdRow.objectives, prdRow.priority_personas,
+        prdRow.essential_features, prdRow.user_flow, prdRow.non_functional_reqs,
+        prdRow.out_of_scope, prdRow.success_indicators, prdRow.phasing_notes,
+      ].filter(Boolean).join("\n");
+      if (body.trim()) sections.push(`<h2>Product Requirements Document (PRD)</h2>${body}`);
+    }
+
+    const stylesRow = styles as {
+      logo_branding: string | null; color_palette: string | null;
+      product_feeling: string | null; brand_voice: string | null;
+      iconography_style: string | null; motion_principles: string | null;
+    } | null;
+    if (stylesRow) {
+      const body = [
+        stylesRow.logo_branding, stylesRow.color_palette, stylesRow.product_feeling,
+        stylesRow.brand_voice, stylesRow.iconography_style, stylesRow.motion_principles,
+      ].filter(Boolean).join("\n");
+      if (body.trim()) sections.push(`<h2>Visual Styles</h2>${body}`);
+    }
+
+    const dbRow = db as { tables_schema: string | null; relationships: string | null; notes: string | null } | null;
+    if (dbRow) {
+      const body = [dbRow.tables_schema, dbRow.relationships, dbRow.notes].filter(Boolean).join("\n");
+      if (body.trim()) sections.push(`<h2>Database</h2>${body}`);
+    }
+
+    const milRow = milestones as { content: string | null } | null;
+    if (milRow?.content?.trim()) {
+      sections.push(`<h2>Milestones &amp; Tasks</h2>${milRow.content}`);
+    }
+
+    const html = sections.length > 0
+      ? sections.join("\n\n")
+      : "<p>No content available yet. Complete the PRD, Visual Styles, Database, and Milestones steps first.</p>";
+
+    const { count } = await supabase
+      .from("idea_playbook_version" as never)
+      .select("id", { count: "exact", head: true })
+      .eq("idea_id", ideaId);
+
+    const { error: insertError } = await supabase
+      .from("idea_playbook_version" as never)
+      .insert({
+        idea_id: ideaId,
+        version_name: `Build Guide — v${(count ?? 0) + 1}`,
+        content: html,
+        created_by: userId,
+        updated_at: new Date().toISOString(),
+      });
+
+    if (insertError) throw new Error((insertError as { message: string }).message);
+
+    if (await isRequestActive(supabase, ideaId, requestId)) {
+      await supabase
+        .from("idea")
+        .update({ current_blocks_updating: null, current_block_ended: "playbook" as never, current_ai_request_id: null })
+        .eq("id", ideaId);
+    }
+
+    revalidatePath(PATH);
+    return {};
+  } catch (e) {
+    if (await isRequestActive(supabase, ideaId, requestId)) {
+      await supabase
+        .from("idea")
+        .update({ current_blocks_updating: null, current_ai_request_id: null })
+        .eq("id", ideaId);
+    }
+    revalidatePath(PATH);
+    return { error: e instanceof Error ? e.message : "Playbook assembly failed" };
+  }
+}
 
 async function generateStructureAlign(
   supabase: SupabaseClient,
@@ -1588,6 +1728,7 @@ async function generateVisualStylesContent(
 
   const payload = {
     logo_branding: d.logo_branding,
+    color_palette: d.color_palette,
     product_feeling: d.product_feeling,
     primary_color: d.primary_color,
     secondary_color: d.secondary_color,
@@ -1630,9 +1771,9 @@ async function generateMilestonesContent(
   platform?: "bubble" | "claude_code"
 ): Promise<{ error?: string }> {
   const prd = prdData as { app_overview: string | null; essential_features: string | null } | null;
-  const stepKey = platform === "claude_code"
-    ? "milestones_and_tasks_claude_code"
-    : "milestones_and_tasks_bubble";
+  const stepKey = platform === "bubble"
+    ? "milestones_and_tasks_bubble"
+    : "milestones_and_tasks_claude_code";
   const template = (await getPromptTemplate(stepKey)) ?? FALLBACK_MILESTONES;
   const prompt = renderPrompt(template, {
     idea_name: idea.name,

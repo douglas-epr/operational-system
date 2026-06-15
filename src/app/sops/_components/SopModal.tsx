@@ -5,8 +5,7 @@ import Modal from "@/app/projects/_components/modals/Modal";
 import { UserMultiSelect } from "@/components/ui";
 import { createSop, updateSop, createTag } from "../actions";
 import type { SopWithTags, SopTag } from "@/types/sops";
-import { USER_TYPE_OPTIONS } from "@/types/sops";
-import type { UserType, UserProfile } from "@/types/projects";
+import type { UserProfile } from "@/types/projects";
 
 interface Props {
   open: boolean;
@@ -23,7 +22,6 @@ export default function SopModal({ open, onClose, sop, allTags, profiles, onTagC
 
   const [name, setName]                   = useState("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [selectedTypes, setSelectedTypes]   = useState<UserType[]>([]);
   const [selectedUsers, setSelectedUsers]   = useState<string[]>([]);
   const [error, setError]                   = useState("");
   const [newTagName, setNewTagName]         = useState("");
@@ -35,10 +33,9 @@ export default function SopModal({ open, onClose, sop, allTags, profiles, onTagC
     if (sop) {
       setName(sop.name ?? "");
       setSelectedTagIds(sop.tags.map((t) => t.id));
-      setSelectedTypes(sop.authorized_user_types);
       setSelectedUsers(sop.authorized_users);
     } else {
-      setName(""); setSelectedTagIds([]); setSelectedTypes([]); setSelectedUsers([]);
+      setName(""); setSelectedTagIds([]); setSelectedUsers([]);
     }
     setError(""); setNewTagName(""); setShowTagInput(false);
   }, [sop, open]);
@@ -46,12 +43,6 @@ export default function SopModal({ open, onClose, sop, allTags, profiles, onTagC
   function toggleTag(id: string) {
     setSelectedTagIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
-  }
-
-  function toggleType(type: UserType) {
-    setSelectedTypes((prev) =>
-      prev.includes(type) ? prev.filter((x) => x !== type) : [...prev, type]
     );
   }
 
@@ -75,7 +66,6 @@ export default function SopModal({ open, onClose, sop, allTags, profiles, onTagC
       const payload = {
         name: name.trim(),
         tag_ids: selectedTagIds,
-        authorized_user_types: selectedTypes,
         authorized_users: selectedUsers,
       };
       const result = isEdit
@@ -87,7 +77,7 @@ export default function SopModal({ open, onClose, sop, allTags, profiles, onTagC
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? "Edit SOP" : "Create SOP"} width="max-w-lg">
+    <Modal open={open} onClose={onClose} title={isEdit ? "Edit Document" : "Create Document"} width="max-w-lg">
       <div className="px-6 pb-6 flex flex-col gap-5">
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-3 py-2 rounded-md">
@@ -150,44 +140,19 @@ export default function SopModal({ open, onClose, sop, allTags, profiles, onTagC
           )}
         </div>
 
-        {/* Authorized User Types — admin/manager only */}
-        {isAdminOrManager && (
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-medium text-text-secondary">Authorized User Types</label>
-            <div className="flex flex-wrap gap-1.5">
-              {USER_TYPE_OPTIONS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  onClick={() => toggleType(value)}
-                  className={`px-2.5 py-1 rounded-full text-xs transition-colors border ${
-                    selectedTypes.includes(value)
-                      ? "bg-accent text-white border-accent"
-                      : "bg-muted text-text-secondary border-border hover:border-accent"
-                  }`}
-                >
-                  {selectedTypes.includes(value) && <span className="mr-1">×</span>}
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Authorized Users — admin/manager only */}
-        {isAdminOrManager && (
-          <UserMultiSelect
-            label="Authorized Users"
-            value={selectedUsers}
-            onChange={setSelectedUsers}
-            options={profiles.map((p) => ({
-              id: p.id,
-              name: [p.first_name, p.last_name].filter(Boolean).join(" ") || "Unknown",
-              role: p.type ?? null,
-              picture: p.picture ?? null,
-            }))}
-            placeholder="Add people"
-          />
-        )}
+        {/* Authorized Users */}
+        <UserMultiSelect
+          label="Authorized Users"
+          value={selectedUsers}
+          onChange={setSelectedUsers}
+          options={profiles.map((p) => ({
+            id: p.id,
+            name: [p.first_name, p.last_name].filter(Boolean).join(" ") || "Unknown",
+            role: p.type ?? null,
+            picture: p.picture ?? null,
+          }))}
+          placeholder="Add people"
+        />
 
 
         {/* Buttons */}

@@ -1,22 +1,15 @@
 ﻿"use client";
 
-import { useState, useEffect, useTransition, useRef } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Modal from "./Modal";
 import DatePicker from "@/components/DatePicker";
-import type { Project, ProjectStatus, ProjectProgram, ProjectStage, UserProfile, UserType, Talent } from "@/types/projects";
-import { STAGE_LABELS, STAGE_ORDER, PROGRAM_LABELS } from "@/types/projects";
+import type { Project, ProjectStatus, UserProfile, UserType } from "@/types/projects";
 import {
   createProject,
   updateProject,
-  searchTalents,
-  searchClients,
-  getClientById,
-  getTalentById,
-  type ClientLite,
   type ProjectInput,
 } from "../../actions";
-import CreateTalentModal from "./CreateTalentModal";
 import RichTextEditor from "@/app/ideas-refiner/_components/RichTextEditor";
 import { UserMultiSelect } from "@/components/ui";
 
@@ -44,11 +37,6 @@ const STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
   { value: "lost_deal",    label: "Lost Deal" },
 ];
 
-const PROGRAM_OPTIONS = Object.entries(PROGRAM_LABELS).map(([value, label]) => ({
-  value: value as ProjectProgram,
-  label,
-}));
-
 function ProgressBar({ label, pct }: { label: string; pct: number }) {
   const clamped = Math.min(100, Math.max(0, Math.round(pct)));
   return (
@@ -69,19 +57,13 @@ export default function ProjectModal({ open, onClose, project, profiles, taskPro
   const isEdit = !!project;
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [createTalentOpen, setCreateTalentOpen] = useState(false);
   const canEdit = userType === "admin" || userType === "manager";
-  const showFinancials = canEdit; // hide price / commission / recommender pickers for everyone else
 
   // Form state — all reset when modal opens or project changes
   const [name, setName] = useState("");
   const [status, setStatus] = useState<ProjectStatus>("not_started");
-  const [program, setProgram] = useState<ProjectProgram | "">("");
-  const [stage, setStage] = useState<ProjectStage | "">("");
   const [estimatedTime, setEstimatedTime] = useState("");
   const [realTimeVal, setRealTimeVal] = useState("");
-  const [price, setPrice] = useState("");
-  const [commission, setCommission] = useState("0.00");
   const [startEst, setStartEst] = useState("");
   const [endEst, setEndEst] = useState("");
   const [startReal, setStartReal] = useState("");
@@ -93,34 +75,13 @@ export default function ProjectModal({ open, onClose, project, profiles, taskPro
   const [autoProjectDates, setAutoProjectDates] = useState(false);
   const [autoMilestoneDates, setAutoMilestoneDates] = useState(false);
 
-  // Recommended by
-  const [recommendedBy, setRecommendedBy] = useState<"dev_agency_owner" | "client" | "">("");
-  // Dev/Agency owner picker
-  const [talentSearch, setTalentSearch] = useState("");
-  const [talentResults, setTalentResults] = useState<Talent[]>([]);
-  const [selectedTalent, setSelectedTalent] = useState<Talent | null>(null);
-  const [talentDropdownOpen, setTalentDropdownOpen] = useState(false);
-  const talentSearchRef = useRef<HTMLDivElement>(null);
-  const [isSearching, startSearchTransition] = useTransition();
-  // Client picker
-  const [clientSearch, setClientSearch] = useState("");
-  const [clientResults, setClientResults] = useState<ClientLite[]>([]);
-  const [selectedClient, setSelectedClient] = useState<ClientLite | null>(null);
-  const [clientDropdownOpen, setClientDropdownOpen] = useState(false);
-  const clientSearchRef = useRef<HTMLDivElement>(null);
-  const [isSearchingClient, startClientSearchTransition] = useTransition();
-
   // Reset all state when modal opens/closes or project changes
   useEffect(() => {
     if (!open) return;
     setName(project?.name ?? "");
     setStatus(project?.status ?? "not_started");
-    setProgram(project?.program ?? "");
-    setStage(project?.stage ?? "");
     setEstimatedTime(project?.estimated_time?.toString() ?? "");
     setRealTimeVal(project?.real_time?.toString() ?? "");
-    setPrice(project?.price?.toString() ?? "");
-    setCommission(project?.referrer_commission?.toString() ?? "0.00");
     setStartEst(project?.start_date_estimated ?? "");
     setEndEst(project?.end_date_estimated ?? "");
     setStartReal(project?.start_date_real ?? "");
@@ -131,88 +92,8 @@ export default function ProjectModal({ open, onClose, project, profiles, taskPro
     setAutoMilestoneEst(project?.change_automatically_milestone_estimated_time ?? false);
     setAutoProjectDates(project?.change_automatically_project_start_end_dates ?? false);
     setAutoMilestoneDates(project?.change_automatically_milestone_start_end_dates ?? false);
-    // Prefer the explicit recommended_by column; fall back to inferring
-    // from whichever recommender FK is set so older rows still render.
-    setRecommendedBy(
-      project?.recommended_by ??
-        (project?.talent_who_recommended_id
-          ? "dev_agency_owner"
-          : project?.client_who_recommended_id
-          ? "client"
-          : "")
-    );
-    setSelectedTalent(null);
-    setTalentSearch("");
-    setTalentResults([]);
-    setSelectedClient(null);
-    setClientSearch("");
-    setClientResults([]);
-    // Hydrate the talent picker from project.talent_who_recommended_id so
-    // the saved Dev / Agency Owner stays selected when the modal reopens.
-    if (project?.talent_who_recommended_id) {
-      getTalentById(project.talent_who_recommended_id).then((t) => {
-        if (t) {
-          setSelectedTalent(t);
-          setTalentSearch(t.name ?? "");
-        }
-      });
-    }
-    // Hydrate the client picker from project.client_who_recommended_id.
-    if (project?.client_who_recommended_id) {
-      getClientById(project.client_who_recommended_id).then((c) => {
-        if (c) {
-          setSelectedClient(c);
-          setClientSearch(c.name ?? "");
-        }
-      });
-    }
     setError(null);
   }, [open, project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Close talent / client dropdowns on outside click
-  useEffect(() => {
-    function handle(e: MouseEvent) {
-      if (talentSearchRef.current && !talentSearchRef.current.contains(e.target as Node)) {
-        setTalentDropdownOpen(false);
-      }
-      if (clientSearchRef.current && !clientSearchRef.current.contains(e.target as Node)) {
-        setClientDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
-
-  function handleClientSearch(query: string) {
-    setClientSearch(query);
-    setClientDropdownOpen(true);
-    if (!query.trim()) { setClientResults([]); return; }
-    startClientSearchTransition(async () => {
-      const results = await searchClients(query);
-      setClientResults(results);
-    });
-  }
-  function handleSelectClient(c: ClientLite) {
-    setSelectedClient(c);
-    setClientSearch(c.name ?? "");
-    setClientDropdownOpen(false);
-  }
-
-  function handleTalentSearch(query: string) {
-    setTalentSearch(query);
-    setTalentDropdownOpen(true);
-    if (!query.trim()) { setTalentResults([]); return; }
-    startSearchTransition(async () => {
-      const results = await searchTalents(query);
-      setTalentResults(results);
-    });
-  }
-
-  function handleSelectTalent(t: Talent) {
-    setSelectedTalent(t);
-    setTalentSearch(t.name ?? "");
-    setTalentDropdownOpen(false);
-  }
 
   const handleSave = () => {
     setError(null);
@@ -221,12 +102,8 @@ export default function ProjectModal({ open, onClose, project, profiles, taskPro
     const payload: ProjectInput = {
       name: name.trim(),
       status,
-      program: (program || null) as ProjectProgram | null,
-      stage: (stage || null) as ProjectStage | null,
       estimated_time: estimatedTime ? parseFloat(estimatedTime) : null,
       real_time: realTimeVal ? parseFloat(realTimeVal) : null,
-      price: price ? parseFloat(price) : null,
-      referrer_commission: commission ? parseFloat(commission) : null,
       start_date_estimated: startEst || null,
       end_date_estimated: endEst || null,
       start_date_real: startReal || null,
@@ -237,20 +114,6 @@ export default function ProjectModal({ open, onClose, project, profiles, taskPro
       change_automatically_milestone_estimated_time: autoMilestoneEst,
       change_automatically_project_start_end_dates: autoProjectDates,
       change_automatically_milestone_start_end_dates: autoMilestoneDates,
-      recommended_by: recommendedBy === "" ? null : recommendedBy,
-      talent_who_recommended_id:
-        recommendedBy === "dev_agency_owner"
-          ? (selectedTalent?.id ?? project?.talent_who_recommended_id ?? null)
-          : null,
-      client_who_recommended_id:
-        recommendedBy === "client"
-          ? (selectedClient?.id ?? project?.client_who_recommended_id ?? null)
-          : null,
-      company_that_recommended_id: project?.company_that_recommended_id ?? null,
-      // Preserve any existing referrer_id; this modal doesn't expose it
-      // directly, but it's persisted so the RLS policy
-      // "project: referrer read own" keeps working for legacy rows.
-      referrer_id: project?.referrer_id ?? null,
     };
 
     startTransition(async () => {
@@ -337,26 +200,6 @@ export default function ProjectModal({ open, onClose, project, profiles, taskPro
             </Field>
           </div>
 
-          {/* Program + Stage */}
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Program" required>
-              <select value={program} onChange={(e) => setProgram(e.target.value as ProjectProgram | "")} disabled={!canEdit} className="input-field disabled:opacity-60 disabled:cursor-not-allowed">
-                <option value="">Select program…</option>
-                {PROGRAM_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Stage" required>
-              <select value={stage} onChange={(e) => setStage(e.target.value as ProjectStage | "")} disabled={!canEdit} className="input-field disabled:opacity-60 disabled:cursor-not-allowed">
-                <option value="">Select stage…</option>
-                {STAGE_ORDER.map((s) => (
-                  <option key={s} value={s}>{STAGE_LABELS[s]}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
-
           {/* Estimated Time + Real Time */}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Estimated Time (h)">
@@ -386,136 +229,6 @@ export default function ProjectModal({ open, onClose, project, profiles, taskPro
               <DatePicker value={endReal} onChange={setEndReal} readOnly />
             </Field>
           </div>
-
-          {/* Total Price + Recommended by — financial fields are admin/manager only */}
-          {showFinancials && (
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="Total Price ($)">
-                <input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className="input-field" placeholder="0.00" />
-              </Field>
-              <Field label="Recommended by">
-                <select
-                  value={recommendedBy}
-                  onChange={(e) => {
-                    setRecommendedBy(e.target.value as typeof recommendedBy);
-                    setSelectedTalent(null);
-                    setTalentSearch("");
-                    setTalentResults([]);
-                    setSelectedClient(null);
-                    setClientSearch("");
-                    setClientResults([]);
-                  }}
-                  className="input-field"
-                >
-                  <option value="">None</option>
-                  <option value="dev_agency_owner">Dev./Agency Owner</option>
-                  <option value="client">Client</option>
-                </select>
-              </Field>
-            </div>
-          )}
-
-          {/* Dev/Agency Owner + Commission — shown when selected (financial-only) */}
-          {showFinancials && recommendedBy === "dev_agency_owner" && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Dev or Agency Owner who recommended this project">
-                  <div ref={talentSearchRef} className="relative">
-                    <input
-                      type="text"
-                      value={talentSearch}
-                      onChange={(e) => handleTalentSearch(e.target.value)}
-                      onFocus={() => setTalentDropdownOpen(true)}
-                      className="input-field"
-                      placeholder="Search by name…"
-                    />
-                    {talentDropdownOpen && (talentResults.length > 0 || isSearching) && (
-                      <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-elevated border border-border rounded-md shadow-lg py-1 max-h-48 overflow-y-auto">
-                        {isSearching && (
-                          <p className="text-xs text-text-muted px-3 py-2">Searching…</p>
-                        )}
-                        {talentResults.map((t) => (
-                          <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => handleSelectTalent(t)}
-                            className="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-muted hover:text-text-primary transition-colors"
-                          >
-                            {t.name ?? "Unnamed"}
-                            {t.email && <span className="text-text-muted ml-2 text-xs">{t.email}</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </Field>
-                <Field label="Commission (%)">
-                  <input type="number" min="0" max="100" step="0.01" value={commission} onChange={(e) => setCommission(e.target.value)} className="input-field" placeholder="0.00" />
-                </Field>
-              </div>
-              <button
-                type="button"
-                onClick={() => setCreateTalentOpen(true)}
-                className="text-xs text-accent hover:underline"
-              >
-                Didn't find the Dev or Agency Owner who…
-              </button>
-            </div>
-          )}
-
-          {/* Client + Commission — shown when "Client" branch picked (financial-only) */}
-          {showFinancials && recommendedBy === "client" && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Client who recommended this project">
-                  <div ref={clientSearchRef} className="relative">
-                    <input
-                      type="text"
-                      value={clientSearch}
-                      onChange={(e) => handleClientSearch(e.target.value)}
-                      onFocus={() => setClientDropdownOpen(true)}
-                      className="input-field"
-                      placeholder="Start typing…"
-                    />
-                    {clientDropdownOpen && (clientResults.length > 0 || isSearchingClient) && (
-                      <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-elevated border border-border rounded-md shadow-lg py-1 max-h-48 overflow-y-auto">
-                        {isSearchingClient && (
-                          <p className="text-xs text-text-muted px-3 py-2">Searching…</p>
-                        )}
-                        {clientResults.map((c) => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => handleSelectClient(c)}
-                            className="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-muted hover:text-text-primary transition-colors flex items-center gap-2"
-                          >
-                            {c.picture && (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={c.picture} alt="" className="w-6 h-6 rounded-full object-cover" />
-                            )}
-                            <span className="truncate">{c.name ?? "Unnamed"}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </Field>
-                <Field label="Commission (%)">
-                  <input type="number" min="0" max="100" step="0.01" value={commission} onChange={(e) => setCommission(e.target.value)} className="input-field" placeholder="0.00" />
-                </Field>
-              </div>
-              {/* Note: client creation is done from the Talent Pool page;
-                  this stub keeps the link for parity with the Bubble UI. */}
-              <a
-                href="/talent-pool"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-accent hover:underline inline-block"
-              >
-                Didn't find the client who recommended this…
-              </a>
-            </div>
-          )}
 
           {/* Toggles */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -567,15 +280,6 @@ export default function ProjectModal({ open, onClose, project, profiles, taskPro
         </div>
       </Modal>
 
-      <CreateTalentModal
-        open={createTalentOpen}
-        onClose={() => setCreateTalentOpen(false)}
-        onCreated={(talent) => {
-          setSelectedTalent(talent);
-          setTalentSearch(talent.name ?? "");
-          setCreateTalentOpen(false);
-        }}
-      />
     </>
   );
 }

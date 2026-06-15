@@ -2,14 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { UserType } from "@/types/projects";
 
 // ── Create SOP ─────────────────────────────────────────────────────────────────
 
 export async function createSop(data: {
   name: string;
   tag_ids: string[];
-  authorized_user_types: UserType[];
   authorized_users: string[];
 }): Promise<{ error?: string; id?: string }> {
   const supabase = await createClient();
@@ -25,7 +23,6 @@ export async function createSop(data: {
     .insert({
       name: data.name,
       order: maxOrder + 1,
-      authorized_user_types: data.authorized_user_types,
       authorized_users: data.authorized_users,
       tags: data.tag_ids,
       created_by: user.id,
@@ -40,8 +37,6 @@ export async function createSop(data: {
     sop_id: sop.id,
     version_name: "Version 1",
     content: "",
-    authorized_user_types: data.authorized_user_types,
-    authorized_users: data.authorized_users,
     created_by: user.id,
   });
 
@@ -56,7 +51,6 @@ export async function updateSop(
   data: {
     name: string;
     tag_ids: string[];
-    authorized_user_types: UserType[];
     authorized_users: string[];
   }
 ): Promise<{ error?: string }> {
@@ -68,10 +62,7 @@ export async function updateSop(
     .from("sop")
     .update({
       name: data.name,
-      authorized_user_types: data.authorized_user_types,
       authorized_users: data.authorized_users,
-      // Tags now live as a UUID[] array — replace in one shot, no
-      // separate join-table sync needed.
       tags: data.tag_ids,
     })
     .eq("id", id);
@@ -99,20 +90,16 @@ export async function deleteSop(id: string): Promise<{ error?: string }> {
 export async function saveAsNewVersion(
   sopId: string,
   content: string
-): Promise<{ error?: string; version?: { id: string; version_name: string; created_at: string } }> {
+): Promise<{ error?: string; version?: { id: string; version_name: string; created_at: string; created_by: string } }> {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
 
   // Count existing versions to compute next version number
   const { count } = await supabase
     .from("sop_version")
     .select("id", { count: "exact", head: true })
     .eq("sop_id", sopId);
-
-  const { data: sop } = await supabase
-    .from("sop")
-    .select("authorized_user_types, authorized_users")
-    .eq("id", sopId)
-    .single();
 
   const versionName = `Version ${(count ?? 0) + 1}`;
 
@@ -122,15 +109,27 @@ export async function saveAsNewVersion(
       sop_id: sopId,
       version_name: versionName,
       content,
-      authorized_user_types: sop?.authorized_user_types ?? [],
-      authorized_users: sop?.authorized_users ?? [],
+      created_by: user.id,
     })
-    .select("id, version_name, created_at")
+    .select("id, version_name, created_at, created_by")
     .single();
 
   if (error) return { error: error.message };
   revalidatePath("/sops");
-  return { version };
+  return { version: version as { id: string; version_name: string; created_at: string; created_by: string } };
+}
+
+// ── Rename version ────────────────────────────────────────────────────────────
+
+export async function renameVersion(versionId: string, name: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("sop_version")
+    .update({ version_name: name.trim() })
+    .eq("id", versionId);
+  if (error) return { error: error.message };
+  revalidatePath("/sops");
+  return {};
 }
 
 // ── Delete version ────────────────────────────────────────────────────────────

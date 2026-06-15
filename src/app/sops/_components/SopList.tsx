@@ -129,7 +129,7 @@ export default function SopList({ sops, allTags, profiles, activeSopId, currentU
       <div className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
           <p className="text-text-secondary text-sm text-center py-10 px-4">
-            {localSops.length === 0 ? "No SOPs yet. Click + to create one." : "No results."}
+            {localSops.length === 0 ? "No Documents yet. Click + to create one." : "No results."}
           </p>
         ) : (
           filtered.map((s) => (

@@ -25,6 +25,7 @@ import type {
   IdeaMilestonesAndTasks,
   IdeaReport,
 } from "@/types/idea-refiner";
+import type { PlaybookVersion } from "@/types/docs";
 
 // Matches the existing pattern in actions.ts: the generated Database type
 // doesn't yet include the newer sandbox-planner tables, so we type the
@@ -69,6 +70,7 @@ export async function loadIdeaFull(
     { data: stylesData },
     { data: milestonesData },
     { data: reportData },
+    { data: playbookVersionsData },
   ] = await Promise.all([
     supabase
       .from("idea_structure_and_align")
@@ -124,6 +126,11 @@ export async function loadIdeaFull(
       .select("*")
       .eq("idea_id", ideaId)
       .maybeSingle(),
+    supabase
+      .from("idea_playbook_version" as never)
+      .select("id, idea_id, version_name, content, created_by, created_at, updated_at")
+      .eq("idea_id", ideaId)
+      .order("created_at", { ascending: false }),
   ]);
 
   return {
@@ -138,5 +145,6 @@ export async function loadIdeaFull(
     styles: (stylesData as unknown as IdeaStyles) ?? null,
     milestonesAndTasks: (milestonesData as unknown as IdeaMilestonesAndTasks) ?? null,
     report: (reportData as unknown as IdeaReport) ?? null,
+    playbookVersions: (playbookVersionsData ?? []) as unknown as PlaybookVersion[],
   };
 }

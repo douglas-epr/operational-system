@@ -23,12 +23,55 @@ export type TaskStatus =
 
 export type TaskType =
   | "internal_checklist"
-  | "stages_checking"
   | "developer_tasks"
-  | "client_requests"
-  | "qa_requests";
+  | "client_requests";
 
 export type TaskLevel = "level_1" | "level_2" | "level_3" | "level_4";
+
+export type TaskPriority = "critical" | "high" | "medium" | "low" | "trivial";
+
+export type TaskCategory =
+  | "main_task"
+  | "bug"
+  | "ui_ux_improvement"
+  | "performance_improvement"
+  | "code_improvement"
+  | "new_feature"
+  | "security_vulnerability";
+
+export const PRIORITY_LABELS: Record<TaskPriority, string> = {
+  critical: "Critical",
+  high:     "High",
+  medium:   "Medium",
+  low:      "Low",
+  trivial:  "Trivial",
+};
+
+export const PRIORITY_RANK: Record<TaskPriority, number> = {
+  critical: 1,
+  high:     2,
+  medium:   3,
+  low:      4,
+  trivial:  5,
+};
+
+export const PRIORITY_COLOR: Record<TaskPriority, string> = {
+  critical: "bg-red-500/20 text-red-400",
+  high:     "bg-orange-500/20 text-orange-400",
+  medium:   "bg-yellow-500/20 text-yellow-400",
+  low:      "bg-blue-500/20 text-blue-400",
+  trivial:  "bg-zinc-500/20 text-text-muted",
+};
+
+export const CATEGORY_LABELS: Record<TaskCategory, string> = {
+  main_task:               "Main Task",
+  bug:                     "Bug",
+  ui_ux_improvement:       "UI/UX Improvement",
+  performance_improvement: "Performance Improvement",
+  code_improvement:        "Code Improvement",
+  new_feature:             "New Feature",
+  security_vulnerability:  "Security Vulnerability",
+};
 
 export type UserType =
   | "admin"
@@ -172,6 +215,8 @@ export interface Task {
   type: TaskType | null;
   level: TaskLevel | null;
   status: TaskStatus;
+  priority_level: TaskPriority | null;
+  category: TaskCategory | null;
   created_by: string | null;
   task_assignees: TaskAssignee[];
 }
@@ -201,14 +246,9 @@ export interface Project {
   talent_who_recommended_id: string | null;
   client_who_recommended_id: string | null;
   company_that_recommended_id: string | null;
-  referrer_id: string | null;
   created_at: string;
-  client_developer_estimated_time: number | null;
-  client_developer_real_time: number | null;
-  qa_developer_estimated_time: number | null;
-  qa_developer_real_time: number | null;
-  qa_tester_estimated_time: number | null;
-  qa_tester_real_time: number | null;
+  general_requests_estimated_time: number | null;
+  general_requests_real_time: number | null;
 }
 
 export interface TimeTrack {
@@ -338,13 +378,11 @@ export function getProgressBadge(
 }
 
 /** Tabs visible per user type */
-export type TabKey = "stages" | "developer" | "client_requests" | "qa_requests";
+export type TabKey = "developer" | "client_requests";
 
 export const TAB_LABELS: Record<TabKey, string> = {
-  stages: "Stages Checking",
   developer: "Main Tasks",
-  client_requests: "Client Requests",
-  qa_requests: "QA Requests",
+  client_requests: "General Requests",
 };
 
 /** Task-based + timeline schedule progress badge */
@@ -374,18 +412,17 @@ export function getScheduleProgressBadge(
 }
 
 export function getVisibleTabs(userType: UserType | null): TabKey[] {
-  if (!userType) return ["stages"];
-  if (userType === "admin" || userType === "manager") {
-    return ["stages", "developer", "client_requests", "qa_requests"];
+  if (!userType) return ["developer"];
+  if (
+    userType === "admin" ||
+    userType === "manager" ||
+    userType === "operational" ||
+    userType === "developer"
+  ) {
+    return ["developer", "client_requests"];
   }
-  if (userType === "developer") {
-    return ["stages", "developer", "client_requests", "qa_requests"];
+  if (userType === "client" || userType === "qa") {
+    return ["client_requests"];
   }
-  if (userType === "qa") {
-    return ["qa_requests"];
-  }
-  if (userType === "client") {
-    return ["stages", "client_requests"];
-  }
-  return ["stages"];
+  return ["developer"];
 }

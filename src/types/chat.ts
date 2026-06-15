@@ -1,25 +1,22 @@
 /**
  * Shared types for the /chat feature.
  *
- * The chat hub has 5 blocks (column 1 of the layout):
+ * The chat hub has 4 blocks (column 1 of the layout):
  *   - projects            → external project conversations
- *                           (table: external_conversation_project_message)
- *   - projects_internal   → staff-only project conversations
- *                           (table: internal_conversation_project_message)
+ *                           (table: conversation_project_external_message)
  *   - internal_projects   → company's own initiatives
  *                           (table: conversation_internal_project_message)
  *   - private             → 1:1 conversations
- *                           (table: private_conversation_message)
+ *                           (table: conversation_private_message)
  *   - chatbot             → per-user AI sessions
  *                           (table: private_chatbot_message)
  *
- * The first four blocks share the same message shape. ChatBot is separate
+ * The first three blocks share the same message shape. ChatBot is separate
  * because messages are author=user|chatbot and may carry tool_calls.
  */
 
 export type ChatBlock =
   | "projects"
-  | "projects_internal"
   | "internal_projects"
   | "private"
   | "chatbot";
@@ -31,7 +28,6 @@ export type ChatTab =
   | "videos"
   | "daily_feedback"
   | "client_requests"
-  | "qa_requests"
   | "chatbot"
   | "tasks";
 
@@ -156,7 +152,6 @@ export interface InternalProjectListRow {
 
 export const BLOCK_LABELS: Record<ChatBlock, string> = {
   projects:          "Projects",
-  projects_internal: "Projects Internal",
   internal_projects: "Internal Projects",
   private:           "Private Conversations",
   chatbot:           "ChatBot",
@@ -168,8 +163,7 @@ export const TAB_LABELS: Record<ChatTab, string> = {
   links:           "Links",
   videos:          "Videos",
   daily_feedback:  "Daily Feedback",
-  client_requests: "Client Requests",
-  qa_requests:     "QA Requests",
+  client_requests: "General Requests",
   chatbot:         "Chatbot",
   tasks:           "Tasks",
 };
@@ -188,18 +182,8 @@ export const BLOCK_TABLES: Record<
   { msg: string; thread: string; scopeFk: string }
 > = {
   projects: {
-    // Renamed from external_conversation_project_message[_thread] in
-    // Part 2 B6 (item 7/8) — naming is now consistent with the
-    // conversation_private / conversation_internal_project families.
     msg:     "conversation_project_external_message",
     thread:  "conversation_project_external_message_thread",
-    scopeFk: "project_id",
-  },
-  projects_internal: {
-    // Renamed from internal_conversation_project_message[_thread] in B6
-    // (item 9/10).
-    msg:     "conversation_project_internal_message",
-    thread:  "conversation_project_internal_message_thread",
     scopeFk: "project_id",
   },
   internal_projects: {
@@ -215,6 +199,18 @@ export const BLOCK_TABLES: Record<
   },
 };
 
+// ── Emoji reactions ──────────────────────────────────────────────────────────
+
+/** One distinct emoji aggregated across all users for a single message. */
+export interface EmojiReaction {
+  emoji_code: string;
+  count: number;
+  /** Display names of every user who reacted (shown in tooltip). */
+  user_names: string[];
+  /** True when the current viewer is one of the reactors. */
+  user_reacted: boolean;
+}
+
 // ── User-type gates ──────────────────────────────────────────────────────────
 
 /** Roles that can reach /chat at all */
@@ -227,19 +223,12 @@ export const CHAT_ALLOWED_ROLES = [
   "qa",
 ] as const;
 
-/** Visible blocks per user type — clients/qa never see "Projects Internal" */
+/** Visible blocks per user type */
 export function visibleBlocks(userType: string | null): ChatBlock[] {
   if (!userType) return [];
-  // The `chatbot` block is restricted to admin/manager/operational per
-  // Part 2 item 35-36 — RLS on `private_chatbot{,_message}` enforces the
-  // same on the server, this filter keeps the sidebar tidy.
   const isStaff = ["admin", "manager", "operational"].includes(userType);
-  if (userType === "client" || userType === "qa") {
-    return ["projects", "internal_projects", "private"];
-  }
   return [
     "projects",
-    "projects_internal",
     "internal_projects",
     "private",
     ...(isStaff ? (["chatbot"] as const) : []),

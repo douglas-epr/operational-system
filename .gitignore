@@ -48,3 +48,8 @@ next-env.d.ts
 # supabase local dumps (contain live production data/schema — never commit)
 supabase/prod-data.sql
 supabase/prod-full.sql
+
+# supabase CLI temp files (contain connection strings — never commit)
+supabase/.temp/
+
+.vercel

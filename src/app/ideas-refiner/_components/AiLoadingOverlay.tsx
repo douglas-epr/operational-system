@@ -68,6 +68,7 @@ const STEP_FIELDS: Record<IdeaBlock, string[]> = {
     "Revised Idea Description",
     "Go/No-Go Verdict",
   ],
+  playbook: ["Playbook Content"],
 };
 
 interface AiLoadingOverlayProps {

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Shared wrapper used by ClientRequestsTab + QARequestsTab to render the
+ * Shared wrapper used by ClientRequestsTab to render the
  * full TasksKanban component from /projects inside the chat layout.
  *
  * Pattern mirrors ProjectTabsPanel: fetch the bundle (tasks + profiles +
@@ -17,10 +17,9 @@ import { getProjectTabBundle } from "../../actions";
 
 interface Props {
   projectId: string;
-  type: "client_requests" | "qa_requests";
+  type: "client_requests";
   userType: string;
   currentUserId: string;
-  onTrackQATime?: () => void;
   onCounts?: (blue: number, red: number) => void;
 }
 
@@ -38,7 +37,6 @@ export default function TaskRequestsKanbanWrapper({
   type,
   userType,
   currentUserId,
-  onTrackQATime,
   onCounts,
 }: Props) {
   const [state, setState] = useState<State | null>(null);
@@ -61,10 +59,7 @@ export default function TaskRequestsKanbanWrapper({
       setState(newState);
       if (onCountsRef.current) {
         const filtered = newState.tasks.filter((t) => t.type === type);
-        const blue =
-          type === "qa_requests" && userType === "qa"
-            ? filtered.filter((t) => t.status === "ready_for_qa").length
-            : filtered.filter((t) => t.status === "not_started").length;
+        const blue = filtered.filter((t) => t.status === "not_started").length;
         const red = filtered.reduce((s, t) => s + (newState.unreadByTaskId[t.id] ?? 0), 0);
         onCountsRef.current(blue, red);
       }
@@ -97,7 +92,6 @@ export default function TaskRequestsKanbanWrapper({
         currentUserId={currentUserId}
         authorizedUserIds={state.authorizedUserIds}
         unreadByTaskId={state.unreadByTaskId}
-        onTrackQATime={onTrackQATime}
       />
     </div>
   );
