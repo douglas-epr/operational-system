@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { ChatbotConversationRow } from "@/types/chat";
 import {
-  createChatbotSession,
   deleteChatbotSession,
   listChatbotSessions,
 } from "../../actions";
@@ -15,9 +14,10 @@ interface Props {
   filter: string;
   activeId: string | null;
   onSelect: (id: string | null) => void;
+  refreshTick?: number;
 }
 
-export default function ChatbotList({ filter, activeId, onSelect }: Props) {
+export default function ChatbotList({ filter, activeId, onSelect, refreshTick }: Props) {
   const [rows, setRows] = useState<ChatbotConversationRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,19 +36,8 @@ export default function ChatbotList({ filter, activeId, onSelect }: Props) {
 
   useEffect(() => {
     return reload();
-  }, []);
-
-  async function handleNew() {
-    const res = await createChatbotSession();
-    if (res.error) {
-      toast.error(res.error);
-      return;
-    }
-    if (res.id) {
-      onSelect(res.id);
-      reload();
-    }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTick]);
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this chat?")) return;
@@ -66,18 +55,6 @@ export default function ChatbotList({ filter, activeId, onSelect }: Props) {
 
   return (
     <>
-      <div className="px-1 pt-1 pb-0.5">
-        <button
-          type="button"
-          onClick={handleNew}
-          className="w-full flex items-center gap-2 px-2 h-7 rounded-md text-[12.5px] font-medium text-text-secondary hover:text-text-primary hover:bg-muted/50 transition-colors"
-        >
-          <svg className="w-3.5 h-3.5 shrink-0 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-          <span className="truncate leading-none">New chat</span>
-        </button>
-      </div>
       {loading && <div className="px-3 py-2 text-[11px] text-text-muted">Loading…</div>}
       {!loading && filtered.length === 0 && (
         <div className="px-3 py-2 text-[11px] text-text-muted">No chats yet.</div>

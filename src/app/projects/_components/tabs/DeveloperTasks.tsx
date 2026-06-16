@@ -179,7 +179,7 @@ export default function DeveloperTasks({
           Project Totals
         </div>
         <ProjectTotalRow
-          label="General Requests"
+          label="General Tasks"
           estimatedTime={project.general_requests_estimated_time}
           realTime={project.general_requests_real_time}
           estEditable={canEditTotals}

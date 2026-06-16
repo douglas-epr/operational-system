@@ -93,7 +93,7 @@ export default function ProjectsList({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={p.picture} alt="" className="w-full h-full object-cover" />
                 ) : (
-                  "P"
+                  p.name?.[0]?.toUpperCase() ?? "P"
                 )}
               </div>
               <span className="truncate flex-1 leading-none">{p.name ?? "Unnamed"}</span>

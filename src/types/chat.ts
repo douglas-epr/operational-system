@@ -163,9 +163,9 @@ export const TAB_LABELS: Record<ChatTab, string> = {
   links:           "Links",
   videos:          "Videos",
   daily_feedback:  "Daily Feedback",
-  client_requests: "General Requests",
+  client_requests: "General Tasks",
   chatbot:         "Chatbot",
-  tasks:           "Tasks",
+  tasks:           "General Tasks",
 };
 
 // ── Per-block table router ───────────────────────────────────────────────────

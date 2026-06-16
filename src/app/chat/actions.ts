@@ -14,7 +14,7 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import {
   BLOCK_TABLES,
   CHAT_ALLOWED_ROLES,
@@ -443,6 +443,71 @@ export async function createPrivateConversation(
   if (error || !inserted) return { error: error?.message ?? "Failed to create conversation" };
   revalidatePath("/chat");
   return { id: (inserted as { id: string }).id };
+}
+
+/** Update a private conversation's members and/or title.
+ *  Only the conversation creator or an admin may call this. */
+export async function updatePrivateConversation(
+  id: string,
+  data: { participantIds: string[]; title: string | null }
+): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: conv } = await (ctx.supabase as any)
+    .from("conversation_private")
+    .select("id, created_by")
+    .eq("id", id)
+    .single();
+
+  if (!conv) return { error: "Conversation not found." };
+  if (conv.created_by !== ctx.userId && ctx.userType !== "admin") {
+    return { error: "Only the conversation creator or an admin can edit this." };
+  }
+
+  // Always keep the original creator in the participant list.
+  const participants = Array.from(new Set([conv.created_by, ...data.participantIds]));
+  if (participants.length < 2) return { error: "A conversation needs at least 2 participants." };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (createServiceClient() as any)
+    .from("conversation_private")
+    .update({ participant_user_ids: participants, title: data.title ?? null })
+    .eq("id", id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
+}
+
+/** Delete a private conversation (and its messages via CASCADE).
+ *  Only the conversation creator or an admin may call this. */
+export async function deletePrivateConversation(id: string): Promise<{ error?: string }> {
+  const ctx = await requireChatUser();
+  if ("error" in ctx) return { error: ctx.error };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: conv } = await (ctx.supabase as any)
+    .from("conversation_private")
+    .select("id, created_by")
+    .eq("id", id)
+    .single();
+
+  if (!conv) return { error: "Conversation not found." };
+  if (conv.created_by !== ctx.userId && ctx.userType !== "admin") {
+    return { error: "Only the conversation creator or an admin can delete this." };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (createServiceClient() as any)
+    .from("conversation_private")
+    .delete()
+    .eq("id", id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/chat");
+  return {};
 }
 
 // ── Mark-viewed ─────────────────────────────────────────────────────────────
@@ -1305,7 +1370,9 @@ export async function getInternalProjectTaskBundle(
 }
 
 /** Returns the full project row + visible profiles for tabs that need them
- *  (DailyFeedbackTab requires a Project + UserProfile[] + currentUserId). */
+ *  (DailyFeedbackTab requires a Project + UserProfile[] + currentUserId).
+ *  Uses service client to bypass RLS on the project fetch, then manually
+ *  verifies the caller is in authorized_users (admins bypass the check). */
 export async function getProjectForTabs(
   projectId: string
 ): Promise<{
@@ -1318,8 +1385,10 @@ export async function getProjectForTabs(
   if ("error" in ctx) {
     return { project: null, profiles: [], currentUserId: "", isAdminOrManager: false };
   }
+  const svc = createServiceClient();
   const [{ data: project }, { data: profiles }] = await Promise.all([
-    ctx.supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (svc as any)
       .from("project")
       .select(
         "id, name, picture, status, stage, program, description, price, referrer_commission, start_date_real, end_date_real, start_date_estimated, end_date_estimated, estimated_time, real_time, authorized_users, change_automatically_project_estimated_time, change_automatically_milestone_estimated_time, change_automatically_project_start_end_dates, change_automatically_milestone_start_end_dates, talent_who_recommended_id, company_that_recommended_id, created_at"
@@ -1330,6 +1399,13 @@ export async function getProjectForTabs(
       .from("profiles")
       .select("id, first_name, last_name, picture, type"),
   ]);
+  // Manual authorization: admins always pass; others must be in authorized_users
+  if (project && ctx.userType !== "admin") {
+    const au = ((project as Record<string, unknown>).authorized_users as string[]) ?? [];
+    if (!au.includes(ctx.userId)) {
+      return { project: null, profiles: [], currentUserId: ctx.userId, isAdminOrManager: false };
+    }
+  }
   return {
     project: (project ?? null) as Record<string, unknown> | null,
     profiles: (profiles ?? []) as Array<Record<string, unknown>>,
@@ -1619,6 +1695,23 @@ export async function getInternalProjectDailyFeedbacks(internalProjectId: string
   return (data ?? []) as unknown as InternalProjectDailyFeedback[];
 }
 
+function buildInternalFeedbackMessage(date: string, fields: {
+  today_work: string | null;
+  tomorrow_work: string | null;
+  blockers: string | null;
+  video_and_links: string | null;
+}): string {
+  const s = (label: string, html: string | null) =>
+    `<p><strong>${label}</strong></p>${html ?? "<p>—</p>"}`;
+  return [
+    `<p><strong>📋 Daily Feedback – ${date}</strong></p>`,
+    s("What I worked on today", fields.today_work),
+    s("What I will work on tomorrow", fields.tomorrow_work),
+    s("Blockers", fields.blockers),
+    s("Video &amp; Links", fields.video_and_links),
+  ].join("");
+}
+
 export async function createInternalProjectDailyFeedback(input: {
   internalProjectId: string;
   date: string;
@@ -1631,10 +1724,38 @@ export async function createInternalProjectDailyFeedback(input: {
   if ("error" in ctx) return { error: ctx.error };
   const { internalProjectId, ...rest } = input;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (ctx.supabase as any)
+  const { data, error } = await (ctx.supabase as any)
     .from("internal_project_daily_feedback")
-    .insert({ internal_project_id: internalProjectId, created_by: ctx.userId, ...rest });
+    .insert({ internal_project_id: internalProjectId, created_by: ctx.userId, ...rest })
+    .select("id")
+    .single();
   if (error) return { error: error.message };
+
+  // Create linked chat message so the feedback appears in the internal project chat.
+  if (data?.id) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const svc = createServiceClient() as any;
+    const { data: msg } = await svc
+      .from("conversation_internal_project_message")
+      .insert({
+        internal_project_id: internalProjectId,
+        created_by:          ctx.userId,
+        author_type:         "user",
+        message:             buildInternalFeedbackMessage(input.date, input),
+        attachments:         [],
+        links:               [],
+      })
+      .select("id")
+      .single();
+    if (msg?.id) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (ctx.supabase as any)
+        .from("internal_project_daily_feedback")
+        .update({ conversation_internal_project_message_id: msg.id })
+        .eq("id", data.id);
+    }
+  }
+
   revalidatePath("/chat");
   return {};
 }
@@ -1657,6 +1778,23 @@ export async function updateInternalProjectDailyFeedback(
     .update(input)
     .eq("id", id);
   if (error) return { error: error.message };
+
+  // Sync updated fields to the linked chat message.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: fb } = await (ctx.supabase as any)
+    .from("internal_project_daily_feedback")
+    .select("date, today_work, tomorrow_work, blockers, video_and_links, conversation_internal_project_message_id")
+    .eq("id", id)
+    .single();
+  if (fb?.conversation_internal_project_message_id) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const svc = createServiceClient() as any;
+    await svc
+      .from("conversation_internal_project_message")
+      .update({ message: buildInternalFeedbackMessage(fb.date, fb) })
+      .eq("id", fb.conversation_internal_project_message_id);
+  }
+
   revalidatePath("/chat");
   return {};
 }

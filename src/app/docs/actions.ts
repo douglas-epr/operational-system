@@ -587,6 +587,23 @@ export async function deleteProjectVideo(id: string): Promise<{ error?: string }
 
 // ── Daily feedback (Docs › Daily Feedback tab) ─────────────────────────────────
 
+function buildFeedbackMessage(date: string, fields: {
+  today_work: string | null;
+  tomorrow_work: string | null;
+  blockers: string | null;
+  video_and_links: string | null;
+}): string {
+  const s = (label: string, html: string | null) =>
+    `<p><strong>${label}</strong></p>${html ?? "<p>—</p>"}`;
+  return [
+    `<p><strong>📋 Daily Feedback – ${date}</strong></p>`,
+    s("What I worked on today", fields.today_work),
+    s("What I will work on tomorrow", fields.tomorrow_work),
+    s("Blockers", fields.blockers),
+    s("Video &amp; Links", fields.video_and_links),
+  ].join("");
+}
+
 export async function createDailyFeedback(input: {
   projectId: string;
   date: string;
@@ -614,6 +631,32 @@ export async function createDailyFeedback(input: {
     .single();
 
   if (error) return { error: error.message };
+
+  // Create linked chat message so the feedback appears in the project's external chat.
+  if (data?.id) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const svc = createServiceClient() as any;
+    const { data: msg } = await svc
+      .from("conversation_project_external_message")
+      .insert({
+        project_id:  input.projectId,
+        created_by:  user!.id,
+        author_type: "user",
+        message:     buildFeedbackMessage(input.date, input),
+        attachments: [],
+        links:       [],
+      })
+      .select("id")
+      .single();
+    if (msg?.id) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase as any)
+        .from("project_daily_feedback")
+        .update({ conversation_project_external_message_id: msg.id })
+        .eq("id", data.id);
+    }
+  }
+
   revalidatePath("/docs");
   return { feedback: data };
 }
@@ -638,6 +681,23 @@ export async function updateDailyFeedback(
     .update(updates)
     .eq("id", id);
   if (error) return { error: error.message };
+
+  // Sync updated fields to the linked chat message.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: fb } = await (supabase as any)
+    .from("project_daily_feedback")
+    .select("date, today_work, tomorrow_work, blockers, video_and_links, conversation_project_external_message_id")
+    .eq("id", id)
+    .single();
+  if (fb?.conversation_project_external_message_id) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const svc = createServiceClient() as any;
+    await svc
+      .from("conversation_project_external_message")
+      .update({ message: buildFeedbackMessage(fb.date, fb) })
+      .eq("id", fb.conversation_project_external_message_id);
+  }
+
   revalidatePath("/docs");
   return {};
 }

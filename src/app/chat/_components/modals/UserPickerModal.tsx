@@ -26,12 +26,26 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { createPrivateConversation, listSelectablePrivatePeers } from "../../actions";
+import {
+  createPrivateConversation,
+  listSelectablePrivatePeers,
+  updatePrivateConversation,
+} from "../../actions";
+
+interface EditConversation {
+  id: string;
+  /** Participant IDs excluding the current user (they'll be pre-selected). */
+  participantIds: string[];
+  title: string | null;
+}
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onCreated: (id: string) => void;
+  /** When provided the modal runs in edit mode instead of create mode. */
+  editConversation?: EditConversation;
+  onUpdated?: () => void;
 }
 
 interface Hit {
@@ -56,7 +70,7 @@ function initials(u: Hit): string {
     .toUpperCase();
 }
 
-export default function UserPickerModal({ open, onClose, onCreated }: Props) {
+export default function UserPickerModal({ open, onClose, onCreated, editConversation, onUpdated }: Props) {
   const [query, setQuery] = useState("");
   const [pool, setPool] = useState<Hit[]>([]);
   const [picked, setPicked] = useState<Hit[]>([]);
@@ -79,10 +93,17 @@ export default function UserPickerModal({ open, onClose, onCreated }: Props) {
       if (cancelled) return;
       setPool(rows);
       setLoading(false);
+      // Edit mode: pre-select existing participants and pre-fill title.
+      if (editConversation) {
+        const preIds = new Set(editConversation.participantIds);
+        setPicked(rows.filter((r) => preIds.has(r.id)));
+        setGroupTitle(editConversation.title ?? "");
+      }
     });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const pickedIds = useMemo(() => new Set(picked.map((p) => p.id)), [picked]);
@@ -104,12 +125,26 @@ export default function UserPickerModal({ open, onClose, onCreated }: Props) {
     setPicked((prev) => prev.filter((p) => p.id !== id));
   }
 
-  async function handleCreate() {
+  async function handleSubmit() {
     if (picked.length === 0) {
       toast.error("Pick at least one person.");
       return;
     }
     setSubmitting(true);
+
+    if (editConversation) {
+      const res = await updatePrivateConversation(editConversation.id, {
+        participantIds: picked.map((p) => p.id),
+        title: isGroup ? (groupTitle.trim() || null) : null,
+      });
+      setSubmitting(false);
+      if (res.error) { toast.error(res.error); return; }
+      toast.success("Conversation updated.");
+      onUpdated?.();
+      onClose();
+      return;
+    }
+
     let res;
     if (picked.length === 1) {
       res = await createPrivateConversation(picked[0].id);
@@ -138,9 +173,13 @@ export default function UserPickerModal({ open, onClose, onCreated }: Props) {
         {/* Header */}
         <div className="px-5 py-3 border-b border-border flex items-center justify-between shrink-0">
           <div>
-            <h3 className="text-sm font-semibold text-text-primary">New conversation</h3>
+            <h3 className="text-sm font-semibold text-text-primary">
+              {editConversation ? "Edit conversation" : "New conversation"}
+            </h3>
             <p className="text-[11px] text-text-muted">
-              Add 1 person for a 1:1 chat, or 2+ for a group.
+              {editConversation
+                ? "Add or remove participants and update the group title."
+                : "Add 1 person for a 1:1 chat, or 2+ for a group."}
             </p>
           </div>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary">
@@ -285,12 +324,14 @@ export default function UserPickerModal({ open, onClose, onCreated }: Props) {
           </button>
           <button
             type="button"
-            onClick={handleCreate}
+            onClick={handleSubmit}
             disabled={submitting || picked.length === 0}
             className="btn btn-primary text-xs px-4 py-2 disabled:opacity-50"
           >
             {submitting
-              ? "Creating…"
+              ? editConversation ? "Saving…" : "Creating…"
+              : editConversation
+              ? "Save changes"
               : isGroup
               ? `Create group (${picked.length + 1})`
               : "Create"}

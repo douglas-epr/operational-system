@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import type { ChatBlock } from "@/types/chat";
 import { BLOCK_LABELS } from "@/types/chat";
 import ProjectsList from "./lists/ProjectsList";
@@ -21,7 +22,8 @@ import InternalProjectsList from "./lists/InternalProjectsList";
 import PrivateList from "./lists/PrivateList";
 import ChatbotList from "./lists/ChatbotList";
 import UnreadBadge from "./UnreadBadge";
-import { markConversationViewed } from "../actions";
+import UserPickerModal from "./modals/UserPickerModal";
+import { createChatbotSession, markConversationViewed } from "../actions";
 import {
   BriefcaseIcon,
   FolderIcon,
@@ -70,9 +72,19 @@ export default function ConversationsSidebar({
     private: 0,
     chatbot: 0,
   });
+  const [privatePickerOpen, setPrivatePickerOpen] = useState(false);
 
   function toggle(b: ChatBlock) {
     setCollapsed((c) => ({ ...c, [b]: !c[b] }));
+  }
+
+  async function handleNewChat() {
+    const res = await createChatbotSession();
+    if (res.error) { toast.error(res.error); return; }
+    if (res.id) {
+      setRefreshTickByBlock((prev) => ({ ...prev, chatbot: prev.chatbot + 1 }));
+      onSelect("chatbot", res.id);
+    }
   }
 
   // When the user opens a conversation, mark it viewed FIRST (RPC writes
@@ -173,6 +185,22 @@ export default function ConversationsSidebar({
                 <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-text-muted flex-1 truncate">
                   {BLOCK_LABELS[b]}
                 </span>
+                {b === "private" && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setPrivatePickerOpen(true); }}
+                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted/60 text-text-muted hover:text-text-primary transition-colors shrink-0 text-[14px] leading-none"
+                    title="New conversation"
+                  >+</button>
+                )}
+                {b === "chatbot" && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handleNewChat(); }}
+                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted/60 text-text-muted hover:text-text-primary transition-colors shrink-0 text-[14px] leading-none"
+                    title="New chat"
+                  >+</button>
+                )}
                 <UnreadBadge count={unreadByBlock[b] ?? 0} />
               </header>
               {!isCollapsed && (
@@ -202,6 +230,7 @@ export default function ConversationsSidebar({
                       refreshTick={refreshTickByBlock.private}
                       onSelect={(id) => onSelect(b, id)}
                       currentUserId={currentUserId}
+                      userType={userType}
                       onTotalUnread={setBlockTotal[b]}
                     />
                   )}
@@ -210,6 +239,7 @@ export default function ConversationsSidebar({
                       filter={filter}
                       activeId={activeBlock === b ? activeConversationId : null}
                       onSelect={(id) => onSelect(b, id)}
+                      refreshTick={refreshTickByBlock.chatbot}
                     />
                   )}
                 </div>
@@ -218,6 +248,15 @@ export default function ConversationsSidebar({
           );
         })}
       </div>
+      <UserPickerModal
+        open={privatePickerOpen}
+        onClose={() => setPrivatePickerOpen(false)}
+        onCreated={(id) => {
+          setPrivatePickerOpen(false);
+          setRefreshTickByBlock((prev) => ({ ...prev, private: prev.private + 1 }));
+          onSelect("private", id);
+        }}
+      />
     </aside>
   );
 }
