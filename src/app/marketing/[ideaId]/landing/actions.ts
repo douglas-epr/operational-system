@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/marketing/slug";
 import { resolveAiConfig } from "@/lib/api/ai-config";
 import { generateAiJsonResponse, generateAiTextResponse } from "@/lib/api/ai-dispatcher";
+import { searchLandingImages } from "@/lib/marketing/image-search";
 import type { MktLanding, QuizQuestion } from "@/types/marketing";
 
 const STAFF = ["admin", "manager"] as const;
@@ -368,6 +369,9 @@ export async function generateLandingPage(
     motion_principles: styles.motion_principles ?? "",
   }, null, 2);
 
+  const imageQuery = [idea?.name, dna.target_audience].filter(Boolean).join(" ") || "lifestyle professional";
+  const landingImages = await searchLandingImages(imageQuery);
+
   const baseVars: Record<string, string> = {
     positioning,
     description: dna.description ?? "",
@@ -391,39 +395,9 @@ export async function generateLandingPage(
     // Structured qualification quiz — when present, the Designer must render
     // this exact schema (capture validates answers against it server-side).
     quiz_schema_json: quizSchema.length > 0 ? JSON.stringify(quizSchema, null, 2) : "",
-    // Premium curated images injected into the Designer prompt ({{images_json}}).
-    // These are real photographs from public sources; the Designer uses them as
-    // actual <img> elements rather than CSS gradient backgrounds.
-    images_json: JSON.stringify([
-      {
-        url: "https://www.cdc.gov/emotional-well-being/media/images/2024/08/EmotionalWellBeing-TwoMenCoffeeShop-466292588.jpg",
-        alt: "Two people having a warm, supportive conversation over coffee",
-        use: "hero",
-        width: 1200,
-        height: 675,
-      },
-      {
-        url: "https://mhanational.org/wp-content/uploads/2024/12/connect-with-others.jpg-1024x683.webp",
-        alt: "Group of people connecting and supporting each other",
-        use: "features",
-        width: 1024,
-        height: 683,
-      },
-      {
-        url: "https://www.verywellmind.com/thmb/5TaPjiCfsgpvkzZ6qt6FZ8-IkkU=/1500x0/filters:no_upscale():max_bytes(150000):strip_icc()/laughing-women-talking-on-sofa-557475619-5885ba875f9b586e02be9cdd.jpg",
-        alt: "Two people laughing and sharing a genuine moment of connection",
-        use: "testimonials",
-        width: 1500,
-        height: 1000,
-      },
-      {
-        url: "https://embracingyoutherapy.com/wp-content/uploads/2025/10/3.-Effective-Communication.jpg",
-        alt: "Two people engaged in a meaningful, supportive conversation",
-        use: "cta",
-        width: 612,
-        height: 408,
-      },
-    ], null, 2),
+    // Real photographs fetched from Pexels (PEXELS_API_KEY) or generic fallbacks.
+    // The Designer uses these as actual <img> elements rather than CSS gradients.
+    images_json: JSON.stringify(landingImages, null, 2),
   };
 
   // ── Agent 1: Researcher ────────────────────────────────────────────────────
