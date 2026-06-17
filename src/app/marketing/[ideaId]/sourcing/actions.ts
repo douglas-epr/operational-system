@@ -415,6 +415,8 @@ export async function aiFillSourcingForm(
     : "";
 
   const context = [
+    `Strategic positioning (PRIMARY signal — base search terms on this): ${val?.positioning || "(not specified)"}`,
+    `Brand DNA: ${val?.icp_definition ? JSON.stringify(val.icp_definition) : "(not specified)"}`,
     `Project: ${projectName}`,
     `Idea: ${idea?.name ?? projectName} — ${idea?.description ?? "(not specified)"}`,
     `Target ICP: ${icpDescription || "(not specified)"}`,
@@ -422,8 +424,6 @@ export async function aiFillSourcingForm(
     `ICP pains: ${icpPains || "(not specified)"}`,
     `Brand voice: ${brandVoice || "(not specified)"}`,
     `Playbook: ${playbook || "(not specified)"}`,
-    `Positioning: ${val?.positioning || "(not specified)"}`,
-    `Brand DNA: ${val?.icp_definition ? JSON.stringify(val.icp_definition) : "(not specified)"}`,
     `Reference sources: ${refSourcesSummary || "(none)"}`,
   ].join("\n");
 

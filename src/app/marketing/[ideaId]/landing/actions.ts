@@ -15,6 +15,52 @@ import type { MktLanding, QuizQuestion } from "@/types/marketing";
 
 const STAFF = ["admin", "manager"] as const;
 
+// Font names the LLM defaults to that should be replaced with premium alternatives.
+// Heading fonts (display/editorial) → replaced with headingFont.
+const BANNED_HEADING_FONTS = ["Inter", "Roboto", "Poppins", "Nunito", "Raleway", "Montserrat"];
+// Body fonts (readable at small sizes) → replaced with bodyFont.
+// Open Sans, Lato etc. appear in both heading and body rules from the LLM.
+const BANNED_BODY_FONTS = ["Open Sans", "Lato", "Source Sans Pro", "Noto Sans", "Helvetica Neue", "Helvetica", "Arial", "system-ui"];
+
+/**
+ * Post-process LLM-generated HTML to enforce premium fonts deterministically.
+ *
+ * LLMs frequently default to Inter/Open Sans regardless of prompt instructions.
+ * This function patches the output in two passes:
+ *  1. Replace the Google Fonts <link> with the correct premium pair URL.
+ *  2. Replace font-family CSS declarations for known generic fonts.
+ */
+function applyPremiumFonts(html: string, headingFont: string, bodyFont: string): string {
+  const headingSlug = headingFont.replace(/ /g, "+");
+  const bodySlug = bodyFont.replace(/ /g, "+");
+  const premiumLink = `<link href="https://fonts.googleapis.com/css2?family=${headingSlug}:ital,wght@0,300;0,400;0,600;1,300;1,400&family=${bodySlug}:wght@400;500;600&display=swap" rel="stylesheet">`;
+
+  // 1. Replace any existing Google Fonts link(s) with the premium one.
+  let result = html.replace(/<link[^>]+fonts\.googleapis\.com\/css2[^>]*>/gi, premiumLink);
+  if (!result.includes("fonts.googleapis.com")) {
+    result = result.replace("</head>", `${premiumLink}\n</head>`);
+  }
+
+  // Helper: replace a quoted or unquoted font name in a font-family value.
+  const replaceFontName = (src: string, name: string, replacement: string): string => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Matches: 'Inter', "Inter", or plain Inter (before comma or ;)
+    return src.replace(new RegExp(`['"]${escaped}['"]|(?<![\\w-])${escaped}(?=[\\s,;])`, "g"), `'${replacement}'`);
+  };
+
+  // 2. Swap banned heading fonts → headingFont.
+  for (const banned of BANNED_HEADING_FONTS) {
+    result = replaceFontName(result, banned, headingFont);
+  }
+
+  // 3. Swap banned body fonts → bodyFont.
+  for (const banned of BANNED_BODY_FONTS) {
+    result = replaceFontName(result, banned, bodyFont);
+  }
+
+  return result;
+}
+
 async function getAdminClient() {
   const supabase = await createClient();
   const {
@@ -270,6 +316,37 @@ export async function generateLandingPage(
     if (!P[name]) return { error: `Prompt "${name}" not found in database.` };
   }
 
+  // Map generic/web-safe fonts to premium editorial alternatives so the Designer
+  // always receives a distinctive pairing regardless of what the brand DB stores.
+  const PREMIUM_FONT_MAP: Record<string, string> = {
+    "Poppins": "Cormorant Garamond",
+    "Inter": "Cormorant Garamond",
+    "Roboto": "Playfair Display",
+    "Open Sans": "Libre Baskerville",
+    "Lato": "DM Sans",
+    "Helvetica": "Mulish",
+    "Helvetica Neue": "Mulish",
+    "Arial": "Mulish",
+    "system-ui": "Cormorant Garamond",
+    "sans-serif": "DM Sans",
+    "Nunito": "DM Sans",
+    "Raleway": "Cormorant Garamond",
+    "Montserrat": "Cormorant Garamond",
+    "Noto Sans": "DM Sans",
+    "Source Sans Pro": "DM Sans",
+  };
+  // The DB may store a full CSS font stack ("'Inter', sans-serif") — extract just
+  // the first font name (stripped of quotes) before doing the map lookup.
+  const extractFirstFontName = (stack: string | null | undefined): string => {
+    const raw = (stack ?? "").trim();
+    const first = raw.split(",")[0].replace(/['"]/g, "").trim();
+    return first || "Poppins";
+  };
+  const rawHeadingName = extractFirstFontName(typography.heading_font);
+  const rawBodyName = extractFirstFontName(typography.body_font);
+  const premiumHeadingFont = PREMIUM_FONT_MAP[rawHeadingName] ?? rawHeadingName;
+  const premiumBodyFont = PREMIUM_FONT_MAP[rawBodyName] ?? rawBodyName;
+
   const designSystemJson = JSON.stringify({
     colors: {
       primary: styles.primary_color ?? "#6D9773",
@@ -278,9 +355,10 @@ export async function generateLandingPage(
       tokens: styles.color_tokens ?? {},
     },
     typography: {
-      heading_font: typography.heading_font ?? "Poppins",
-      body_font: typography.body_font ?? "Lato",
       ...typography,
+      // Premium overrides applied AFTER spread so they win over DB defaults.
+      heading_font: premiumHeadingFont,
+      body_font: premiumBodyFont,
     },
     spacing: styles.spacing ?? {},
     border_radius: styles.border_radius ?? {},
@@ -306,13 +384,46 @@ export async function generateLandingPage(
     primary_color: styles.primary_color ?? "#6D9773",
     secondary_color: styles.secondary_color ?? "#F4EBD0",
     accent_color: styles.accent_color ?? "#D4A59A",
-    heading_font: typography.heading_font ?? "Poppins",
-    body_font: typography.body_font ?? "Lato",
+    heading_font: premiumHeadingFont,
+    body_font: premiumBodyFont,
     // Full design system as structured JSON
     design_system_json: designSystemJson,
     // Structured qualification quiz — when present, the Designer must render
     // this exact schema (capture validates answers against it server-side).
     quiz_schema_json: quizSchema.length > 0 ? JSON.stringify(quizSchema, null, 2) : "",
+    // Premium curated images injected into the Designer prompt ({{images_json}}).
+    // These are real photographs from public sources; the Designer uses them as
+    // actual <img> elements rather than CSS gradient backgrounds.
+    images_json: JSON.stringify([
+      {
+        url: "https://www.cdc.gov/emotional-well-being/media/images/2024/08/EmotionalWellBeing-TwoMenCoffeeShop-466292588.jpg",
+        alt: "Two people having a warm, supportive conversation over coffee",
+        use: "hero",
+        width: 1200,
+        height: 675,
+      },
+      {
+        url: "https://mhanational.org/wp-content/uploads/2024/12/connect-with-others.jpg-1024x683.webp",
+        alt: "Group of people connecting and supporting each other",
+        use: "features",
+        width: 1024,
+        height: 683,
+      },
+      {
+        url: "https://www.verywellmind.com/thmb/5TaPjiCfsgpvkzZ6qt6FZ8-IkkU=/1500x0/filters:no_upscale():max_bytes(150000):strip_icc()/laughing-women-talking-on-sofa-557475619-5885ba875f9b586e02be9cdd.jpg",
+        alt: "Two people laughing and sharing a genuine moment of connection",
+        use: "testimonials",
+        width: 1500,
+        height: 1000,
+      },
+      {
+        url: "https://embracingyoutherapy.com/wp-content/uploads/2025/10/3.-Effective-Communication.jpg",
+        alt: "Two people engaged in a meaningful, supportive conversation",
+        use: "cta",
+        width: 612,
+        height: 408,
+      },
+    ], null, 2),
   };
 
   // ── Agent 1: Researcher ────────────────────────────────────────────────────
@@ -331,7 +442,13 @@ export async function generateLandingPage(
   if (r3.returned_an_error || !r3.text?.trim()) {
     return { error: `Designer failed: ${r3.error ?? "no HTML returned"}` };
   }
-  const html = r3.text.trim();
+  // Strip markdown code fences if the LLM wraps HTML despite instructions (```html ... ```)
+  let html = r3.text.trim();
+  if (html.startsWith("```")) {
+    html = html.replace(/^```(?:html)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  }
+  // Deterministically enforce premium fonts regardless of what the LLM chose.
+  html = applyPremiumFonts(html, premiumHeadingFont, premiumBodyFont);
 
   // ── Agent 4: Reviewer → JSON metadata only; REJECT triggers a Designer re-run ──
   let reviewedHtml = html;
@@ -354,7 +471,11 @@ export async function generateLandingPage(
         `\n\n## REQUIRED FIXES (conversion reviewer)\n${fixList}`;
       const r4b = await callText(revisePrompt);
       if (!r4b.returned_an_error && r4b.text?.trim()) {
-        reviewedHtml = r4b.text.trim();
+        let revisedText = r4b.text.trim();
+        if (revisedText.startsWith("```")) {
+          revisedText = revisedText.replace(/^```(?:html)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+        }
+        reviewedHtml = applyPremiumFonts(revisedText, premiumHeadingFont, premiumBodyFont);
       }
     }
   }

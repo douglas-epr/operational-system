@@ -142,15 +142,20 @@ export async function duplicateIdea(ideaId: string): Promise<{ error?: string; i
     tasks.push(db.from("idea_structure_and_align").insert({ ...rest, idea_id: newId }));
   }
 
+  // ICPs must be committed BEFORE optimization_suggestions are inserted because
+  // idea_optimization_suggestion.icp_id is a FK to idea_icp.id. Running both in
+  // the same Promise.all causes a race condition that violates the FK constraint.
   if (full.icps.length > 0) {
     const rows = full.icps.map(({ id, idea_id: _ii, created_at: _ca, ...rest }) => ({
       ...rest,
       id: icpIdMap[id],
       idea_id: newId,
     }));
-    tasks.push(db.from("idea_icp").insert(rows));
+    const { error: icpErr } = await db.from("idea_icp").insert(rows);
+    if (icpErr) return { error: icpErr.message };
   }
 
+  // Optimization suggestions reference ICP IDs — safe to insert now that ICPs exist.
   if (full.optimizationSuggestions.length > 0) {
     const rows = full.optimizationSuggestions.map(
       // eslint-disable-next-line @typescript-eslint/no-unused-vars

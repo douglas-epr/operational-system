@@ -11,7 +11,10 @@ import { getIdeaContext } from "@/lib/marketing/admin";
 import { ChevronLeftIcon } from "@/components/ui/icons";
 import MarketingProjectNav from "../_components/MarketingProjectNav";
 import TrafficShell from "./_components/TrafficShell";
-import { listAdCampaigns } from "./actions";
+import SeoEngine from "./_components/SeoEngine";
+import BlendedIntelligence from "./_components/BlendedIntelligence";
+import { listAdCampaigns, getTrafficOverview } from "./actions";
+import { listSeoKeywords } from "./seo-actions";
 
 export default async function TrafficPage({
   params,
@@ -30,7 +33,21 @@ export default async function TrafficPage({
   const ctx = await getIdeaContext(ideaId);
   if (!ctx) notFound();
 
-  const { campaigns, landingSlug } = await listAdCampaigns(ideaId);
+  const [{ campaigns, landingSlug }, { data: seoKeywords }, overview] = await Promise.all([
+    listAdCampaigns(ideaId),
+    listSeoKeywords(ideaId),
+    getTrafficOverview(ideaId),
+  ]);
+
+  const landingPublished =
+    !!landingSlug &&
+    !!(await supabase
+      .from("mkt_landing" as never)
+      .select("published")
+      .eq("idea_id", ideaId)
+      .eq("published", true)
+      .maybeSingle()
+      .then((r: { data: unknown }) => r.data));
 
   return (
     <PageShell profile={(profile ?? null) as UserProfile | null}>
@@ -56,6 +73,21 @@ export default async function TrafficPage({
         initialCampaigns={campaigns}
         landingSlug={landingSlug}
       />
+
+      <div className="mt-6">
+        <BlendedIntelligence
+          overview={overview}
+          landingPublished={landingPublished}
+          hasSeoKeywords={(seoKeywords ?? []).length > 0}
+        />
+      </div>
+
+      <div className="mt-6">
+        <SeoEngine
+          ideaId={ideaId}
+          initialKeywords={seoKeywords ?? []}
+        />
+      </div>
     </PageShell>
   );
 }

@@ -275,3 +275,152 @@ export async function generateAdCreative(
   revalidatePath(`/marketing/${ideaId}/traffic`);
   return { creative: res.data };
 }
+
+// ── Blended traffic overview (Phase 3) ───────────────────────────────────────
+
+export interface DailyTrafficRow {
+  date: string;      // YYYY-MM-DD
+  sessions: number;
+  captures: number;
+  spend_cents: number;
+}
+
+export interface TrafficOverview {
+  daily: DailyTrafficRow[];
+  totals: {
+    sessions: number;
+    captures: number;
+    spend_cents: number;
+    cpa_cents: number | null;     // spend / captures
+    cvr_pct: number | null;       // captures / sessions × 100
+  };
+  /** Attribution by utm_source: source → {sessions, captures, cvr_pct, avg_icp_fit_pct} */
+  bySource: {
+    source: string;
+    sessions: number;
+    captures: number;
+    cvr_pct: number | null;
+    avg_icp_fit_pct: number | null;
+  }[];
+}
+
+/** Roll up 14-day sessions/captures/spend for blended intelligence chart. */
+export async function getTrafficOverview(
+  ideaId: string
+): Promise<TrafficOverview> {
+  const ctx = await getAdminClient();
+  if ("error" in ctx) {
+    return { daily: [], totals: { sessions: 0, captures: 0, spend_cents: 0, cpa_cents: null, cvr_pct: null }, bySource: [] };
+  }
+
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [{ data: eventRows }, { data: signalRows }, { data: campaignRows }] =
+    await Promise.all([
+      ctx.supabase
+        .from("mkt_event" as never)
+        .select("type, session_id, created_at, utm")
+        .eq("idea_id", ideaId)
+        .eq("type", "view")
+        .gte("created_at", since),
+      ctx.supabase
+        .from("mkt_signal" as never)
+        .select("created_at, utm, icp_fit")
+        .eq("idea_id", ideaId)
+        .gte("created_at", since),
+      ctx.supabase
+        .from("mkt_ad_campaign" as never)
+        .select("spend_cents, started_at, ended_at, status")
+        .eq("idea_id", ideaId),
+    ]);
+
+  const events = (eventRows ?? []) as unknown as {
+    type: string;
+    session_id: string | null;
+    created_at: string;
+    utm: Record<string, string> | null;
+  }[];
+  const sigs = (signalRows ?? []) as unknown as {
+    created_at: string;
+    utm: Record<string, string> | null;
+    icp_fit: boolean | null;
+  }[];
+  const campaigns = (campaignRows ?? []) as unknown as {
+    spend_cents: number;
+    status: string;
+  }[];
+
+  const totalSpend = campaigns.reduce((acc, c) => acc + (c.spend_cents ?? 0), 0);
+
+  // Build daily map
+  const dailyMap = new Map<string, { sessions: Set<string>; captures: number }>();
+  for (const e of events) {
+    const day = e.created_at.slice(0, 10);
+    if (!dailyMap.has(day)) dailyMap.set(day, { sessions: new Set(), captures: 0 });
+    if (e.session_id) dailyMap.get(day)!.sessions.add(e.session_id);
+  }
+  for (const s of sigs) {
+    const day = s.created_at.slice(0, 10);
+    if (!dailyMap.has(day)) dailyMap.set(day, { sessions: new Set(), captures: 0 });
+    dailyMap.get(day)!.captures++;
+  }
+
+  // Fill last 14 days (even if empty)
+  const daily: DailyTrafficRow[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const dateStr = d.toISOString().slice(0, 10);
+    const slot = dailyMap.get(dateStr);
+    daily.push({
+      date: dateStr,
+      sessions: slot?.sessions.size ?? 0,
+      captures: slot?.captures ?? 0,
+      spend_cents: 0,
+    });
+  }
+
+  const totalSessions = new Set(events.map((e) => e.session_id).filter(Boolean)).size;
+  const totalCaptures = sigs.length;
+
+  // By-source attribution
+  const sourceMap = new Map<
+    string,
+    { sessionIds: Set<string>; captures: number; icpFits: (boolean | null)[] }
+  >();
+  for (const e of events) {
+    const src = e.utm?.utm_source ?? "(direct)";
+    if (!sourceMap.has(src)) sourceMap.set(src, { sessionIds: new Set(), captures: 0, icpFits: [] });
+    if (e.session_id) sourceMap.get(src)!.sessionIds.add(e.session_id);
+  }
+  for (const s of sigs) {
+    const src = s.utm?.utm_source ?? "(direct)";
+    if (!sourceMap.has(src)) sourceMap.set(src, { sessionIds: new Set(), captures: 0, icpFits: [] });
+    sourceMap.get(src)!.captures++;
+    sourceMap.get(src)!.icpFits.push(s.icp_fit);
+  }
+
+  const bySource = [...sourceMap.entries()]
+    .map(([source, { sessionIds, captures, icpFits }]) => {
+      const sessions = sessionIds.size;
+      const cvr_pct = sessions > 0 ? (captures / sessions) * 100 : null;
+      const icpKnown = icpFits.filter((v) => v !== null);
+      const avg_icp_fit_pct =
+        icpKnown.length > 0
+          ? (icpKnown.filter(Boolean).length / icpKnown.length) * 100
+          : null;
+      return { source, sessions, captures, cvr_pct, avg_icp_fit_pct };
+    })
+    .sort((a, b) => (b.cvr_pct ?? -1) - (a.cvr_pct ?? -1));
+
+  return {
+    daily,
+    totals: {
+      sessions: totalSessions,
+      captures: totalCaptures,
+      spend_cents: totalSpend,
+      cpa_cents: totalCaptures > 0 ? Math.round(totalSpend / totalCaptures) : null,
+      cvr_pct: totalSessions > 0 ? (totalCaptures / totalSessions) * 100 : null,
+    },
+    bySource,
+  };
+}

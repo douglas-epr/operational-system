@@ -17,6 +17,7 @@ import { EVIDENCE_WEIGHTS, MIN_SESSIONS_FOR_RATES } from "@/types/marketing";
 import { getIdeaContext, getFunnelMetrics } from "@/lib/marketing/admin";
 import { ChevronLeftIcon } from "@/components/ui/icons";
 import SignalsTable from "./_components/SignalsTable";
+import FunnelView from "../_components/FunnelView";
 
 /** 95% Wilson score interval for a binomial proportion (honest error bars). */
 function wilson(successes: number, n: number): { lo: number; hi: number } {
@@ -122,9 +123,14 @@ export default async function SignalsPage({
           <div>
             <p className="text-xs text-text-muted mb-0.5">Validation score</p>
             <p className="text-2xl font-bold text-text-primary">{Math.round(score)}</p>
-            <p className="text-[10px] text-text-muted">
-              weighted by commitment (preorder 20 · meeting 8 · waitlist 3 · view 0.1)
-            </p>
+            <details className="mt-1">
+              <summary className="text-[10px] text-accent cursor-pointer hover:underline select-none">
+                How is this calculated?
+              </summary>
+              <p className="text-[10px] text-text-muted mt-1 leading-relaxed">
+                Each event is weighted by commitment level: preorder +20 · meeting booked +8 · waitlist +3 · CTA click +1 · page view +0.1 · verified capture +5 · interview (strong evidence) +10 · interview (anti-signal) −5.
+              </p>
+            </details>
           </div>
           <div>
             <p className="text-xs text-text-muted mb-0.5">Confidence</p>
@@ -140,6 +146,9 @@ export default async function SignalsPage({
               {confidence}
             </p>
             <p className="text-[10px] text-text-muted">{sessions} unique sessions</p>
+            <p className="text-[10px] text-text-muted mt-0.5">
+              Low &lt;{MIN_SESSIONS_FOR_RATES} · Medium {MIN_SESSIONS_FOR_RATES}–199 · High 200+
+            </p>
           </div>
           <div>
             <p className="text-xs text-text-muted mb-0.5">Visitor → capture</p>
@@ -181,6 +190,24 @@ export default async function SignalsPage({
           <span>Interviews analyzed: <strong className="text-text-secondary">{interviews.length}</strong></span>
         </div>
       </section>
+
+      <FunnelView
+        title="Conversion funnel"
+        stages={[
+          { label: "Page views", value: sessions },
+          { label: "CTA clicks", value: eventCount("cta_click") },
+          {
+            label: "Captures",
+            value: captures,
+            note: captures > 0 && icpYes > 0 ? `${icpYes} ICP-fit` : undefined,
+          },
+          {
+            label: "ICP-fit",
+            value: icpYes,
+            note: icpYes > 0 ? "confirmed ICP" : undefined,
+          },
+        ]}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <KpiCard label="Quiz" value={m.quiz.toLocaleString()} />
