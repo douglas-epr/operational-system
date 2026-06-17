@@ -11,8 +11,9 @@ import { triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import ReportPreviewModal from "./ReportPreviewModal";
-import { useAutoTriggerAi } from "../_hooks/useAutoTriggerAi";
 import { useRegenerate } from "../_hooks/useRegenerate";
+import { createPortal } from "react-dom";
+import { useStepActions } from "../_context/StepActionsContext";
 
 interface ReportStepProps {
   ideaFull: IdeaFull;
@@ -75,8 +76,7 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDebateOpen, setIsDebateOpen] = useState(false);
 
-  const isEmpty = report?.final_score == null;
-  useAutoTriggerAi(idea.id, "report", isEmpty, isAiWorking);
+  const { actionBarEl, onOpenAiConfig } = useStepActions();
 
   function handleRegenerate() {
     return triggerRegenerate(() => triggerAiGeneration(idea.id, "report"));
@@ -114,28 +114,12 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header actions */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary">Go / No-Go Report</h2>
-          <p className="text-sm text-text-secondary">
-            A Devil&apos;s Advocate verdict on whether to build, refine, or kill this idea — before any build work.
-          </p>
-        </div>
-        <button
-          onClick={handleRegenerate}
-          disabled={isRegenerating}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium",
-            "bg-accent text-white hover:bg-accent/90 transition-colors",
-            "disabled:opacity-50 disabled:cursor-not-allowed"
-          )}
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          Regenerate
-        </button>
+      {/* Header */}
+      <div>
+        <h2 className="text-lg font-semibold text-text-primary">Go / No-Go Report</h2>
+        <p className="text-sm text-text-secondary">
+          A Devil&apos;s Advocate verdict on whether to build, refine, or kill this idea — before any build work.
+        </p>
       </div>
 
       {error && (
@@ -456,6 +440,31 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
         ideaName={idea.name}
         report={report}
       />
+
+      {actionBarEl && createPortal(
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRegenerate}
+            disabled={isRegenerating}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {isRegenerating ? "Regenerating..." : "Regenerate"}
+          </button>
+          <button
+            onClick={onOpenAiConfig}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-muted border border-border text-text-secondary hover:text-text-primary hover:bg-muted/80 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            Change AI Model
+          </button>
+        </div>,
+        actionBarEl
+      )}
     </div>
   );
 }

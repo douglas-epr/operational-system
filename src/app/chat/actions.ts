@@ -277,6 +277,12 @@ export async function listPrivateConversations(): Promise<PrivateConversationRow
 
   const unread = await unreadByScope(ctx.supabase, ctx.userId, "private", ids);
 
+  list.sort((a, b) => {
+    const aT = lastByConv.get(a.id)?.created_at ?? "";
+    const bT = lastByConv.get(b.id)?.created_at ?? "";
+    return bT < aT ? -1 : bT > aT ? 1 : 0;
+  });
+
   return list.map((c) => {
     const others = (c.participant_user_ids ?? []).filter((id) => id !== ctx.userId);
     const isGroup = others.length > 1;
@@ -944,9 +950,26 @@ export async function listChatbotSessions(): Promise<ChatbotConversationRow[]> {
   const { data } = await ctx.supabase
     .from("private_chatbot")
     // private_chatbot.owner_id was renamed to created_by in B8 (item 35).
-    .select("id, created_by, title, created_at, updated_at")
-    .order("updated_at", { ascending: false });
-  return (data ?? []) as ChatbotConversationRow[];
+    .select("id, created_by, title, created_at, updated_at");
+  const rows = (data ?? []) as ChatbotConversationRow[];
+  if (rows.length === 0) return [];
+
+  const { data: lastMsgsData } = await ctx.supabase
+    .from("private_chatbot_message")
+    .select("chatbot_id, created_at")
+    .in("chatbot_id", rows.map((r) => r.id))
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  const latestBySession = new Map<string, string>();
+  for (const m of (lastMsgsData ?? []) as Array<{ chatbot_id: string; created_at: string }>) {
+    if (!latestBySession.has(m.chatbot_id)) latestBySession.set(m.chatbot_id, m.created_at);
+  }
+  rows.sort((a, b) => {
+    const aT = latestBySession.get(a.id) ?? a.updated_at ?? "";
+    const bT = latestBySession.get(b.id) ?? b.updated_at ?? "";
+    return bT < aT ? -1 : bT > aT ? 1 : 0;
+  });
+  return rows;
 }
 
 export async function createChatbotSession(title?: string): Promise<{ id?: string; error?: string }> {

@@ -46,7 +46,6 @@ const PATH = "/ideas-refiner";
 export async function createIdea(data: {
   name: string;
   description: string;
-  stage?: string;
   project_id?: string;
   version_name?: string;
   authorized_users?: string[];
@@ -63,7 +62,6 @@ export async function createIdea(data: {
     .insert({
       name: data.name,
       description: data.description,
-      stage: data.stage ?? "refining_idea",
       project_id: data.project_id || null,
       version_name: data.version_name || null,
       authorized_users: data.authorized_users ?? [],

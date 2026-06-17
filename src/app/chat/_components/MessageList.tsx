@@ -135,6 +135,10 @@ const MessageList = forwardRef<MessageListHandle, Props>(function MessageList(
     setReactionsMap((prev) => ({ ...prev, ...updated }));
   }, [block, messages]);
 
+  const handleMessageDelete = useCallback((id: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+  }, []);
+
   // Toggle an emoji on a top-level message and refresh its reactions.
   const handleToggleEmoji = useCallback(async (messageId: string, emojiCode: string) => {
     const res = await toggleEmoji(block, messageId, emojiCode, false);
@@ -161,29 +165,20 @@ const MessageList = forwardRef<MessageListHandle, Props>(function MessageList(
     );
   }
 
-  const FIVE_MIN = 5 * 60 * 1000;
-
   return (
     <div ref={containerRef} className="flex-1 overflow-y-auto py-2">
-      {messages.map((m, idx) => {
-        const prev = idx > 0 ? messages[idx - 1] : null;
-        const grouped =
-          !!prev &&
-          prev.created_by === m.created_by &&
-          new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < FIVE_MIN;
-        return (
-          <MessageItem
-            key={m.id}
-            block={block}
-            message={m}
-            isOwn={m.created_by === currentUserId}
-            grouped={grouped}
-            onOpenThread={() => onOpenThread(m.id)}
-            reactions={reactionsMap[m.id]}
-            onToggleEmoji={(code) => handleToggleEmoji(m.id, code)}
-          />
-        );
-      })}
+      {messages.map((m) => (
+        <MessageItem
+          key={m.id}
+          block={block}
+          message={m}
+          isOwn={m.created_by === currentUserId}
+          onOpenThread={() => onOpenThread(m.id)}
+          reactions={reactionsMap[m.id]}
+          onToggleEmoji={(code) => handleToggleEmoji(m.id, code)}
+          onMessageDelete={handleMessageDelete}
+        />
+      ))}
     </div>
   );
 });

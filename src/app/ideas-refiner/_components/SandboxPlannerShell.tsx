@@ -30,6 +30,7 @@ import PlaybookStep from "./PlaybookStep";
 import AiConfigModal from "./AiConfigModal";
 import IdeaChatbot from "./IdeaChatbot";
 import IdeaDevilAdvocateChatbot from "./IdeaDevilAdvocateChatbot";
+import { StepActionsContext } from "../_context/StepActionsContext";
 
 interface SandboxPlannerShellProps {
   ideas: Idea[];
@@ -134,6 +135,7 @@ export default function SandboxPlannerShell({
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<IdeaBlock>(initialTab);
   const [showAiConfigModal, setShowAiConfigModal] = useState(false);
+  const [actionBarEl, setActionBarEl] = useState<HTMLDivElement | null>(null);
 
   const unlockedSteps = ideaFull ? computeUnlockedSteps(ideaFull) : new Set<IdeaBlock>(["ideas"]);
 
@@ -281,14 +283,18 @@ export default function SandboxPlannerShell({
 
       {/* Step content — title scrolls with content */}
       <div className="flex-1 overflow-y-auto px-6 pb-6">
-        <div className="pt-5 pb-4">
-          <h1 className="text-xl font-bold text-text-primary">
-            {IDEA_BLOCK_LABELS[activeTab]}
-          </h1>
-          <p className="text-sm text-text-muted mt-1">
-            Step {stepInfo.step} of {IDEA_BLOCKS_ORDERED.length}. {stepInfo.subtitle}
-          </p>
+        <div className="pt-5 pb-4 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-text-primary">
+              {IDEA_BLOCK_LABELS[activeTab]}
+            </h1>
+            <p className="text-sm text-text-muted mt-1">
+              Step {stepInfo.step} of {IDEA_BLOCKS_ORDERED.length}. {stepInfo.subtitle}
+            </p>
+          </div>
+          <div ref={setActionBarEl} className="flex items-center gap-2 shrink-0 mt-0.5" />
         </div>
+        <StepActionsContext.Provider value={{ actionBarEl, onOpenAiConfig: () => setShowAiConfigModal(true) }}>
         {activeTab === "ideas" && (
           <IdeasGrid
             ideas={ideas}
@@ -340,6 +346,7 @@ export default function SandboxPlannerShell({
             currentUserId={currentUserId}
           />
         )}
+        </StepActionsContext.Provider>
       </div>
 
       {/* Floating chatbots — visible on all 10 refinement tabs */}

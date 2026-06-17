@@ -155,11 +155,12 @@ function FieldBlock({
       <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">
         {label}
       </label>
-      <div className="border border-border rounded-md overflow-hidden bg-muted/30 h-[180px]">
+      <div className="border border-border rounded-md overflow-hidden bg-muted/30">
         <RichTextEditor
           ref={editorRef}
           initialHtml={initialHtml}
           hideFooter
+          autoHeight
         />
       </div>
     </div>

@@ -24,7 +24,7 @@ export default function SettingsShell({
   initialTheme,
 }: Props) {
   return (
-    <div className="space-y-10">
+    <div className="space-y-10 pb-20">
       <section>
         <div className="mb-3">
           <h2 className="text-lg font-semibold text-text-primary">Account</h2>

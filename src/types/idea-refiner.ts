@@ -124,15 +124,6 @@ export const IDEA_BLOCKS_ORDERED: IdeaBlock[] = [
   "playbook",
 ];
 
-// ── Stage ────────────────────────────────────────────────────────────────────
-
-export type IdeaStage = "refining_idea" | "validating_market_and_building_product";
-
-export const IDEA_STAGE_LABELS: Record<IdeaStage, string> = {
-  refining_idea: "Refining Idea",
-  validating_market_and_building_product: "Validating Market & Building Product",
-};
-
 // ── Database Row Interfaces ──────────────────────────────────────────────────
 
 /** Represents a row in the `idea` table. */
@@ -149,7 +140,6 @@ export interface Idea {
   current_block_ended: IdeaBlock | null;
   current_blocks_updating: string | null;
   created_at: string;
-  stage: IdeaStage;
   /** Joined from project table when fetching ideas list */
   project?: { id: string; name: string | null } | null;
   /** Derived in the page handler from the joined creator profile */

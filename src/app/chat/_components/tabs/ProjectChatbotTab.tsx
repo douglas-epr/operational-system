@@ -21,6 +21,7 @@ import {
   sendProjectChatbotMessage,
 } from "../../actions";
 import type { ProjectChatbotMessageRow } from "../../_chatbot/runProjectBot";
+import { sanitizeHtml } from "@/lib/sanitize";
 
 interface Props {
   projectId: string;
@@ -132,7 +133,7 @@ export default function ProjectChatbotTab({ projectId, block, currentUserId }: P
             <div
               key={m.id}
               className={[
-                "max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words",
+                "max-w-[80%] rounded-lg px-3 py-2 text-sm break-words",
                 isUser
                   ? "ml-auto bg-accent/20 text-text-primary"
                   : "bg-muted text-text-primary",
@@ -141,7 +142,14 @@ export default function ProjectChatbotTab({ projectId, block, currentUserId }: P
               <div className="text-[10px] text-text-muted mb-0.5">
                 {isUser ? "User" : "Bot"} · {fmtTime(m.created_at)}
               </div>
-              {m.message}
+              {isUser ? (
+                <span className="whitespace-pre-wrap">{m.message}</span>
+              ) : (
+                <div
+                  className="[&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:ml-1 [&_code]:bg-black/10 [&_code]:rounded [&_code]:px-0.5 [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold"
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.message ?? "") }}
+                />
+              )}
               {!isUser && Array.isArray(m.tool_calls) && (m.tool_calls as unknown[]).length > 0 && (
                 <details className="mt-2 text-[11px] text-text-muted">
                   <summary className="cursor-pointer">

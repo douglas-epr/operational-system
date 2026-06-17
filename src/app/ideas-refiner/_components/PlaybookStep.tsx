@@ -17,7 +17,6 @@ import { triggerAiGeneration } from "../actions";
 import { ChevronDownIcon, UploadIcon, AddIcon } from "@/components/ui/icons";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import { useRegenerate } from "../_hooks/useRegenerate";
-import { useAutoTriggerAi } from "../_hooks/useAutoTriggerAi";
 
 interface Props {
   ideaFull: IdeaFull;
@@ -55,9 +54,6 @@ export default function PlaybookStep({ ideaFull, isAdminOrManager, currentUserId
   const { idea } = ideaFull;
   const isAiWorking = idea.current_blocks_updating === "playbook";
   const { isRegenerating, error: regenError, triggerRegenerate } = useRegenerate(idea.id, "playbook", isAiWorking);
-
-  // Auto-generate on first view when no versions exist.
-  useAutoTriggerAi(idea.id, "playbook", versions.length === 0, isAiWorking);
 
   const activeVersion = versions.find((v) => v.id === activeVersionId) ?? versions[0] ?? null;
 

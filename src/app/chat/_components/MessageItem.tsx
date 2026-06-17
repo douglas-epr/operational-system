@@ -18,6 +18,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import type { ChatBlock, ChatMessage, ChatThreadMessage, EmojiReaction } from "@/types/chat";
 import { deleteMessage, editMessage, toggleEmoji } from "../actions";
+import { sanitizeHtml } from "@/lib/sanitize";
 import {
   AttachmentIcon,
   EditIcon,
@@ -49,6 +50,8 @@ interface Props {
   reactions?: EmojiReaction[];
   /** Called when the viewer toggles an emoji on this message. */
   onToggleEmoji?: (emojiCode: string) => void;
+  /** Called after this message is successfully deleted so the parent can remove it from state. */
+  onMessageDelete?: (id: string) => void;
 }
 
 function fmtTime(iso: string): string {
@@ -79,9 +82,13 @@ export default function MessageItem({
   onOpenThread,
   reactions,
   onToggleEmoji,
+  onMessageDelete,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.message);
+  const [displayText, setDisplayText] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleted, setDeleted] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerOpensBelow, setPickerOpensBelow] = useState(false);
   const [openPopupCode, setOpenPopupCode] = useState<string | null>(null);
@@ -109,21 +116,27 @@ export default function MessageItem({
       toast.error(res.error);
       return;
     }
+    setDisplayText(trimmed);
     setEditing(false);
   }
 
-  async function handleDelete() {
-    if (!confirm("Delete this message?")) return;
+  async function confirmAndDelete() {
     const res = await deleteMessage(block, message.id, !!isThread);
     if (res.error) {
       toast.error(res.error);
+      return;
     }
+    setConfirmDelete(false);
+    setDeleted(true);
+    onMessageDelete?.(message.id);
   }
 
   async function handleEmojiPick(code: string) {
     setShowPicker(false);
     onToggleEmoji?.(code);
   }
+
+  if (deleted) return null;
 
   // Spacing & layout differs for grouped vs first-of-author rows.
   const rowPadding = grouped ? "py-0.5" : "pt-2.5 pb-1";
@@ -190,9 +203,14 @@ export default function MessageItem({
               </button>
             </div>
           </div>
+        ) : looksLikeHtml(displayText ?? message.message) ? (
+          <div
+            className={`text-[14px] text-text-primary break-words ${grouped ? "" : "mt-0.5"} leading-[1.45] [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:ml-1 [&_h1]:text-base [&_h1]:font-bold [&_h2]:text-base [&_h2]:font-bold [&_h3]:font-semibold [&_code]:bg-muted [&_code]:rounded [&_code]:px-0.5 [&_code]:text-[13px]`}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayText ?? message.message) }}
+          />
         ) : (
           <div className={`text-[14px] text-text-primary whitespace-pre-wrap break-words ${grouped ? "" : "mt-0.5"} leading-[1.45]`}>
-            {renderBody(message.message)}
+            {renderBody(displayText ?? message.message)}
           </div>
         )}
 
@@ -277,6 +295,25 @@ export default function MessageItem({
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Inline delete confirmation ───────────────────────── */}
+        {confirmDelete && (
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            <span className="text-text-muted">Delete this message?</span>
+            <button
+              onClick={confirmAndDelete}
+              className="px-2 py-0.5 rounded bg-danger text-white hover:bg-danger/80 transition-colors font-medium"
+            >
+              Delete
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="px-2 py-0.5 rounded border border-border text-text-secondary hover:text-text-primary transition-colors"
+            >
+              Cancel
+            </button>
           </div>
         )}
 
@@ -368,7 +405,7 @@ export default function MessageItem({
                 <EditIcon className="w-3.5 h-3.5" strokeWidth={1.8} />
               </button>
               <button
-                onClick={handleDelete}
+                onClick={() => setConfirmDelete(true)}
                 title="Delete"
                 className="p-1.5 rounded text-text-muted hover:text-danger hover:bg-muted transition-colors"
               >
@@ -380,6 +417,10 @@ export default function MessageItem({
       )}
     </div>
   );
+}
+
+function looksLikeHtml(text: string): boolean {
+  return /<[a-zA-Z]/.test(text);
 }
 
 /** Auto-link http(s) URLs in the message body. */

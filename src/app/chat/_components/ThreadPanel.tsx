@@ -90,6 +90,7 @@ export default function ThreadPanel({ block, conversationId, threadId, currentUs
               isOwn={parent.created_by === currentUserId}
               reactions={parentReactions}
               onToggleEmoji={(code) => handleToggleParentEmoji(code)}
+              onMessageDelete={() => setParent(null)}
             />
             <div className="px-4 py-1 text-[11px] text-text-muted border-y border-border">
               {replies.length} {replies.length === 1 ? "reply" : "replies"}
@@ -103,6 +104,7 @@ export default function ThreadPanel({ block, conversationId, threadId, currentUs
                 isThread
                 reactions={replyReactionsMap[r.id]}
                 onToggleEmoji={(code) => handleToggleReplyEmoji(r.id, code)}
+                onMessageDelete={(id) => setReplies((prev) => prev.filter((x) => x.id !== id))}
               />
             ))}
           </>

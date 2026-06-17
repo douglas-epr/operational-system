@@ -128,7 +128,7 @@ export default function ConversationPane({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={header.picture} alt="" className="w-full h-full object-cover" />
             ) : (
-              "•"
+              header?.title?.[0]?.toUpperCase() ?? "•"
             )}
           </div>
           <div className="min-w-0 flex-1">

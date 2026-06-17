@@ -7,8 +7,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { Idea, IdeaStage, ProjectOption } from "@/types/idea-refiner";
-import { IDEA_STAGE_LABELS } from "@/types/idea-refiner";
+import type { Idea, ProjectOption } from "@/types/idea-refiner";
 import type { UserAiSettingsClient } from "@/types/settings";
 import type { UserProfile } from "@/types/projects";
 import type { UserMultiSelectOption } from "@/components/ui/UserMultiSelect";
@@ -320,11 +319,6 @@ export default function IdeasGrid({
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-const STAGE_STYLES: Record<IdeaStage, string> = {
-  refining_idea: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-  validating_market_and_building_product: "bg-green-500/15 text-green-400 border-green-500/30",
-};
-
 interface IdeaCardProps {
   idea: Idea;
   profiles: UserProfile[];
@@ -344,8 +338,6 @@ function getInitials(p: UserProfile): string {
 
 /** Single idea card displaying name and description. Click to open refinement. */
 function IdeaCard({ idea, profiles, isCreator, onSelect, onDeleteClick, onEditClick, onCopyClick, onBuildProjectClick }: IdeaCardProps) {
-  const stage = idea.stage ?? "refining_idea";
-
   const memberIds = [
     ...(idea.created_by ? [idea.created_by] : []),
     ...idea.authorized_users.filter((id) => id !== idea.created_by),
@@ -455,14 +447,8 @@ function IdeaCard({ idea, profiles, isCreator, onSelect, onDeleteClick, onEditCl
         </div>
       )}
 
-      {/* Stage tag + Build Project button */}
-      <div className="flex items-center justify-between mt-2 gap-2">
-        <span className={cn(
-          "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border",
-          STAGE_STYLES[stage]
-        )}>
-          {IDEA_STAGE_LABELS[stage]}
-        </span>
+      {/* Build Project button */}
+      <div className="flex items-center justify-end mt-2 gap-2">
         <button
           type="button"
           onClick={(e) => {

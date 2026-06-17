@@ -54,6 +54,12 @@ export interface RichTextEditorProps {
   hideToolbar?: boolean;
   /** Hide the footer that shows the block type + word count. */
   hideFooter?: boolean;
+  /**
+   * Auto-height mode: the editor grows with its content instead of filling
+   * its parent and scrolling internally. Use inside modals / cards where the
+   * parent container handles overflow, not the editor itself.
+   */
+  autoHeight?: boolean;
 }
 
 export interface RichTextEditorHandle {
@@ -76,6 +82,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       className,
       hideToolbar,
       hideFooter,
+      autoHeight = false,
     },
     ref
   ) {
@@ -105,7 +112,15 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
       ],
       content: initialHtml,
       editorProps: {
-        attributes: { class: "focus:outline-none" },
+        attributes: {
+          class: "focus:outline-none",
+          // In autoHeight mode override the document-editor defaults so the
+          // field starts compact and grows with content (inline style wins
+          // over the .tiptap-content .ProseMirror CSS selector).
+          style: autoHeight
+            ? "min-height: 100px; padding: 10px 14px;"
+            : "",
+        },
       },
       onUpdate: ({ editor }) => {
         onChange?.(editor.getHTML());
@@ -164,7 +179,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
     const wordCount = editor.storage.characterCount?.words?.() ?? 0;
 
     return (
-      <div className={`h-full flex flex-col overflow-hidden ${className ?? ""}`}>
+      <div className={`flex flex-col ${autoHeight ? "" : "h-full overflow-hidden"} ${className ?? ""}`}>
         {(title || toolbarRight) && (
           <div className="flex items-center justify-between gap-3 px-6 py-3 border-b border-border shrink-0 flex-wrap bg-surface">
             {title ? (
@@ -183,7 +198,7 @@ export const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorPro
         )}
 
         <div
-          className="flex-1 overflow-y-auto tiptap-content"
+          className={autoHeight ? "tiptap-content" : "flex-1 overflow-y-auto tiptap-content"}
           onClick={() => editor.commands.focus()}
         >
           <EditorContent editor={editor} />
