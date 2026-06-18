@@ -5,15 +5,17 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import type { IdeaFull, IdeaReportArea, IdeaReportPenalty, IdeaReportAlignment, IdeaReportDebateTurn } from "@/types/idea-refiner";
-import { triggerAiGeneration } from "../actions";
+import { triggerAiGeneration, assembleIdeaBrief } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import ReportPreviewModal from "./ReportPreviewModal";
+import BriefPreviewModal from "./BriefPreviewModal";
 import { useRegenerate } from "../_hooks/useRegenerate";
 import { createPortal } from "react-dom";
 import { useStepActions } from "../_context/StepActionsContext";
+import { useRouter } from "next/navigation";
 
 interface ReportStepProps {
   ideaFull: IdeaFull;
@@ -72,9 +74,25 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
   const { idea, report } = ideaFull;
   const isAiWorking = idea.current_blocks_updating === "report";
 
+  const router = useRouter();
   const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "report", isAiWorking);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDebateOpen, setIsDebateOpen] = useState(false);
+  const [isGeneratingBrief, setIsGeneratingBrief] = useState(false);
+  const [briefError, setBriefError] = useState<string | null>(null);
+  const [isBriefOpen, setIsBriefOpen] = useState(false);
+
+  const handleGenerateBrief = useCallback(async () => {
+    setIsGeneratingBrief(true);
+    setBriefError(null);
+    const result = await assembleIdeaBrief(idea.id);
+    if (result.error) {
+      setBriefError(result.error);
+    } else {
+      router.refresh();
+    }
+    setIsGeneratingBrief(false);
+  }, [idea.id, router]);
 
   const { actionBarEl, onOpenAiConfig } = useStepActions();
 
@@ -172,13 +190,26 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
                   {/* Score math formula */}
                   {report.completeness_score != null && report.alignment != null && (
                     <div className="mt-3 pt-3 border-t border-border text-[11px] text-text-secondary font-mono">
-                      Completeness <span className="text-text-primary font-semibold">{report.completeness_score}</span>
-                      {" × 75% + Alignment "}
-                      <span className="text-text-primary font-semibold">{report.alignment.alignment_score}</span>
-                      {" × 25% − "}
-                      <span className="text-red-400 font-semibold">{penaltyTotal}</span>
-                      {" penalties = "}
-                      <span className="font-semibold" style={{ color: thresholdColor }}>{score}</span>
+                      {(() => {
+                        const reframeMultMap: Record<string, number> = { minor: 1.0, moderate: 0.8, major: 0.55 };
+                        const reframeDist = report.alignment!.reframe_distance ?? "major";
+                        const reframeMult = reframeMultMap[reframeDist] ?? 0.55;
+                        const alignComp = Math.max(0.5, Math.min(1.0, (report.alignment!.alignment_score ?? 0) / 100));
+                        const factor = (alignComp * reframeMult).toFixed(2);
+                        return (
+                          <>
+                            {"Completeness "}
+                            <span className="text-text-primary font-semibold">{report.completeness_score}</span>
+                            {" × "}
+                            <span className="text-text-primary font-semibold">{factor}</span>
+                            <span className="text-text-muted"> ({report.alignment!.alignment_score} align · {reframeDist} reframe)</span>
+                            {" − "}
+                            <span className="text-red-400 font-semibold">{penaltyTotal}</span>
+                            {" penalties = "}
+                            <span className="font-semibold" style={{ color: thresholdColor }}>{score}</span>
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -350,6 +381,40 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
               </div>
             </div>
 
+            {/* Build Brief card */}
+            <div className="rounded-xl border border-border bg-surface">
+              <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+                <svg className="w-5 h-5 text-accent shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <h3 className="text-sm font-semibold text-text-primary">Build Brief</h3>
+              </div>
+              <div className="px-6 py-4 text-sm text-text-secondary space-y-3">
+                {report.brief_generated_at ? (
+                  <>
+                    <div className="text-text-primary font-medium">{report.brief_title ?? "Build Brief"}</div>
+                    {report.brief_subtitle && <div className="text-xs">{report.brief_subtitle}</div>}
+                    <p className="text-xs text-text-muted">
+                      Generated {new Date(report.brief_generated_at).toLocaleDateString()}. Opens a 10-section investor brief with PDF/DOCX export.
+                    </p>
+                    <button
+                      onClick={() => setIsBriefOpen(true)}
+                      className="w-full text-xs px-3 py-2 rounded-md bg-accent text-white hover:bg-accent/90 transition-colors"
+                    >
+                      View Brief
+                    </button>
+                  </>
+                ) : (
+                  <p>
+                    Synthesizes all discovery steps into an investor-grade brief with 10 sections: thesis, build plan, customer targeting, unit economics, GTM, regulatory posture, validation test, risks, and verdict.
+                  </p>
+                )}
+                {briefError && (
+                  <p className="text-xs text-red-400" role="alert">{briefError}</p>
+                )}
+              </div>
+            </div>
+
             {/* Verdict Guide */}
             <div className="rounded-xl border border-border bg-surface p-6">
               <h3 className="text-sm font-semibold text-text-primary mb-3">Verdict Guide</h3>
@@ -359,21 +424,21 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
                     <span className="inline-block w-2 h-2 rounded-full" style={{ background: "#22c55e" }} />
                     Build
                   </span>
-                  <span className="text-text-secondary">≥ 75</span>
+                  <span className="text-text-secondary">≥ 80</span>
                 </li>
                 <li className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-block w-2 h-2 rounded-full" style={{ background: "#f59e0b" }} />
                     Refine
                   </span>
-                  <span className="text-text-secondary">60 – 74</span>
+                  <span className="text-text-secondary">65 – 79</span>
                 </li>
                 <li className="flex items-center justify-between">
                   <span className="inline-flex items-center gap-2">
                     <span className="inline-block w-2 h-2 rounded-full" style={{ background: "#ef4444" }} />
                     Kill — Don&apos;t Build
                   </span>
-                  <span className="text-text-secondary">&lt; 60</span>
+                  <span className="text-text-secondary">&lt; 65</span>
                 </li>
               </ul>
             </div>
@@ -441,8 +506,25 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
         report={report}
       />
 
+      <BriefPreviewModal
+        isOpen={isBriefOpen}
+        onClose={() => setIsBriefOpen(false)}
+        ideaName={idea.name}
+        report={report}
+      />
+
       {actionBarEl && createPortal(
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleGenerateBrief}
+            disabled={isGeneratingBrief}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            {isGeneratingBrief ? "Generating Brief..." : "Generate Brief"}
+          </button>
           <button
             onClick={handleRegenerate}
             disabled={isRegenerating}

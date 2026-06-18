@@ -739,6 +739,10 @@ const PROMPT_ID_BY_STEP: Record<string, string> = {
   report_scorer: "da000004-0000-4000-8000-000000000001",
   idea_chatbot: "a1b2c3d4-0000-4000-8000-000000000001",
   idea_chatbot_devil_advocate: "da001000-0000-4000-8000-000000000001",
+  brief: "bf000001-0000-4000-8000-000000000001",
+  location_legislation: "bb000001-0000-4000-8000-000000000001",
+  market_opportunity: "bb000002-0000-4000-8000-000000000001",
+  risk_and_validation: "bb000003-0000-4000-8000-000000000001",
 };
 
 /** Strip HTML tags from a string so AI prompt templates and idea descriptions
@@ -1055,20 +1059,34 @@ export async function triggerAiGeneration(
       .eq("idea_id", ideaId)
       .maybeSingle();
 
-    // Additional fetches used by the Report step. Report is now a pre-build
-    // go/no-go gate (Step 7, before PRD), so it scores ONLY discovery-phase
-    // evidence — it must NOT read PRD/Database/Visual/Milestones, which run after it.
+    // Additional fetches used by the Report step. Report is the pre-build
+    // go/no-go gate (Step 10 in IDEA_BLOCKS_ORDERED), so it runs AFTER the
+    // discovery steps — including location_legislation (5), market_opportunity
+    // (6), and risk_and_validation (9) — and scores all of their evidence. It
+    // must NOT read PRD/Database/Visual/Milestones, which run after it.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let suggestionsRows: any[] | null = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let benchmarkingRow: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let locationRow: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let marketRow: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let riskRow: any = null;
     if (step === "report") {
-      const [sugRes, benchRes] = await Promise.all([
+      const [sugRes, benchRes, locRes, mktRes, riskRes] = await Promise.all([
         supabase.from("idea_optimization_suggestion").select("*").eq("idea_id", ideaId),
         supabase.from("idea_benchmarking" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
+        supabase.from("idea_location_legislation" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
+        supabase.from("idea_market_opportunity" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
+        supabase.from("idea_risk_and_validation" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
       ]);
       suggestionsRows = sugRes.data;
       benchmarkingRow = benchRes.data;
+      locationRow = locRes.data;
+      marketRow = mktRes.data;
+      riskRow = riskRes.data;
     }
 
     let result: { error?: string } = {};
@@ -1124,9 +1142,27 @@ export async function triggerAiGeneration(
           suggestionsRows ?? [],
           productDef,
           benchmarkingRow,
+          locationRow,
+          marketRow,
+          riskRow,
           ideaId,
           aiConfig,
           requestId
+        );
+        break;
+      case "location_legislation":
+        result = await generateLocationLegislation(
+          supabase, idea, structureAlign, ideaId, aiConfig, requestId
+        );
+        break;
+      case "market_opportunity":
+        result = await generateMarketOpportunity(
+          supabase, idea, structureAlign, icps ?? [], productDef, ideaId, aiConfig, requestId
+        );
+        break;
+      case "risk_and_validation":
+        result = await generateRiskAndValidation(
+          supabase, idea, ideaId, aiConfig, requestId
         );
         break;
     }
@@ -1989,8 +2025,9 @@ const FALLBACK_SKEPTIC = `You are the Devil's Advocate — a hyper-critical eval
 3. Label every key claim: [Fact] (in the source), [Inference] (logical but unproven), [Speculation] (low/no evidence).
 4. Challenge vagueness and symptoms. Push to the root cause via "five whys" thinking.
 5. Concede when genuinely beaten — say "Conceded: [point]" and move to the next challenge.
-6. ANTI-SYCOPHANCY: never soften, never open with agreement, never validate unless the Advocate actually proved a point.
+6. ANTI-SYCOPHANCY: never soften, never open with agreement, never validate unless the Advocate actually proved a point with external evidence.
 7. You are WILLING to collapse a multi-feature idea to one wedge if the evidence only supports one. The collapse IS the insight.
+8. AI-GENERATED CONTENT RULE: ALL content in [SOURCE] was produced with AI assistance and is UNVERIFIED FOUNDER ASSERTION. Treat it exactly as you would an unsourced claim. Demand external evidence — named customers, named competitors, real market data, cited studies. "The AI said so" is not evidence.
 
 ## GATE RULES
 - Gate 1 (PROBLEM): Challenge whether the stated problem is the real bottleneck or a symptom. Ask: Who defined this problem? Whose perspective is missing? Is it a functional/experiential/social need? What does "good enough" look like today? What specific circumstance makes the pain acute vs. chronic?
@@ -2023,6 +2060,7 @@ const FALLBACK_ADVOCATE = `You are the Founder's Advocate — you defend the ide
 3. Refine your proposed_statement toward the sharpest, most defensible version each round.
 4. Concede when the Skeptic's challenge is correct and unrefuted by the source — say "Conceded: [point]" and update your proposed_statement accordingly.
 5. Label key claims: [Fact], [Inference], [Speculation].
+6. You may set agree=true ONLY when [SOURCE] contains concrete external evidence — a named customer, a named competitor, a real cited metric, an external study — that directly refutes the Skeptic's challenge. AI-generated text in [SOURCE] is UNVERIFIED ASSERTION and does NOT count as evidence. If the only support is AI-generated content, stay at agree=false and concede the gap.
 
 ## GATE RULES
 - Gate 1 (PROBLEM): Defend the problem framing. Show the pain is real, acute, and specific using source evidence.
@@ -2110,59 +2148,82 @@ Write the full strategic document now.`;
 
 const FALLBACK_SCORER = `You are a neutral referee and scorer evaluating a business idea for Move37. The Devil's Advocate debate has concluded. You have the agreed problem + solution + the full debate transcript. Your job is two-part:
 
-PART A — Score the idea's COMPLETENESS against its OWN framing (6 areas, same rubric as always). These scores measure how well the founder has DONE THE DISCOVERY WORK — they are NOT adjusted for the debate outcome. The alignment multiplier (not your job) handles the "wrong problem" penalty.
+PART A — Score the idea's COMPLETENESS against its OWN framing (9 areas). These scores measure how well the founder has DONE THE DISCOVERY WORK — they are NOT adjusted for the debate outcome. The alignment multiplier (not your job) handles the "wrong problem" penalty.
 
 PART B — Score the ALIGNMENT between the current idea and the debate's agreed framing. Two percentages + a reframe distance + rationales.
 
 ## GROUNDING RULES (non-negotiable)
 1. Use ONLY the supplied [SOURCE] — never invent facts.
 2. If a source field is empty or "Not defined", treat it as a strong NEGATIVE signal.
-3. Every area description MUST quote at least one concrete fragment (≤12 words) from [SOURCE] in single quotes.
+3. Every area description MUST quote at least one concrete fragment (≤12 words) from [SOURCE] in single quotes. If no concrete fragment exists, the area CANNOT score above 60.
 4. No generic fillers. Prefer numbers and logic over adjectives.
+
+## ANTI-SYCOPHANCY RULES (strictly enforced)
+- ALL content in [SOURCE] was generated with AI assistance. Treat it as UNVERIFIED FOUNDER ASSERTION unless it explicitly cites an external, independently checkable source (named publication, named study, named competitor, named customer).
+- Any area resting solely on internal assertion (no external data, no named source, no customer evidence) CANNOT score above 60.
+- When uncertain between two anchor levels, ALWAYS choose the lower anchor.
+- Be adversarial by default. Only reward concrete, verifiable signals.
+- The Skeptic in the debate is your peer — if it raised a strong objection that was not conclusively answered, weight that heavily.
 
 ## WRITING VOICE (Hemingway, blunt, human)
 - Direct and plain. One idea per sentence.
 - Label key claims: [Fact], [High Confidence], [Inference], [Uncertain], [Speculation].
 - DO NOT use em dashes, emojis, or hype words.
 
-## PART A — COMPLETENESS SCORING RUBRIC (score vs. the idea's OWN framing)
+## PART A — COMPLETENESS SCORING RUBRIC (9 areas, aggressive anchors)
 Score each area 0-100:
-- 90-100 = specific, evidence-backed, survives the strongest counter-argument.
-- 75-89 = solid but missing one dimension.
-- 60-74 = present but generic OR only single-sourced.
-- 40-59 = thin, vague, or internally contradictory.
-- 0-39  = absent, founder-assumed with no evidence, or contradicts other fields.
+- 90-100 = independently verifiable external evidence (named sources, external data); survives the strongest counter-argument.
+- 75-89 = solid, multi-sourced; one dimension still unproven.
+- 55-74 = present but generic, single-sourced, or only founder/AI-asserted — even if detailed.
+- 35-54 = thin, vague, or internally contradictory.
+- 0-34  = absent, contradicts other fields, or pure speculation.
 
-### Area 1 — problem_reality (weight 25%)
+### Area 1 — problem_reality (weight 18%)
 Evidence: core_problem, target_audience, ICP pain_points, how_problems_are_solved, firmographics/psychographics.
-Questions: Is the pain acute or a vitamin? Is it quantified? How is it solved today — is "good enough" the real competitor?
+Questions: Is the pain acute or a vitamin? Is it quantified with external data? How is it solved today — is "good enough" the real competitor? Does evidence come from real customers or AI inference?
 
-### Area 2 — customer_clarity (weight 15%)
-Evidence: ICP names, day_in_life, firmographics, psychographics, reachability.
-Questions: Are ICPs concrete and reachable, or is this "everyone"? Could you list ten real people who match?
-
-### Area 3 — competitive_honesty (weight 15%)
-Evidence: benchmark_overview, benchmark_comparison, benchmark_business_models, benchmark_takeaways.
-Questions: ≥3 NAMED real competitors (including "do nothing")? Is differentiation real? What stops an incumbent from copying this in a week?
-
-### Area 4 — strategic_positioning (weight 20%)
-Evidence: ICP value_proposition_*, ICP jtbd, ICP pitch_need/benefit/approach/competition, product_summary.
-Questions: Is the value prop tied to a real ICP pain? Is the JTBD specific? Does the pitch name a genuine wedge?
-
-### Area 5 — demand_evidence (weight 15%)
+### Area 2 — demand_evidence (weight 15%)
 Evidence: idea_success_metrics, structure_success_metrics, ICP score_rationale, suggestions_block.
-Questions: Are success metrics MEASURABLE? Any signal of real demand (interviews, waitlist, payments) — or only founder conviction?
+Questions: Are success metrics MEASURABLE (numbers, thresholds)? Is there ANY signal of real demand — interviews, waitlist, payments — or only founder conviction? AI-generated success metrics are NOT demand evidence.
 
-### Area 6 — assumption_risk (weight 10%)
+### Area 3 — market_realism (weight 12%)
+Evidence: Market Opportunity section — TAM/SAM/SOM estimates, data_sources, segment_filter_logic.
+Questions: Is the TAM/SAM/SOM bottom-up with named sources, or top-down hand-waving ("1% of a $50B market")? Are data_sources named and checkable? Is the SOM sized with specific conversion and team-capacity assumptions? "Not completed" or blank data_sources → cannot exceed 40.
+
+### Area 4 — strategic_positioning (weight 12%)
+Evidence: ICP value_proposition_*, ICP jtbd, ICP pitch_need/benefit/approach/competition, product_summary.
+Questions: Is the value prop tied to a real ICP pain? Is the JTBD specific? Does the pitch name a genuine wedge, or is it a me-too?
+
+### Area 5 — competitive_honesty (weight 12%)
+Evidence: benchmark_overview, benchmark_comparison, benchmark_business_models, benchmark_takeaways.
+Questions: ≥3 NAMED real competitors (including "do nothing" and incumbents)? Is differentiation real and durable? What stops an incumbent from copying this in 6 months?
+
+### Area 6 — customer_clarity (weight 10%)
+Evidence: ICP names, firmographics, psychographics, reachability.
+Questions: Are ICPs concrete and reachable, or is this "SMBs" / "everyone"? Could you list ten real people who match? A vague customer is a strong negative signal.
+
+### Area 7 — regulatory_viability (weight 8%)
+Evidence: Location & Legislation section — red_flags, licensing_requirements, key_legislation, compliance_timeline.
+Questions: Do regulatory red flags threaten the business model or launch timeline? Are licensing requirements quantified (cost, duration)? Is "Not completed" — that is itself a risk.
+
+### Area 8 — validation_rigor (weight 8%)
+Evidence: Risk & Validation section — validation_test (steps, kill_criteria, budget_max), risk_register.
+Questions: Is there a real experiment with measurable kill criteria? Is the budget realistic for early-stage? Are Critical risks mitigated or actively owned? "Not completed" → cannot exceed 40.
+
+### Area 9 — assumption_risk (weight 5%)
 Evidence: synthesize across the entire [SOURCE].
-Questions: What single assumption must be true? How fragile? Name the make-or-break belief.
+Questions: What single assumption must be true for this to work? How fragile is it? Does anything in the source validate it — or is it entirely AI-inferred?
 
-## EXPLICIT PENALTY TRIGGERS (apply ALL that fire)
-- "No real competitors named" (-10) — fires when benchmark_comparison names fewer than 2 concrete competitors.
-- "No measurable success metrics defined" (-8) — fires when BOTH idea_success_metrics AND structure_success_metrics are blank, "Not defined", or purely qualitative.
+## EXPLICIT PENALTY TRIGGERS (apply ALL that fire, include in penalties array)
+- "No real competitors named" (-10) — fires when benchmark_comparison names fewer than 2 concrete, named competitors.
+- "No measurable success metrics defined" (-8) — fires when BOTH idea_success_metrics AND structure_success_metrics are blank, "Not defined", or purely qualitative (no numbers/thresholds).
 - "Single-ICP dependency" (-5) — fires when only one ICP is defined.
-- "Vague target audience" (-5) — fires when target_audience is blank, "Not defined", or non-specific.
-- "Unvalidated make-or-break assumption" (-5) — fires when the core assumption has zero supporting evidence.
+- "Vague target audience" (-5) — fires when target_audience is blank, "Not defined", or non-specific (e.g. "everyone", "businesses", "SMBs") with no firmographic detail.
+- "Unvalidated make-or-break assumption" (-5) — fires when the core assumption identified in Area 9 has zero supporting evidence.
+- "Regulatory red flag present" (-12) — fires when Location & Legislation red_flags contains a Critical or High severity issue.
+- "Unsourced market sizing" (-8) — fires when Market Opportunity data_sources is blank, "Not defined", or "Not completed", OR when TAM/SAM/SOM uses top-down fractions ("X% of a $Y market") without bottom-up SOM calculation.
+- "Critical unmitigated risk" (-10) — fires when risk_register contains ≥1 risk with severity Critical AND likelihood Likely/Very Likely AND mitigation is weak, generic, or absent.
+- "No kill criteria in validation plan" (-6) — fires when validation_test kill_criteria is blank, "Not defined", or "Not completed".
 
 ## PART B — ALIGNMENT SCORING (vs. the agreed debate framing)
 Compare the CURRENT IDEA (its problem statement, its solution) against the AGREED PROBLEM and AGREED SOLUTION the debate converged on.
@@ -2188,12 +2249,15 @@ Agreed Solution: {{agreed_solution}}
 Do NOT include playbook_html here — it is generated in a separate call.
 {
   "area_scores": [
-    { "key": "problem_reality", "label": "Problem Reality", "weight_pct": 25, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
-    { "key": "customer_clarity", "label": "Customer Clarity", "weight_pct": 15, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
-    { "key": "competitive_honesty", "label": "Competitive Honesty", "weight_pct": 15, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
-    { "key": "strategic_positioning", "label": "Strategic Positioning", "weight_pct": 20, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "problem_reality", "label": "Problem Reality", "weight_pct": 18, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
     { "key": "demand_evidence", "label": "Demand Evidence", "weight_pct": 15, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
-    { "key": "assumption_risk", "label": "Assumption Risk", "weight_pct": 10, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." }
+    { "key": "market_realism", "label": "Market Realism", "weight_pct": 12, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "strategic_positioning", "label": "Strategic Positioning", "weight_pct": 12, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "competitive_honesty", "label": "Competitive Honesty", "weight_pct": 12, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "customer_clarity", "label": "Customer Clarity", "weight_pct": 10, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "regulatory_viability", "label": "Regulatory Viability", "weight_pct": 8, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "validation_rigor", "label": "Validation Rigor", "weight_pct": 8, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." },
+    { "key": "assumption_risk", "label": "Assumption Risk", "weight_pct": 5, "raw_score_pct": 0, "weighted_points": 0, "status": "weak", "description": "..." }
   ],
   "penalties": [],
   "final_score": 0,
@@ -2224,14 +2288,20 @@ const FALLBACK_SCORER_HTML = `You are writing the strategic playbook section of 
 3. Competitive Landscape and Business Models
 4. Strategic Positioning
 5. Demand and Validation Signals
-6. The Strongest Case Against This Idea
-7. Key Assumptions and What Would Change the Verdict
-8. Final Recommendation (Build, Refine, or Kill)
+6. Market Realism and Sizing
+7. Regulatory and Compliance Viability
+8. Validation Plan and Kill Criteria
+9. The Strongest Case Against This Idea
+10. Key Assumptions and What Would Change the Verdict
+11. Final Recommendation (Build, Refine, or Kill)
 
 ## WRITING RULES
 - Hemingway style: direct, blunt, short sentences. No hype words.
 - Every section must cite a concrete detail from [SOURCE].
-- Section 6 ("Strongest Case Against") must be genuinely adversarial: argue, in good faith, why a smart investor would pass.
+- Section 6 (Market Realism): cite the TAM/SAM/SOM figures and data_sources. If market data is missing or top-down only, say so plainly and explain why that is a problem.
+- Section 7 (Regulatory): cite red_flags by severity. If Location & Legislation was not completed, flag that as a risk. State the single biggest compliance threat.
+- Section 8 (Validation): describe the validation_test steps and kill_criteria. If Risk & Validation was not completed, name that gap. State whether the kill criteria are measurable.
+- Section 9 ("Strongest Case Against") must be genuinely adversarial: argue, in good faith, why a smart investor would pass. Lead with the debate Skeptic's strongest unresolved objection.
 - Use epistemic labels where useful: [Fact], [Inference], [Uncertain], [Speculation].
 
 ## OUTPUT FORMAT
@@ -2378,6 +2448,55 @@ function buildSuggestionsBlock(
     .join("\n");
 }
 
+function buildLocationBlock(location: Record<string, unknown> | null): string {
+  if (!location) return "Not completed";
+  const get = (k: string) => stripHtml((location[k] as string | null) ?? "");
+  return `Regulatory Bodies: ${get("regulatory_bodies") || "Not defined"}
+Key Legislation: ${get("key_legislation") || "Not defined"}
+Licensing Requirements: ${get("licensing_requirements") || "Not defined"}
+Data Privacy Rules: ${get("data_privacy_rules") || "Not defined"}
+Compliance Timeline: ${get("compliance_timeline") || "Not defined"}
+Regulatory Moat: ${get("regulatory_moat") || "Not defined"}
+RED FLAGS: ${get("red_flags") || "None identified"}`;
+}
+
+function buildMarketBlock(market: Record<string, unknown> | null): string {
+  if (!market) return "Not completed";
+  const get = (k: string) => stripHtml((market[k] as string | null) ?? "");
+  return `TAM: ${get("tam_description") || "Not defined"} — Estimate: ${get("tam_estimate") || "Not defined"}
+SAM: ${get("sam_description") || "Not defined"} — Estimate: ${get("sam_estimate") || "Not defined"}
+SOM: ${get("som_description") || "Not defined"} — Estimate: ${get("som_estimate") || "Not defined"}
+Data Sources: ${get("data_sources") || "Not defined"}
+Segment Filter Logic: ${get("segment_filter_logic") || "Not defined"}
+Growth Drivers: ${get("growth_drivers") || "Not defined"}
+Market Risks: ${get("market_risks") || "Not defined"}
+Pricing & Unit Economics: Price Point: ${get("price_point") || "Not defined"} | Billing Model: ${get("billing_model") || "Not defined"} | CAC: ${get("cac_estimate") || "Not defined"} | LTV: ${get("ltv_estimate") || "Not defined"}`;
+}
+
+function buildRiskBlock(risk: Record<string, unknown> | null): string {
+  if (!risk) return "Not completed";
+  const register = Array.isArray(risk["risk_register"])
+    ? (risk["risk_register"] as Array<Record<string, unknown>>)
+        .map(
+          (r) =>
+            `  • [${r["severity"]}/${r["likelihood"]}] ${r["risk"]} — Mitigation: ${r["mitigation"]} (Owner: ${r["owner"]})`
+        )
+        .join("\n")
+    : "Not defined";
+  const vt = risk["validation_test"] as Record<string, unknown> | null;
+  const vtText = vt
+    ? `Budget: ${vt["budget_max"]} | Duration: ${vt["duration_weeks"]}wk | Kill Criteria: ${vt["kill_criteria"]} | Deliverable: ${vt["deliverable"]}`
+    : "Not defined";
+  const wins = Array.isArray(risk["why_we_win"])
+    ? (risk["why_we_win"] as Array<Record<string, unknown>>)
+        .map((w) => `  • ${w["advantage"]}: ${w["why_hard_to_copy"]}`)
+        .join("\n")
+    : "Not defined";
+  return `Risk Register:\n${register}
+Validation Test: ${vtText}
+Why We Win:\n${wins}`;
+}
+
 // ── Debate turn output (Skeptic & Advocate) ──────────────────────────────────
 interface DebateTurnOutput {
   content: string;
@@ -2413,7 +2532,15 @@ interface ReframerOutput extends ReframerMetaOutput {
   revised_description: string;
 }
 
-const MAX_ROUNDS_PER_GATE = 2; // 2 rounds × 2 sides × 2 gates = 8 debate calls; keeps total generation under ~10 min
+// Each "round" is one Skeptic turn + one Advocate turn. The gate exits early the
+// moment both sides agree, so this is a CEILING, not a fixed count — most gates
+// converge well before it. Raised to 10 (was 2) so the debate can go the full
+// distance when an idea is genuinely contested: up to 10 protagonist + 10 skeptic
+// turns per gate. This is the crux gate for kill/refine/build, so we prioritise
+// reaching the most defensible framing over speed. Worst case: 10 rounds × 2 sides
+// × 2 gates = 40 debate calls (+ reframer/scorer/HTML). Generation time is
+// intentionally unbounded here — correctness of the verdict outweighs latency.
+const MAX_ROUNDS_PER_GATE = 10;
 
 async function generateReport(
   supabase: SupabaseClient,
@@ -2428,6 +2555,12 @@ async function generateReport(
   productDef: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   benchmarking: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  location: any,   // idea_location_legislation row or null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  market: any,     // idea_market_opportunity row or null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  risk: any,       // idea_risk_and_validation row or null
   ideaId: string,
   aiConfig: AiConfig,
   requestId: string
@@ -2443,7 +2576,13 @@ ${buildIcpsBlock(icps as Array<Record<string, unknown>>)}
 Optimization Suggestions:
 ${buildSuggestionsBlock(suggestions as Array<Record<string, unknown>>)}
 Product Definition: ${stripHtml(productDef?.summary) || "Not defined"} / ${stripHtml(productDef?.features) || "Not defined"}
-Benchmarking: ${stripHtml(benchmarking?.overview) || "Not defined"} / ${stripHtml(benchmarking?.comparison) || "Not defined"} / ${stripHtml(benchmarking?.possible_business_models) || "Not defined"} / ${stripHtml(benchmarking?.takeaways) || "Not defined"}`;
+Benchmarking: ${stripHtml(benchmarking?.overview) || "Not defined"} / ${stripHtml(benchmarking?.comparison) || "Not defined"} / ${stripHtml(benchmarking?.possible_business_models) || "Not defined"} / ${stripHtml(benchmarking?.takeaways) || "Not defined"}
+Location & Legislation:
+${buildLocationBlock(location as Record<string, unknown> | null)}
+Market Opportunity:
+${buildMarketBlock(market as Record<string, unknown> | null)}
+Risk & Validation:
+${buildRiskBlock(risk as Record<string, unknown> | null)}`;
 
   // ── Load persona prompt templates (DB rows win; fallbacks cover missing rows) ─
   const [skepticTemplate, advocateTemplate, reframerTemplate, scorerTemplate] = await Promise.all([
@@ -2680,53 +2819,101 @@ Benchmarking: ${stripHtml(benchmarking?.overview) || "Not defined"} / ${stripHtm
 
   if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
 
-  // ── Server-side score reconciliation (alignment-multiplier formula) ───────────
-  // 6 areas are scored vs the idea's OWN framing (as always — completeness lens).
-  // The alignment multiplier collapses the final score when the debate found a wrong problem/solution.
+  // ── Server-side score reconciliation (TRUE alignment-multiplier formula) ────────
+  // 9 areas scored vs the idea's OWN framing (completeness lens).
+  // Server enforces canonical weights so the LLM cannot drift them.
+  // Alignment is a TRUE multiplier — a major reframe collapses the score by 45%.
+  // Missing-step penalties and area caps are server-enforced (not trusted to the LLM).
+  const CANONICAL_WEIGHTS: Record<string, number> = {
+    problem_reality: 18,
+    demand_evidence: 15,
+    market_realism: 12,
+    strategic_positioning: 12,
+    competitive_honesty: 12,
+    customer_clarity: 10,
+    regulatory_viability: 8,
+    validation_rigor: 8,
+    assumption_risk: 5,
+  };
+
   const areas: ReportAreaOutput[] = Array.isArray(scored.area_scores)
-    ? scored.area_scores.map((a) => ({
-        key: String(a?.key ?? ""),
-        label: String(a?.label ?? ""),
-        weight_pct: Number(a?.weight_pct ?? 0),
-        raw_score_pct: clamp(0, 100, Math.round(Number(a?.raw_score_pct ?? 0))),
-        weighted_points: 0,
-        status: "average" as ReportAreaOutput["status"],
-        description: String(a?.description ?? ""),
-      }))
+    ? scored.area_scores.map((a) => {
+        const key = String(a?.key ?? "");
+        return {
+          key,
+          label: String(a?.label ?? ""),
+          weight_pct: CANONICAL_WEIGHTS[key] ?? Number(a?.weight_pct ?? 0),
+          raw_score_pct: clamp(0, 100, Math.round(Number(a?.raw_score_pct ?? 0))),
+          weighted_points: 0,
+          status: "average" as ReportAreaOutput["status"],
+          description: String(a?.description ?? ""),
+        };
+      })
     : [];
+
+  // Server-enforced missing-step caps — each empty new step caps its area at ≤40
+  const missingStepPenalties: ReportPenaltyOutput[] = [];
+  if (!location) {
+    const ra = areas.find((a) => a.key === "regulatory_viability");
+    if (ra) ra.raw_score_pct = Math.min(ra.raw_score_pct, 40);
+    missingStepPenalties.push({ label: "Location & Legislation step not completed", points: -8 });
+  }
+  if (!market) {
+    const ma = areas.find((a) => a.key === "market_realism");
+    if (ma) ma.raw_score_pct = Math.min(ma.raw_score_pct, 40);
+    missingStepPenalties.push({ label: "Market Opportunity step not completed", points: -8 });
+  }
+  if (!risk) {
+    const va = areas.find((a) => a.key === "validation_rigor");
+    if (va) va.raw_score_pct = Math.min(va.raw_score_pct, 40);
+    missingStepPenalties.push({ label: "Risk & Validation step not completed", points: -8 });
+  }
+
   for (const a of areas) {
     a.weighted_points = Math.round((a.raw_score_pct * a.weight_pct) / 100);
     if (a.raw_score_pct >= 80) a.status = "strong";
     else if (a.raw_score_pct >= 60) a.status = "average";
     else a.status = "weak";
   }
-  const penalties: ReportPenaltyOutput[] = Array.isArray(scored.penalties)
-    ? scored.penalties.map((p) => ({
-        label: String(p?.label ?? ""),
-        points: -Math.abs(Math.round(Number(p?.points ?? 0))),
-      }))
-    : [];
 
-  // completeness = weighted sum of the 6 areas vs the idea's own framing
+  const llmPenalties: ReportPenaltyOutput[] = Array.isArray(scored.penalties)
+    ? scored.penalties
+        .map((p) => ({
+          label: String(p?.label ?? ""),
+          points: -Math.abs(Math.round(Number(p?.points ?? 0))),
+        }))
+        .filter((p) => p.points < 0 && p.label.length > 0)
+    : [];
+  const penalties: ReportPenaltyOutput[] = [...llmPenalties, ...missingStepPenalties];
+
+  // completeness = canonical weighted sum (0–100)
   const completeness = clamp(0, 100, areas.reduce((s, a) => s + a.weighted_points, 0));
   const penaltyTotal = penalties.reduce((s, p) => s + Math.abs(p.points), 0);
 
-  // alignment score from Scorer (0–100); server clamps it
-  const rawAlignment = scored.alignment ?? {} as ScorerOutput["alignment"];
-  const reframeMod: Record<string, number> = { minor: 0, moderate: -7, major: -15 };
-  const reframeDistance = (rawAlignment.reframe_distance === "minor" || rawAlignment.reframe_distance === "moderate" || rawAlignment.reframe_distance === "major")
-    ? rawAlignment.reframe_distance
-    : "major";
+  // alignment score from Scorer (0–100); reframe distance drives the multiplier
+  const rawAlignment = scored.alignment ?? ({} as ScorerOutput["alignment"]);
+  const reframeDistance: "minor" | "moderate" | "major" =
+    rawAlignment.reframe_distance === "minor" ||
+    rawAlignment.reframe_distance === "moderate" ||
+    rawAlignment.reframe_distance === "major"
+      ? rawAlignment.reframe_distance
+      : "major";
+  const reframeMultMap: Record<string, number> = { minor: 1.0, moderate: 0.8, major: 0.55 };
   const alignmentScore = clamp(
     0,
     100,
-    Math.round((Number(rawAlignment.problem_fit_pct ?? 0) + Number(rawAlignment.solution_fit_pct ?? 0)) / 2) + (reframeMod[reframeDistance] ?? -15)
+    Math.round(
+      (Number(rawAlignment.problem_fit_pct ?? 0) + Number(rawAlignment.solution_fit_pct ?? 0)) / 2
+    )
   );
+  // alignmentComp clamps at 0.5 floor so even poor alignment can't zero out the score
+  const alignmentComp = clamp(0.5, 1.0, alignmentScore / 100);
+  const alignmentFactor = alignmentComp * (reframeMultMap[reframeDistance] ?? 0.55);
 
-  // final = completeness × 75% + alignment × 25% − penalties (weighted average, not a multiplier)
-  const finalScore = clamp(0, 100, Math.round(completeness * 0.75 + alignmentScore * 0.25) - penaltyTotal);
+  // finalScore = completeness × alignmentFactor − penaltyTotal (TRUE multiplier)
+  const finalScore = clamp(0, 100, Math.round(completeness * alignmentFactor) - penaltyTotal);
   const threshold: "build" | "refine" | "kill" =
-    finalScore >= 75 ? "build" : finalScore >= 60 ? "refine" : "kill";
+    finalScore >= 80 ? "build" : finalScore >= 65 ? "refine" : "kill";
 
   const alignment: IdeaReportAlignment = {
     problem_fit_pct: clamp(0, 100, Math.round(Number(rawAlignment.problem_fit_pct ?? 0))),
@@ -2792,27 +2979,44 @@ Benchmarking: ${stripHtml(benchmarking?.overview) || "Not defined"} / ${stripHtm
 const FALLBACK_IDEA_CHATBOT = `You are a senior product strategist acting as an AI co-pilot inside Move37's Sandbox Planner. You are embedded as a floating chat widget on the idea the user is currently refining. Answer questions using ONLY the [IDEA CONTEXT] block and the [CHAT HISTORY] below.
 
 ## GROUNDING RULES (non-negotiable)
-1. Use ONLY the [IDEA CONTEXT] — never invent facts, metrics, competitors, features, or personas. If the user asks about a field that is empty or missing, say so explicitly ("That field is not defined yet — the user hasn't filled it out").
+1. Use ONLY the [IDEA CONTEXT] — never invent facts, metrics, competitors, features, or personas. If the user asks about a field that is empty, missing, or marked "(not defined yet)" / "Not completed", say so explicitly ("That step isn't filled out yet").
 2. When you cite information, quote the concrete fragment in single quotes.
 3. Be concise: default replies <= 150 words unless the user asks for depth.
-4. Output HTML only. Allowed tags: <p>, <ul>, <li>, <strong>, <em>, <code>. No BBCode, no Markdown, no <script>, no <button>, no <a>.
+4. Output HTML only. Use only these tags: p, ul, li, strong, em, code. No Markdown, no BBCode, no script/style/button/anchor tags.
 5. The current tab is {{current_tab}} — prefer examples and advice relevant to that step unless the user asks about a different step.
+6. You can see the full idea: every discovery step (Structure & Align, ICPs, Product Definition, Benchmarking, Location & Legislation, Market Opportunity, Risk & Validation, PRD, Database, Visual Styles, Milestones) AND the Go/No-Go Report. When asked about the report score, explain it from the real numbers below: the Report scores 9 weighted areas into a completeness score (0-100), then applies a TRUE alignment multiplier (a "major" reframe collapses the score) and subtracts penalties. Verdict thresholds: >=80 Build, 65-79 Refine, <65 Kill. Never invent a number that isn't shown.
 
 ## [IDEA CONTEXT]
 Idea: {{idea_name}} — {{idea_description}}
-Success Metrics: {{idea_success_metrics}}
-Structure & Align: core_problem={{core_problem}}; target_audience={{target_audience}}; success_metrics={{structure_success_metrics}}
+Idea Success Metrics: {{idea_success_metrics}}
+Structure & Align: core_problem={{core_problem}}; target_audience={{target_audience}}; success_metrics={{structure_success_metrics}}; product_overview={{structure_product_overview}}; essential_features={{structure_essential_features}}
 ICPs:
 {{icps_block}}
 Optimization Suggestions:
 {{suggestions_block}}
-Product Definition: summary={{product_summary}}; features={{product_features}}
+Product Definition: summary={{product_summary}}; business_model={{product_business_model}}; features={{product_features}}; go_to_market={{product_go_to_market}}
 Benchmarking: overview={{benchmark_overview}}; comparison={{benchmark_comparison}}; business_models={{benchmark_business_models}}; takeaways={{benchmark_takeaways}}
+Location & Legislation:
+{{location_block}}
+Market Opportunity:
+{{market_block}}
+Risk & Validation:
+{{risk_block}}
 PRD: app_overview={{prd_app_overview}}; objectives={{prd_objectives}}; priority_personas={{prd_priority_personas}}; essential_features={{prd_essential_features}}; user_flow={{prd_user_flow}}; non_functional_reqs={{prd_non_functional_reqs}}; out_of_scope={{prd_out_of_scope}}; success_indicators={{prd_success_indicators}}; phasing_notes={{prd_phasing_notes}}
 Database: tables_schema={{db_tables_schema}}; relationships={{db_relationships}}; notes={{db_notes}}
 Visual Styles: logo_branding={{styles_logo_branding}}; color_palette={{styles_color_palette}}; product_feeling={{styles_product_feeling}}
 Milestones: {{milestones_content}}
-Report: final_score={{report_final_score}}; headline={{report_headline}}; summary={{report_summary}}
+Go/No-Go Report: verdict={{report_threshold}}; final_score={{report_final_score}}; completeness={{report_completeness}}; headline={{report_headline}}
+Report Alignment: {{report_alignment}}
+Report Area Scores:
+{{report_areas_block}}
+Report Penalties:
+{{report_penalties_block}}
+Agreed Problem (from debate): {{report_agreed_problem}}
+Agreed Solution (from debate): {{report_agreed_solution}}
+Report Recommendation: {{report_recommendation}}
+Report Summary: {{report_summary}}
+Report Next Steps: {{report_next_steps}}
 
 ## [CHAT HISTORY]
 {{chat_history}}
@@ -2821,7 +3025,7 @@ Report: final_score={{report_final_score}}; headline={{report_headline}}; summar
 {{user_message}}
 
 ## OUTPUT SCHEMA
-Return ONLY valid JSON: { "reply": "<html string>" }. The HTML string must not contain the characters \`<script\` or \`javascript:\`.`;
+Your entire response must be a single valid json object of this exact shape: { "reply": "<html string>" }. The reply value must be valid HTML (only the tags p, ul, li, strong, em, code) and must not contain script tags or javascript: URLs.`;
 
 /**
  * Sanitize chatbot HTML reply: strip any <script> tags or javascript: URLs
@@ -2836,10 +3040,44 @@ function sanitizeChatbotHtml(raw: string): string {
     .replace(/javascript\s*:/gi, "blocked:");
 }
 
-/** Build the full `{{...}}` variable map consumed by the chatbot prompt. */
+/** Compact one-line-per-area summary of the Report's 9 weighted scoring areas. */
+function buildReportAreasBlock(areas: unknown): string {
+  if (!Array.isArray(areas) || areas.length === 0) return "(not scored yet)";
+  return (areas as Array<Record<string, unknown>>)
+    .map(
+      (a) =>
+        `  • ${a["label"]}: ${a["raw_score_pct"]}% raw (weight ${a["weight_pct"]}%, ${a["status"]})`
+    )
+    .join("\n");
+}
+
+/** Compact list of the Report's automatic penalty deductions. */
+function buildReportPenaltiesBlock(penalties: unknown): string {
+  if (!Array.isArray(penalties) || penalties.length === 0) return "(none applied)";
+  return (penalties as Array<Record<string, unknown>>)
+    .map((p) => `  • ${p["label"]}: ${p["points"]}`)
+    .join("\n");
+}
+
+/** One-line alignment summary from the Devil's Advocate debate scorer. */
+function buildAlignmentSummary(alignment: unknown): string {
+  if (!alignment || typeof alignment !== "object") return "(not scored yet)";
+  const a = alignment as Record<string, unknown>;
+  return `problem_fit=${a["problem_fit_pct"]}%, solution_fit=${a["solution_fit_pct"]}%, reframe_distance=${a["reframe_distance"]}, alignment_score=${a["alignment_score"]} — verdict: ${stripHtml(String(a["verdict"] ?? "")) || "(none)"}`;
+}
+
+/**
+ * Build the full `{{...}}` variable map consumed by both chatbot prompts.
+ * Surfaces EVERY discovery artifact for the idea — including the three newest
+ * steps (Location & Legislation, Market Opportunity, Risk & Validation) and the
+ * full Go/No-Go Report (9 area scores, alignment, penalties, agreed problem /
+ * solution from the debate, recommendation) — so the bots always answer from
+ * the complete, current picture rather than a stale subset.
+ */
 function buildIdeaContextVars(ideaFull: IdeaFull): Record<string, string> {
   const { idea, structureAlign, icps, optimizationSuggestions, productDefinition,
-    benchmarking, prd, database, styles, milestonesAndTasks, report } = ideaFull;
+    benchmarking, locationLegislation, marketOpportunity, riskAndValidation,
+    prd, database, styles, milestonesAndTasks, report } = ideaFull;
 
   return {
     idea_name: idea.name ?? "",
@@ -2848,16 +3086,30 @@ function buildIdeaContextVars(ideaFull: IdeaFull): Record<string, string> {
     core_problem: stripHtml(structureAlign?.core_problem) || "(not defined yet)",
     target_audience: stripHtml(structureAlign?.target_audience) || "(not defined yet)",
     structure_success_metrics: stripHtml(structureAlign?.success_metrics) || "(not defined yet)",
+    structure_product_overview: stripHtml(structureAlign?.product_overview_text) || "(not defined yet)",
+    structure_essential_features: stripHtml(structureAlign?.essential_features_text) || "(not defined yet)",
     icps_block: buildIcpsBlock(icps as unknown as Array<Record<string, unknown>>),
     suggestions_block: buildSuggestionsBlock(
       optimizationSuggestions as unknown as Array<Record<string, unknown>>
     ),
     product_summary: stripHtml(productDefinition?.summary) || "(not defined yet)",
+    product_business_model: stripHtml(productDefinition?.business_model) || "(not defined yet)",
     product_features: stripHtml(productDefinition?.features) || "(not defined yet)",
+    product_go_to_market: stripHtml(productDefinition?.go_to_market) || "(not defined yet)",
     benchmark_overview: stripHtml(benchmarking?.overview) || "(not defined yet)",
     benchmark_comparison: stripHtml(benchmarking?.comparison) || "(not defined yet)",
     benchmark_business_models: stripHtml(benchmarking?.possible_business_models) || "(not defined yet)",
     benchmark_takeaways: stripHtml(benchmarking?.takeaways) || "(not defined yet)",
+    // ── The three newest discovery steps (scored evidence in the Report) ──────
+    location_block: buildLocationBlock(
+      locationLegislation as unknown as Record<string, unknown> | null
+    ),
+    market_block: buildMarketBlock(
+      marketOpportunity as unknown as Record<string, unknown> | null
+    ),
+    risk_block: buildRiskBlock(
+      riskAndValidation as unknown as Record<string, unknown> | null
+    ),
     prd_app_overview: stripHtml(prd?.app_overview) || "(not defined yet)",
     prd_objectives: stripHtml(prd?.objectives) || "(not defined yet)",
     prd_priority_personas: stripHtml(prd?.priority_personas) || "(not defined yet)",
@@ -2874,10 +3126,23 @@ function buildIdeaContextVars(ideaFull: IdeaFull): Record<string, string> {
     styles_color_palette: stripHtml(styles?.color_palette) || "(not defined yet)",
     styles_product_feeling: stripHtml(styles?.product_feeling) || "(not defined yet)",
     milestones_content: stripHtml(milestonesAndTasks?.content) || "(not defined yet)",
+    // ── Go/No-Go Report (Devil's Advocate verdict) ───────────────────────────
     report_final_score:
       report?.final_score != null ? String(report.final_score) : "(not generated yet)",
+    report_threshold: report?.threshold_bucket
+      ? report.threshold_bucket.toUpperCase()
+      : "(not generated yet)",
+    report_completeness:
+      report?.completeness_score != null ? String(report.completeness_score) : "(not generated yet)",
     report_headline: stripHtml(report?.headline) || "(not generated yet)",
     report_summary: stripHtml(report?.summary) || "(not generated yet)",
+    report_recommendation: stripHtml(report?.recommendation) || "(not generated yet)",
+    report_agreed_problem: stripHtml(report?.agreed_problem) || "(no debate outcome yet)",
+    report_agreed_solution: stripHtml(report?.agreed_solution) || "(no debate outcome yet)",
+    report_alignment: buildAlignmentSummary(report?.alignment),
+    report_areas_block: buildReportAreasBlock(report?.area_scores),
+    report_penalties_block: buildReportPenaltiesBlock(report?.penalties),
+    report_next_steps: stripHtml(report?.next_steps) || "(not generated yet)",
   };
 }
 
@@ -2906,6 +3171,35 @@ export async function loadChatHistory(
     .order("created_at", { ascending: true });
   if (error) return { error: error.message };
   return { messages: (data ?? []) as unknown as IdeaChatbotMessage[] };
+}
+
+/**
+ * Parse a { "reply": "..." } JSON object from a raw LLM text response.
+ * Strips markdown fences, extracts the JSON blob, then escapes bare control
+ * characters inside string values before calling JSON.parse.  HTML replies
+ * always contain bare newlines, which break JSON.parse without this step.
+ */
+function parseJsonReply(text: string): { reply?: string } | null {
+  let s = text.trim();
+  s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start !== -1 && end > start) s = s.slice(start, end + 1);
+  // State-machine: escape bare control chars inside JSON string values.
+  let inString = false;
+  let wasEscaped = false;
+  let out = "";
+  for (const ch of s) {
+    if (wasEscaped) { out += ch; wasEscaped = false; }
+    else if (ch === "\\") { out += ch; wasEscaped = true; }
+    else if (ch === '"') { out += ch; inString = !inString; }
+    else if (inString && ch === "\n") { out += "\\n"; }
+    else if (inString && ch === "\r") { out += "\\r"; }
+    else if (inString && ch === "\t") { out += "\\t"; }
+    else { out += ch; }
+  }
+  try { return JSON.parse(out.trim()) as { reply?: string }; }
+  catch { return null; }
 }
 
 /**
@@ -2959,7 +3253,9 @@ export async function sendChatMessage(
   const historyExcludingCurrent = history.filter((m) => m.id !== userMsg.id);
 
   // 4. Resolve template + vars.
-  const template = (await getPromptTemplate("idea_chatbot")) ?? FALLBACK_IDEA_CHATBOT;
+  // Use the FALLBACK directly: DB rows go through stripHtml which destroys
+  // the "<html string>" placeholder in the OUTPUT SCHEMA, breaking JSON output.
+  const template = FALLBACK_IDEA_CHATBOT;
   const currentTabLabel = IDEA_BLOCK_LABELS[currentTab] ?? currentTab;
   const prompt = renderPrompt(template, {
     ...buildIdeaContextVars(ideaFull),
@@ -2977,18 +3273,22 @@ export async function sendChatMessage(
     };
   }
 
-  // 6. Call the LLM.
-  const res = await generateAiJsonResponse<{ reply: string }>({
+  // 6. Call the LLM. Use text format to avoid OpenAI's json_object "must contain
+  //    the word json" constraint — the model is instructed in the prompt to return
+  //    a JSON object, and sanitizeJsonText extracts it from the text response.
+  const rawRes = await generateAiTextResponse({
     service: aiConfig.service,
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
   });
-  if (res.returned_an_error || !res.data) {
-    return { userMsg, error: res.error ?? "AI returned no data" };
+  if (rawRes.returned_an_error || !rawRes.text) {
+    return { userMsg, error: rawRes.error ?? "AI returned no data" };
   }
+  const replyData = parseJsonReply(rawRes.text);
+  if (!replyData) return { userMsg, error: "AI returned invalid JSON" };
 
-  const replyHtml = sanitizeChatbotHtml(String(res.data.reply ?? "").trim());
+  const replyHtml = sanitizeChatbotHtml(String(replyData.reply ?? "").trim());
   if (!replyHtml) {
     return { userMsg, error: "AI returned an empty reply" };
   }
@@ -3014,41 +3314,72 @@ export async function sendChatMessage(
 
 // ── Devil's Advocate Chatbot ──────────────────────────────────────────────────
 
-const FALLBACK_DEVIL_ADVOCATE_CHATBOT = `You are a Devil's Advocate co-pilot embedded in Move37's Sandbox Planner. Your role is to challenge the user's thinking through a structured two-gate dialogue — first validating that they are solving the right problem, then stress-testing the solution. Your goal is better decisions, not faster ones.
+const FALLBACK_DEVIL_ADVOCATE_CHATBOT = `You are a Devil's Advocate co-pilot embedded in Move37's Sandbox Planner — a muse, not an oracle. A muse provokes, challenges, and expands thinking; it does not validate. Agreement must be EARNED TWICE: once for the problem, once for the solution. Your goal is better decisions, not faster ones.
 
-## IDENTITY & STANDING RULES (non-negotiable at every turn)
-1. ANTI-SYCOPHANCY: Never open with praise ("Great idea!", "That makes sense!"). Open with the sharpest relevant question or the strongest counter-argument. If you genuinely agree, state the best case against first — then explain why it fails.
-2. ONE QUESTION AT A TIME: Ask a single focused question, wait for the answer, reflect it back, then move on. Never present a questionnaire.
-3. CONFIDENCE LABELS: Tag all substantive claims as [Fact], [Inference], or [Speculation].
-4. BRAIN FIRST: Before offering analysis on anything significant, ask for the user's current take first.
-5. PUSH BACK ON VAGUENESS: If an answer is vague, generic, or sounds like a symptom, name it and ask again.
-6. CONCEDE WHEN BEATEN: Devil's advocacy is not contrarianism. When the user's answer genuinely defeats a challenge, say so explicitly and move forward.
-7. Output HTML only. Allowed tags: <p>, <ul>, <li>, <strong>, <em>, <code>. No <script>, no <button>, no <a>.
-8. GROUNDING: Use ONLY the [IDEA CONTEXT] block. Never invent facts, metrics, competitors, or personas.
+## STANDING RULES (apply at EVERY turn, both gates — non-negotiable)
+1. ANTI-SYCOPHANCY: Never open with praise ("Great idea!", "That makes sense!"). Open with the sharpest relevant question or the single strongest counter-argument. If you genuinely agree, state the best case AGAINST first — then explain why it fails.
+2. ONE QUESTION AT A TIME: Ask a single focused question, wait for the answer, reflect it back, then move on. Dialogue, not a questionnaire.
+3. CONFIDENCE LABELS: Tag every substantive claim [Fact], [Inference], or [Speculation]. No fake certainty.
+4. BRAIN FIRST: Before offering your own analysis on anything significant, ask for the user's current take and what they are uncertain about. Their expertise is the multiplier; your job is to fill gaps and attack weak points — not rewrite what they already know.
+5. PUSH BACK ON VAGUENESS: If an answer is vague, generic, or sounds like a symptom, name it and ask again. Reflect back what was said and ask if it captures the real bottleneck or just the surface.
+6. CONCEDE WHEN BEATEN: Devil's advocacy is NOT contrarianism. When the user's answer genuinely defeats a challenge, say so explicitly and move forward. Manufactured objections destroy trust and waste rounds.
+7. EVIDENCE STANDARD (this is the gate that matters): the discovery content in [IDEA CONTEXT] was produced with AI assistance — treat it as UNVERIFIED FOUNDER ASSERTION, not external evidence. "The AI wrote it" is not proof. Demand external signal: named real customers, named real competitors, cited market data, a run experiment with results. A claim resting only on internal/AI assertion has not cleared a gate.
+8. OUTPUT HTML ONLY. Use only these tags: p, ul, li, strong, em, code. No Markdown, no script/style/button/anchor tags.
+9. GROUNDING: Use ONLY the [IDEA CONTEXT] block. Never invent facts, metrics, competitors, features, or personas that are not present there.
 
 ## THE TWO GATES
-Always announce which gate you are in.
+Always announce which gate you are in. Never skip a gate. Never run them out of order.
 
-**[GATE 1 — THE RIGHT PROBLEM]**
-Challenge the framing. Is this the root cause or a symptom? Co-write ONE bottleneck statement starting with "How do we…". Exit only on explicit mutual agreement.
-When passed, declare: "✓ Problem Gate passed. Agreed bottleneck: [statement]."
+**[GATE 1 — THE RIGHT PROBLEM]**  Treat the stated problem as a HYPOTHESIS, not a fact — the person who defined a problem is rarely the person living it.
+- Name it: have the user state the problem as they currently see it; write it back verbatim.
+- Challenge the frame, one question at a time: Who defined this, and whose perspective is missing? What is the FUNCTIONAL need (what a solution must DO), the EXPERIENTIAL need (how it must FEEL), and the SOCIAL need (what it must MEAN to the people involved)?
+- Symptom vs. bottleneck: apply "five whys" pressure — is this the root cause or the visible symptom? (A budget crisis is rarely a budget crisis.)
+- Restate: co-write ONE new problem statement beginning "How do we…" — one sentence, no jargon, root cause not symptom.
+- Gate question: "Is this the problem you were handed, or the real one underneath it? Do we agree this is the bottleneck?"
+- Exit ONLY when a one-sentence bottleneck statement names a root cause AND you genuinely agree (not a rubber-stamp). When passed, declare: "Problem Gate passed. Agreed bottleneck: [statement]." Everything in Gate 2 is judged against this sentence ONLY.
 
-**[GATE 2 — THE RIGHT SOLUTION]**
-Evaluate solutions ONLY against the agreed bottleneck. Apply the swap test (could this answer fit any company?). Present the strongest counter-argument. Fix ONE named flaw per round.
-When passed, declare: "✓ Solution Gate passed." Then summarize the bottleneck, solution, why it survived, and next actions.
+**[GATE 2 — THE RIGHT SOLUTION]**  Solutions are judged against the agreed bottleneck. Nothing else. Do not solve the symptom; do not drift to adjacent problems.
+- User's take first (brain first): ask for their best instinct before you generate anything. If they have none, generate options constrained to the bottleneck with one constraint that forces originality over textbook answers.
+- Swap test: could this exact answer apply to any other company or situation? If yes, it is generic — reject it and redirect with a SPECIFIC reason, never "make it better".
+- Strongest counter-argument: for the leading candidate, present the single best case against it — the assumption most likely wrong, the failure mode, the perspective not in the room. The user must answer it on its merits.
+- Iterate with the ratchet: fix ONE named flaw per round. Each round locks in a gain.
+- Gate question: "Does this solve the bottleneck we agreed on — not the symptom? Has the strongest objection been answered? Could anyone else have shipped this same answer?"
+- Exit ONLY when the solution addresses the agreed bottleneck, passes the swap test, and the strongest counter-argument has been answered. When passed, declare: "Solution Gate passed." Then summarize: the bottleneck, the solution, why it survived challenge, residual risks [Speculation] if any, and the highest-leverage next actions with a time horizon.
+
+## CALIBRATION
+- Stakes scale rigor: a major decision deserves multiple rounds per gate; something light compresses to its single sharpest question — but never to zero.
+- Don't loop forever: if a gate has not closed after ~5–10 rounds, NAME THE IMPASSE — state precisely where the disagreement lies and what evidence would resolve it. A stalemate stated clearly beats false agreement.
+- Tone: direct, short sentences, no hedging filler. Challenge the idea, never the person.
+
+## USING THE GO/NO-GO REPORT (when present)
+This idea may already have a Devil's Advocate Go/No-Go Report (see [IDEA CONTEXT]). When it exists, USE it: the "Agreed Problem / Agreed Solution" are the debate's prior conclusions — start from them rather than re-litigating settled ground, but reopen any that rest only on assertion. The report's weakest scored areas (especially Market Realism, Regulatory Viability, Validation Rigor) and its penalties point to exactly where the thinking is thinnest — aim your challenges there first.
 
 ## [IDEA CONTEXT]
 Idea: {{idea_name}} — {{idea_description}}
-Success Metrics: {{idea_success_metrics}}
-Structure & Align: core_problem={{core_problem}}; target_audience={{target_audience}}; success_metrics={{structure_success_metrics}}
+Idea Success Metrics: {{idea_success_metrics}}
+Structure & Align: core_problem={{core_problem}}; target_audience={{target_audience}}; success_metrics={{structure_success_metrics}}; product_overview={{structure_product_overview}}; essential_features={{structure_essential_features}}
 ICPs:
 {{icps_block}}
 Optimization Suggestions:
 {{suggestions_block}}
-Product Definition: summary={{product_summary}}; features={{product_features}}
+Product Definition: summary={{product_summary}}; business_model={{product_business_model}}; features={{product_features}}; go_to_market={{product_go_to_market}}
 Benchmarking: overview={{benchmark_overview}}; comparison={{benchmark_comparison}}; business_models={{benchmark_business_models}}; takeaways={{benchmark_takeaways}}
+Location & Legislation:
+{{location_block}}
+Market Opportunity:
+{{market_block}}
+Risk & Validation:
+{{risk_block}}
 PRD: app_overview={{prd_app_overview}}; objectives={{prd_objectives}}; essential_features={{prd_essential_features}}
-Report: final_score={{report_final_score}}; headline={{report_headline}}; summary={{report_summary}}
+Go/No-Go Report: verdict={{report_threshold}}; final_score={{report_final_score}}; completeness={{report_completeness}}; headline={{report_headline}}
+Report Alignment: {{report_alignment}}
+Report Area Scores:
+{{report_areas_block}}
+Report Penalties:
+{{report_penalties_block}}
+Agreed Problem (from prior debate): {{report_agreed_problem}}
+Agreed Solution (from prior debate): {{report_agreed_solution}}
+Report Recommendation: {{report_recommendation}}
 Current tab: {{current_tab}}
 
 ## [CHAT HISTORY]
@@ -3058,7 +3389,7 @@ Current tab: {{current_tab}}
 {{user_message}}
 
 ## OUTPUT SCHEMA
-Return ONLY valid JSON: { "reply": "<html string>" }. The HTML must not contain \`<script\` or \`javascript:\`.`;
+Your entire response must be a single valid json object of this exact shape: { "reply": "<html string>" }. The reply value must be valid HTML (only the tags p, ul, li, strong, em, code) and must not contain script tags or javascript: URLs.`;
 
 /** Load all devil's advocate chatbot messages for an idea, oldest first. */
 export async function loadDevilAdvocateChatHistory(
@@ -3121,10 +3452,9 @@ export async function sendDevilAdvocateChatMessage(
   const history = (historyData ?? []) as unknown as IdeaChatbotMessage[];
   const historyExcludingCurrent = history.filter((m) => m.id !== userMsg.id);
 
-  // 4. Resolve template + vars.
-  const template =
-    (await getPromptTemplate("idea_chatbot_devil_advocate")) ??
-    FALLBACK_DEVIL_ADVOCATE_CHATBOT;
+  // 4. Resolve template + vars. Same reason as sendChatMessage: DB row goes
+  // through stripHtml which destroys the OUTPUT SCHEMA placeholder.
+  const template = FALLBACK_DEVIL_ADVOCATE_CHATBOT;
   const currentTabLabel = IDEA_BLOCK_LABELS[currentTab] ?? currentTab;
   const prompt = renderPrompt(template, {
     ...buildIdeaContextVars(ideaFull),
@@ -3142,18 +3472,21 @@ export async function sendDevilAdvocateChatMessage(
     };
   }
 
-  // 6. Call the LLM.
-  const res = await generateAiJsonResponse<{ reply: string }>({
+  // 6. Call the LLM. Use text format (same reason as sendChatMessage — avoids
+  //    OpenAI json_object "must contain json" constraint at the API level).
+  const rawRes = await generateAiTextResponse({
     service: aiConfig.service,
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
   });
-  if (res.returned_an_error || !res.data) {
-    return { userMsg, error: res.error ?? "AI returned no data" };
+  if (rawRes.returned_an_error || !rawRes.text) {
+    return { userMsg, error: rawRes.error ?? "AI returned no data" };
   }
+  const replyData = parseJsonReply(rawRes.text);
+  if (!replyData) return { userMsg, error: "AI returned invalid JSON" };
 
-  const replyHtml = sanitizeChatbotHtml(String(res.data.reply ?? "").trim());
+  const replyHtml = sanitizeChatbotHtml(String(replyData.reply ?? "").trim());
   if (!replyHtml) {
     return { userMsg, error: "AI returned an empty reply" };
   }
@@ -3177,3 +3510,804 @@ export async function sendDevilAdvocateChatMessage(
   };
 }
 
+
+// ── Build Brief Generation ────────────────────────────────────────────────────
+
+interface BriefOutput {
+  brief_title: string;
+  brief_subtitle: string;
+  brief_html: string;
+}
+
+/** Generate an investor-grade Build Brief from all prior step data. */
+export async function generateIdeaBrief(ideaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const aiConfig = await resolveAiConfig(supabase, user.id);
+  if (!aiConfig) return { error: "No AI service configured. Please set up your API key in Settings." };
+
+  const [
+    { data: ideaRow },
+    { data: saRow },
+    { data: icpRows },
+    { data: sugRows },
+    { data: pdRow },
+    { data: benchRow },
+    { data: reportRow },
+  ] = await Promise.all([
+    supabase.from("idea" as never).select("name, description, success_metrics").eq("id", ideaId).maybeSingle(),
+    supabase.from("idea_structure_and_align" as never).select("core_problem, target_audience, success_metrics").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_icp" as never).select("*").eq("idea_id", ideaId),
+    supabase.from("idea_optimization_suggestion" as never).select("name, description").eq("idea_id", ideaId),
+    supabase.from("idea_product_definition_and_flows" as never).select("summary, business_model, features, go_to_market").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_benchmarking" as never).select("overview, comparison, possible_business_models, takeaways").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_report" as never).select("id, final_score, threshold_bucket, headline, summary, agreed_problem, agreed_solution, recommendation, alignment").eq("idea_id", ideaId).maybeSingle(),
+  ]);
+
+  const idea = ideaRow as { name: string; description: string | null; success_metrics: string | null } | null;
+  if (!idea) return { error: "Idea not found" };
+
+  const sa = saRow as { core_problem: string | null; target_audience: string | null; success_metrics: string | null } | null;
+  const icps = (icpRows ?? []) as Array<Record<string, unknown>>;
+  const suggestions = (sugRows ?? []) as Array<Record<string, unknown>>;
+  const pd = pdRow as { summary: string | null; business_model: string | null; features: string | null; go_to_market: string | null } | null;
+  const bench = benchRow as { overview: string | null; comparison: string | null; possible_business_models: string | null; takeaways: string | null } | null;
+  const report = reportRow as {
+    id: string;
+    final_score: number | null;
+    threshold_bucket: string | null;
+    headline: string | null;
+    summary: string | null;
+    agreed_problem: string | null;
+    agreed_solution: string | null;
+    recommendation: string | null;
+    alignment: { alignment_score: number } | null;
+  } | null;
+
+  if (!report) return { error: "Generate the Go/No-Go Report first before creating a Build Brief." };
+
+  const strategicBlock = icps.length
+    ? icps.map((icp, i) => {
+        const g = (k: string) => stripHtml((icp[k] as string | null) ?? "");
+        return `ICP ${i + 1}: ${g("name") || "(unnamed)"}
+  Score: ${icp["score"] ?? "n/a"}
+  Value Map - Solutions: ${g("value_proposition_value_map_solutions")}
+  Value Map - Gain Creators: ${g("value_proposition_value_map_gain_creators")}
+  NABC - Need: ${g("pitch_need")}
+  NABC - Approach: ${g("pitch_approach")}
+  NABC - Benefit: ${g("pitch_benefit")}
+  NABC - Competition: ${g("pitch_competition")}`;
+      }).join("\n\n")
+    : "(none)";
+
+  const template = (await getPromptTemplate("brief")) ?? FALLBACK_BUILD_BRIEF;
+  const prompt = renderPrompt(template, {
+    idea_name: idea.name,
+    idea_description: stripHtml(idea.description) || "No description provided.",
+    success_metrics: stripHtml(idea.success_metrics) || "Not defined",
+    core_problem: stripHtml(sa?.core_problem) || "Not defined",
+    target_audience: stripHtml(sa?.target_audience) || "Not defined",
+    structure_metrics: stripHtml(sa?.success_metrics) || "Not defined",
+    icps_block: buildIcpsBlock(icps),
+    suggestions_block: buildSuggestionsBlock(suggestions),
+    product_overview: stripHtml(pd?.summary) || "Not defined",
+    business_model: stripHtml(pd?.business_model) || "Not defined",
+    features: stripHtml(pd?.features) || "Not defined",
+    go_to_market: stripHtml(pd?.go_to_market) || "Not defined",
+    benchmarking_overview: stripHtml(bench?.overview) || "Not defined",
+    benchmarking_comparison: stripHtml(bench?.comparison) || "Not defined",
+    benchmarking_models: stripHtml(bench?.possible_business_models) || "Not defined",
+    benchmarking_takeaways: stripHtml(bench?.takeaways) || "Not defined",
+    strategic_block: strategicBlock,
+    final_score: String(report.final_score ?? "n/a"),
+    threshold_bucket: report.threshold_bucket ?? "n/a",
+    report_headline: report.headline ?? "Not defined",
+    report_summary: stripHtml(report.summary) || "Not defined",
+    agreed_problem: report.agreed_problem ?? "Not defined",
+    agreed_solution: report.agreed_solution ?? "Not defined",
+    recommendation: report.recommendation ?? "Not defined",
+    alignment_score: String(report.alignment?.alignment_score ?? "n/a"),
+  });
+
+  const res = await generateAiJsonResponse<BriefOutput>({
+    service: aiConfig.service,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    prompt,
+    maxTokens: 16384,
+  });
+
+  if (res.returned_an_error || !res.data) {
+    return { error: res.error ?? "AI returned no data" };
+  }
+
+  const d = res.data;
+
+  await supabase
+    .from("idea_report" as never)
+    .update({
+      brief_title: d.brief_title,
+      brief_subtitle: d.brief_subtitle,
+      brief_html: d.brief_html,
+      brief_generated_at: new Date().toISOString(),
+    } as never)
+    .eq("id", report.id);
+
+  revalidatePath(PATH);
+  return {};
+}
+
+/** Compile a Build Brief directly from existing step data — no AI call required. */
+export async function assembleIdeaBrief(ideaId: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const [
+    { data: ideaRow },
+    { data: saRow },
+    { data: icpRows },
+    { data: pdRow },
+    { data: locRow },
+    { data: moRow },
+    { data: rvRow },
+    { data: reportRow },
+  ] = await Promise.all([
+    supabase.from("idea" as never).select("name, description").eq("id", ideaId).maybeSingle(),
+    supabase.from("idea_structure_and_align" as never).select("core_problem, target_audience, success_metrics").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_icp" as never).select("name, firmographics, day_in_life, pain_points").eq("idea_id", ideaId),
+    supabase.from("idea_product_definition_and_flows" as never).select("summary, business_model, features, go_to_market").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_location_legislation" as never).select("regulatory_bodies, key_legislation, licensing_requirements, data_privacy_rules, compliance_timeline, regulatory_moat, red_flags").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_market_opportunity" as never).select("tam_estimate, sam_estimate, som_estimate, price_point, billing_model, cac_estimate, ltv_estimate").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_risk_and_validation" as never).select("risk_register, validation_test, why_we_win").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_report" as never).select("id, final_score, threshold_bucket, headline, summary, agreed_problem, agreed_solution, recommendation").eq("idea_id", ideaId).maybeSingle(),
+  ]);
+
+  const idea = ideaRow as { name: string; description: string | null } | null;
+  if (!idea) return { error: "Idea not found." };
+
+  const sa = saRow as { core_problem: string | null; target_audience: string | null; success_metrics: string | null } | null;
+  const icps = (icpRows ?? []) as Array<{ name: string | null; firmographics: string | null; day_in_life: string | null; pain_points: string | null }>;
+  const pd = pdRow as { summary: string | null; business_model: string | null; features: string | null; go_to_market: string | null } | null;
+  const loc = locRow as { regulatory_bodies: string | null; key_legislation: string | null; licensing_requirements: string | null; data_privacy_rules: string | null; compliance_timeline: string | null; regulatory_moat: string | null; red_flags: string | null } | null;
+  const mo = moRow as { tam_estimate: string | null; sam_estimate: string | null; som_estimate: string | null; price_point: string | null; billing_model: string | null; cac_estimate: string | null; ltv_estimate: string | null } | null;
+  const rv = rvRow as { risk_register: unknown; validation_test: unknown; why_we_win: unknown } | null;
+  const rpt = reportRow as { id: string; final_score: number | null; threshold_bucket: string | null; headline: string | null; summary: string | null; agreed_problem: string | null; agreed_solution: string | null; recommendation: string | null } | null;
+
+  if (!rpt) return { error: "Generate the Go/No-Go Report first before assembling a Build Brief." };
+
+  // ── HTML helpers ──────────────────────────────────────────────────────────
+  const td = (label: string, val: string | null | undefined) =>
+    `<tr><td style="font-weight:600;padding:6px 12px 6px 0;width:180px;vertical-align:top;white-space:nowrap;">${label}</td><td style="padding:6px 0;">${stripHtml(val ?? "").trim() || "—"}</td></tr>`;
+  const tbl = (rows: string) =>
+    `<table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:12px;">${rows}</table>`;
+  const sec = (title: string, body: string) =>
+    `<h2 style="font-size:18px;font-weight:700;margin:32px 0 12px;border-bottom:1px solid #e5e7eb;padding-bottom:8px;">${title}</h2>${body}`;
+  const rich = (html: string | null | undefined, fallback = "Not yet specified.") =>
+    (html ?? "").trim() ? `<div style="font-size:14px;">${html}</div>` : `<p style="color:#9ca3af;font-style:italic;font-size:14px;">${fallback}</p>`;
+  const txt = (t: string | null | undefined, fallback = "Not yet specified.") =>
+    `<p style="font-size:14px;margin:0 0 8px;">${stripHtml(t ?? "").trim() || fallback}</p>`;
+
+  // Section 1: One-Liner & Thesis
+  const s1 = sec("1. One-Liner &amp; Thesis",
+    tbl(
+      td("Product", idea.name) +
+      td("Core Problem", rpt.agreed_problem) +
+      td("Our Solution", rpt.agreed_solution) +
+      td("Recommendation", rpt.recommendation) +
+      (sa?.target_audience ? td("Target Audience", sa.target_audience) : "")
+    )
+  );
+
+  // Section 2: What We Build
+  const s2 = sec("2. What We Build",
+    (pd?.summary ? `<p style="font-weight:600;margin:0 0 6px;">Product Overview</p>${rich(pd.summary)}` : txt(null, "Product Definition not yet completed.")) +
+    (pd?.features ? `<p style="font-weight:600;margin:12px 0 6px;">Key Features</p>${rich(pd.features)}` : "")
+  );
+
+  // Section 3: Customer & List/Reach
+  const icpHtml = icps.length
+    ? icps.map((icp, i) =>
+        `<div style="margin-bottom:16px;padding:12px;border:1px solid #e5e7eb;border-radius:6px;">` +
+        `<p style="font-weight:700;margin:0 0 8px;font-size:14px;">ICP ${i + 1}: ${stripHtml(icp.name ?? "") || "(unnamed)"}</p>` +
+        (icp.firmographics ? `<p style="margin:0 0 4px;font-size:13px;font-weight:600;">Firmographics</p>${rich(icp.firmographics)}` : "") +
+        (icp.pain_points ? `<p style="margin:8px 0 4px;font-size:13px;font-weight:600;">Pain Points</p>${rich(icp.pain_points)}` : "") +
+        `</div>`
+      ).join("")
+    : txt(null, "ICP profiles not yet completed.");
+  const s3 = sec("3. Customer &amp; List/Reach", icpHtml);
+
+  // Section 4: Offer & Pricing + Unit Economics
+  const moSizingTable = mo
+    ? tbl(td("TAM", mo.tam_estimate) + td("SAM", mo.sam_estimate) + td("SOM", mo.som_estimate))
+    : txt(null, "Market Opportunity not yet completed.");
+  const moPricingTable = mo && (mo.price_point || mo.billing_model || mo.cac_estimate || mo.ltv_estimate)
+    ? tbl(
+        td("Price Point", mo.price_point) +
+        td("Billing Model", mo.billing_model) +
+        td("CAC Estimate", mo.cac_estimate) +
+        td("LTV Estimate", mo.ltv_estimate)
+      )
+    : txt(null, "Pricing & unit economics not yet specified.");
+  const s4 = sec("4. Offer &amp; Pricing + Unit Economics",
+    `<p style="font-weight:600;margin:0 0 6px;">Business Model</p>` +
+    rich(pd?.business_model, "Business model not yet defined.") +
+    `<p style="font-weight:600;margin:12px 0 6px;">Pricing &amp; Unit Economics</p>` + moPricingTable +
+    `<p style="font-weight:600;margin:12px 0 6px;">Market Sizing</p>` + moSizingTable
+  );
+
+  // Section 5: Go-to-Market
+  const s5 = sec("5. Go-to-Market", rich(pd?.go_to_market, "GTM strategy not yet defined."));
+
+  // Section 6: Regulatory/Legal/Compliance
+  const regHtml = loc
+    ? tbl(
+        td("Regulatory Bodies", loc.regulatory_bodies) +
+        td("Key Legislation", loc.key_legislation) +
+        td("Licensing", loc.licensing_requirements) +
+        td("Data Privacy", loc.data_privacy_rules) +
+        td("Timeline", loc.compliance_timeline) +
+        td("Regulatory Moat", loc.regulatory_moat) +
+        td("Red Flags", loc.red_flags)
+      )
+    : txt(null, "Location &amp; Legislation analysis not yet completed.");
+  const s6 = sec("6. Regulatory/Legal/Compliance", regHtml);
+
+  // Section 7: The Validation Test
+  let vtHtml = txt(null, "Risk &amp; Validation analysis not yet completed.");
+  if (rv?.validation_test) {
+    const vt = rv.validation_test as Record<string, unknown>;
+    const steps = (vt.steps as Array<Record<string, string>> | undefined) ?? [];
+    const stepsTable = steps.length
+      ? `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;">` +
+        `<thead><tr style="border-bottom:1px solid #e5e7eb;">` +
+        `<th style="text-align:left;padding:6px 8px 6px 0;">Week</th>` +
+        `<th style="text-align:left;padding:6px 8px 6px 0;">Action</th>` +
+        `<th style="text-align:left;padding:6px 8px 6px 0;">Success Metric</th>` +
+        `<th style="text-align:left;padding:6px 0;">Kill Criterion</th></tr></thead><tbody>` +
+        steps.map(step =>
+          `<tr style="border-bottom:1px solid #f3f4f6;">` +
+          `<td style="padding:6px 8px 6px 0;">${step.week_range ?? ""}</td>` +
+          `<td style="padding:6px 8px 6px 0;">${step.action ?? ""}</td>` +
+          `<td style="padding:6px 8px 6px 0;">${step.success_metric ?? ""}</td>` +
+          `<td style="padding:6px 0;">${step.kill_criterion ?? ""}</td></tr>`
+        ).join("") + `</tbody></table>`
+      : "";
+    vtHtml = tbl(
+      td("Budget Max", String(vt.budget_max ?? "")) +
+      td("Duration", vt.duration_weeks != null ? `${vt.duration_weeks} weeks` : null)
+    ) + stepsTable +
+    (vt.kill_criteria ? `<p style="font-size:14px;"><strong>Kill Criteria:</strong> ${String(vt.kill_criteria)}</p>` : "") +
+    (vt.deliverable ? `<p style="font-size:14px;"><strong>Deliverable:</strong> ${String(vt.deliverable)}</p>` : "");
+  }
+  const s7 = sec("7. The Validation Test", vtHtml);
+
+  // Section 8: Tools & Stack
+  const s8 = sec("8. Tools &amp; Stack", txt(null, "Technical stack will be defined in the PRD step."));
+
+  // Section 9: Risks & What Kills It
+  let riskHtml = txt(null, "Risk &amp; Validation analysis not yet completed.");
+  if (rv?.risk_register) {
+    const risks = rv.risk_register as Array<Record<string, string>>;
+    if (Array.isArray(risks) && risks.length) {
+      riskHtml = `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;">` +
+        `<thead><tr style="border-bottom:1px solid #e5e7eb;">` +
+        `<th style="text-align:left;padding:6px 8px 6px 0;">Risk</th>` +
+        `<th style="text-align:left;padding:6px 8px 6px 0;">Severity</th>` +
+        `<th style="text-align:left;padding:6px 8px 6px 0;">Likelihood</th>` +
+        `<th style="text-align:left;padding:6px 0;">Mitigation</th></tr></thead><tbody>` +
+        risks.map(r =>
+          `<tr style="border-bottom:1px solid #f3f4f6;">` +
+          `<td style="padding:6px 8px 6px 0;font-weight:500;">${r.risk ?? ""}</td>` +
+          `<td style="padding:6px 8px 6px 0;">${r.severity ?? ""}</td>` +
+          `<td style="padding:6px 8px 6px 0;">${r.likelihood ?? ""}</td>` +
+          `<td style="padding:6px 0;">${r.mitigation ?? ""}</td></tr>`
+        ).join("") + `</tbody></table>`;
+    }
+  }
+  if (rv?.why_we_win) {
+    const wins = rv.why_we_win as Array<Record<string, string>>;
+    if (Array.isArray(wins) && wins.length) {
+      riskHtml += `<p style="font-weight:600;font-size:14px;margin:12px 0 8px;">Why We Win</p>` +
+        wins.map(w => `<p style="font-size:14px;margin:0 0 6px;"><strong>${w.advantage ?? ""}:</strong> ${w.why_hard_to_copy ?? ""}</p>`).join("");
+    }
+  }
+  const s9 = sec("9. Risks &amp; What Kills It", riskHtml);
+
+  // Section 10: Verdict
+  const score = rpt.final_score ?? 0;
+  const verdictColor = score >= 75 ? "#16a34a" : score >= 60 ? "#d97706" : "#dc2626";
+  const bucketLabel = (rpt.threshold_bucket ?? "pending").toUpperCase();
+  const s10 = sec("10. Verdict",
+    `<p style="font-size:28px;font-weight:700;color:${verdictColor};margin:0 0 8px;">${rpt.final_score ?? "—"}/100 — ${bucketLabel}</p>` +
+    (rpt.headline ? `<p style="font-weight:600;font-size:16px;margin:0 0 12px;">${rpt.headline}</p>` : "") +
+    rich(rpt.summary, "Report summary not yet available.")
+  );
+
+  const briefHtml = [s1, s2, s3, s4, s5, s6, s7, s8, s9, s10].join("\n");
+  const briefTitle = `${idea.name} — Build Brief`;
+  const briefSubtitle = stripHtml(rpt.recommendation ?? rpt.agreed_solution ?? "").trim().slice(0, 120) || "Assembled from Sandbox Planner discovery steps.";
+
+  await supabase
+    .from("idea_report" as never)
+    .update({
+      brief_title: briefTitle,
+      brief_subtitle: briefSubtitle,
+      brief_html: briefHtml,
+      brief_generated_at: new Date().toISOString(),
+    } as never)
+    .eq("id", rpt.id);
+
+  revalidatePath(PATH);
+  return {};
+}
+
+const FALLBACK_BUILD_BRIEF = `You are a Move37 build strategist writing an investor-grade Build Brief. Use ONLY the source data supplied. Label inferences: [Fact], [Inference], [Uncertain], [Speculation]. Empty fields are gaps -- state them explicitly.
+
+SOURCE DATA:
+Idea: {{idea_name}}
+Description: {{idea_description}}
+Success Metrics: {{success_metrics}}
+Core Problem: {{core_problem}}
+Target Audience: {{target_audience}}
+
+ICPs:
+{{icps_block}}
+
+Optimization Suggestions:
+{{suggestions_block}}
+
+Product: {{product_overview}} | Business Model: {{business_model}} | Features: {{features}} | GTM: {{go_to_market}}
+Benchmarking: {{benchmarking_overview}} | {{benchmarking_comparison}} | {{benchmarking_models}} | {{benchmarking_takeaways}}
+Strategic Frameworks: {{strategic_block}}
+Report: Score {{final_score}} | {{threshold_bucket}} | {{report_headline}} | Problem: {{agreed_problem}} | Solution: {{agreed_solution}} | Rec: {{recommendation}}
+
+Return a JSON object with exactly these keys:
+- "brief_title": Short punchy project title (4-8 words)
+- "brief_subtitle": One-sentence core value proposition
+- "brief_html": Full HTML body (no html/body wrapper) with 10 h2 sections: 1. One-Liner & Thesis, 2. What We Build, 3. Customer & List/Reach, 4. Offer & Pricing + Unit Economics, 5. Go-to-Market, 6. Regulatory/Legal/Compliance, 7. The Validation Test, 8. Tools & Stack, 9. Risks & What Kills It, 10. Verdict. Use tables where appropriate. No markdown.
+
+Return ONLY valid JSON.`;
+
+// ── Location & Legislation ───────────────────────────────────────────────────
+
+/** Upsert location & legislation block for an idea. */
+export async function saveLocationLegislation(
+  ideaId: string,
+  data: {
+    regulatory_bodies?: string;
+    key_legislation?: string;
+    licensing_requirements?: string;
+    data_privacy_rules?: string;
+    compliance_timeline?: string;
+    regulatory_moat?: string;
+    red_flags?: string;
+  }
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("idea_location_legislation" as never)
+    .select("id")
+    .eq("idea_id", ideaId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("idea_location_legislation" as never)
+      .update(data as never)
+      .eq("id", (existing as { id: string }).id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await supabase
+      .from("idea_location_legislation" as never)
+      .insert({ idea_id: ideaId, ...data } as never);
+    if (error) return { error: error.message };
+  }
+
+  revalidatePath(PATH);
+  return {};
+}
+
+// ── Market Opportunity ───────────────────────────────────────────────────────
+
+/** Upsert market opportunity block for an idea. */
+export async function saveMarketOpportunity(
+  ideaId: string,
+  data: {
+    tam_description?: string;
+    tam_estimate?: string;
+    sam_description?: string;
+    sam_estimate?: string;
+    som_description?: string;
+    som_estimate?: string;
+    data_sources?: string;
+    segment_filter_logic?: string;
+    growth_drivers?: string;
+    market_risks?: string;
+    price_point?: string;
+    billing_model?: string;
+    cac_estimate?: string;
+    ltv_estimate?: string;
+  }
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("idea_market_opportunity" as never)
+    .select("id")
+    .eq("idea_id", ideaId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("idea_market_opportunity" as never)
+      .update(data as never)
+      .eq("id", (existing as { id: string }).id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await supabase
+      .from("idea_market_opportunity" as never)
+      .insert({ idea_id: ideaId, ...data } as never);
+    if (error) return { error: error.message };
+  }
+
+  revalidatePath(PATH);
+  return {};
+}
+
+// ── Fallback Prompts ─────────────────────────────────────────────────────────
+
+const FALLBACK_LOCATION_LEGISLATION = `You are a regulatory research expert. Analyse the regulatory landscape for the following startup idea.
+
+Idea: {{idea_name}}
+Description: {{idea_description}}
+Core Problem: {{core_problem}}
+Target Audience: {{target_audience}}
+Location: {{location}}
+Jurisdiction: {{jurisdiction}}
+
+If location is "Not specified", state that analysis requires a target location and explain what is needed.
+
+Return a JSON object with exactly these keys (all values must be valid HTML strings):
+- "regulatory_bodies": Key regulatory bodies/agencies that govern this type of business.
+- "key_legislation": Primary laws, acts, or directives that apply.
+- "licensing_requirements": Licenses, permits, certifications required to operate legally.
+- "data_privacy_rules": Applicable data protection laws and obligations.
+- "compliance_timeline": Sequenced compliance roadmap (HTML table: Stage | Action | Timeframe | Owner).
+- "regulatory_moat": Regulatory advantages or moats the compliance creates.
+- "red_flags": Critical compliance risks requiring specialist legal advice. Label severity.
+
+Return ONLY valid JSON.`;
+
+const FALLBACK_MARKET_OPPORTUNITY = `You are a market sizing expert. Produce a TAM/SAM/SOM analysis for the following startup idea.
+
+Idea: {{idea_name}}
+Description: {{idea_description}}
+Core Problem: {{core_problem}}
+Target Audience: {{target_audience}}
+Location: {{location}}
+Jurisdiction: {{jurisdiction}}
+ICP Firmographics: {{icps_block}}
+Product Overview: {{product_overview}}
+Business Model: {{business_model}}
+
+Label all estimates: [Fact], [Inference], or [Uncertain]. Do not fabricate figures.
+
+Return a JSON object with exactly these keys (all values must be valid HTML strings):
+- "tam_description": Total Addressable Market definition.
+- "tam_estimate": TAM estimate with named source/methodology.
+- "sam_description": Serviceable Addressable Market definition.
+- "sam_estimate": SAM estimate with source and rationale.
+- "som_description": Serviceable Obtainable Market definition.
+- "som_estimate": SOM estimate with specific assumptions.
+- "data_sources": Bulleted list of all sources referenced.
+- "segment_filter_logic": TAM to SAM to SOM filter logic (HTML table: Layer | Filter | Reduction Factor | Size).
+- "growth_drivers": 3-5 macro forces expanding this market.
+- "market_risks": 3-5 macro forces that could suppress this market.
+- "price_point": Proposed price point(s) — e.g. "£29/mo starter, £99/mo pro". Label [Fact], [Inference], or [Uncertain].
+- "billing_model": How the product is monetised — e.g. "SaaS subscription", "transaction fee", "freemium + upsell". Include any revenue share or commission model if applicable.
+- "cac_estimate": Customer Acquisition Cost estimate with methodology — e.g. "£120 blended CAC assuming paid social + content (£80 per channel)". Label assumptions.
+- "ltv_estimate": Customer Lifetime Value estimate — e.g. "£1,080 at 30-month avg retention on £36/mo ARPU". Show the LTV:CAC ratio.
+
+Return ONLY valid JSON.`;
+
+const FALLBACK_RISK_AND_VALIDATION = `You are a risk management and startup validation expert. Given the following context, produce a risk register, validation experiment, and competitive advantage analysis.
+
+Agreed Problem: {{agreed_problem}}
+Agreed Solution: {{agreed_solution}}
+Recommendation: {{recommendation}}
+Score: {{final_score}} / Verdict: {{threshold_bucket}}
+Location: {{location}}
+Jurisdiction: {{jurisdiction}}
+Product Overview: {{product_overview}}
+Benchmarking Takeaways: {{benchmarking_takeaways}}
+
+Return a JSON object with exactly these keys:
+
+"risk_register": Array of at least 6 risk objects, each with: { "risk": string, "severity": "Critical"|"High"|"Medium"|"Low", "likelihood": "Very Likely"|"Likely"|"Possible"|"Unlikely", "mitigation": string, "owner": string }
+
+"validation_test": Object with: { "budget_max": string, "duration_weeks": number, "steps": [{ "week_range": string, "action": string, "success_metric": string, "kill_criterion": string }], "kill_criteria": string, "deliverable": string }
+
+"why_we_win": Array of competitive advantage objects, each with: { "advantage": string, "why_hard_to_copy": string }
+
+Return ONLY valid JSON.`;
+
+// ── Location & Legislation Generation ────────────────────────────────────────
+
+interface LocationLegislationOutput {
+  regulatory_bodies: string;
+  key_legislation: string;
+  licensing_requirements: string;
+  data_privacy_rules: string;
+  compliance_timeline: string;
+  regulatory_moat: string;
+  red_flags: string;
+}
+
+async function generateLocationLegislation(
+  supabase: SupabaseClient,
+  idea: { name: string; description: string | null; location?: string | null; jurisdiction?: string | null },
+  structureAlign: { core_problem: string | null; target_audience: string | null } | null,
+  ideaId: string,
+  aiConfig: AiConfig,
+  requestId: string
+): Promise<{ error?: string }> {
+  const template = (await getPromptTemplate("location_legislation")) ?? FALLBACK_LOCATION_LEGISLATION;
+  const prompt = renderPrompt(template, {
+    idea_name: idea.name,
+    idea_description: stripHtml(idea.description),
+    core_problem: stripHtml(structureAlign?.core_problem) || "Not defined yet",
+    target_audience: stripHtml(structureAlign?.target_audience) || "Not defined yet",
+    location: idea.location || "Not specified",
+    jurisdiction: idea.jurisdiction || "Not specified",
+  });
+
+  const res = await generateAiJsonResponse<LocationLegislationOutput>({
+    service: aiConfig.service,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    prompt,
+    maxTokens: 8192,
+  });
+
+  if (res.returned_an_error || !res.data) {
+    return { error: res.error ?? "AI returned no data" };
+  }
+
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  const d = res.data;
+  const { data: existing } = await supabase
+    .from("idea_location_legislation" as never)
+    .select("id")
+    .eq("idea_id", ideaId)
+    .maybeSingle();
+
+  const payload = {
+    regulatory_bodies: d.regulatory_bodies ?? null,
+    key_legislation: d.key_legislation ?? null,
+    licensing_requirements: d.licensing_requirements ?? null,
+    data_privacy_rules: d.data_privacy_rules ?? null,
+    compliance_timeline: d.compliance_timeline ?? null,
+    regulatory_moat: d.regulatory_moat ?? null,
+    red_flags: d.red_flags ?? null,
+  };
+
+  if (existing) {
+    await supabase
+      .from("idea_location_legislation" as never)
+      .update(payload as never)
+      .eq("id", (existing as { id: string }).id);
+  } else {
+    await supabase
+      .from("idea_location_legislation" as never)
+      .insert({ idea_id: ideaId, ...payload } as never);
+  }
+
+  return {};
+}
+
+// ── Market Opportunity Generation ─────────────────────────────────────────────
+
+interface MarketOpportunityOutput {
+  tam_description: string;
+  tam_estimate: string;
+  sam_description: string;
+  sam_estimate: string;
+  som_description: string;
+  som_estimate: string;
+  data_sources: string;
+  segment_filter_logic: string;
+  growth_drivers: string;
+  market_risks: string;
+  price_point: string;
+  billing_model: string;
+  cac_estimate: string;
+  ltv_estimate: string;
+}
+
+async function generateMarketOpportunity(
+  supabase: SupabaseClient,
+  idea: { name: string; description: string | null; location?: string | null; jurisdiction?: string | null },
+  structureAlign: { core_problem: string | null; target_audience: string | null } | null,
+  icps: Array<Record<string, unknown>>,
+  productDef: { summary: string | null; business_model: string | null } | null,
+  ideaId: string,
+  aiConfig: AiConfig,
+  requestId: string
+): Promise<{ error?: string }> {
+  const template = (await getPromptTemplate("market_opportunity")) ?? FALLBACK_MARKET_OPPORTUNITY;
+  const prompt = renderPrompt(template, {
+    idea_name: idea.name,
+    idea_description: stripHtml(idea.description),
+    core_problem: stripHtml(structureAlign?.core_problem) || "Not defined yet",
+    target_audience: stripHtml(structureAlign?.target_audience) || "Not defined yet",
+    location: idea.location || "Not specified",
+    jurisdiction: idea.jurisdiction || "Not specified",
+    icps_block: buildIcpsBlock(icps),
+    product_overview: stripHtml(productDef?.summary) || "Not defined yet",
+    business_model: stripHtml(productDef?.business_model) || "Not defined yet",
+  });
+
+  const res = await generateAiJsonResponse<MarketOpportunityOutput>({
+    service: aiConfig.service,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    prompt,
+    maxTokens: 8192,
+  });
+
+  if (res.returned_an_error || !res.data) {
+    return { error: res.error ?? "AI returned no data" };
+  }
+
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  const d = res.data;
+  const { data: existing } = await supabase
+    .from("idea_market_opportunity" as never)
+    .select("id")
+    .eq("idea_id", ideaId)
+    .maybeSingle();
+
+  const payload = {
+    tam_description: d.tam_description ?? null,
+    tam_estimate: d.tam_estimate ?? null,
+    sam_description: d.sam_description ?? null,
+    sam_estimate: d.sam_estimate ?? null,
+    som_description: d.som_description ?? null,
+    som_estimate: d.som_estimate ?? null,
+    data_sources: d.data_sources ?? null,
+    segment_filter_logic: d.segment_filter_logic ?? null,
+    growth_drivers: d.growth_drivers ?? null,
+    market_risks: d.market_risks ?? null,
+    price_point: d.price_point ?? null,
+    billing_model: d.billing_model ?? null,
+    cac_estimate: d.cac_estimate ?? null,
+    ltv_estimate: d.ltv_estimate ?? null,
+  };
+
+  if (existing) {
+    await supabase
+      .from("idea_market_opportunity" as never)
+      .update(payload as never)
+      .eq("id", (existing as { id: string }).id);
+  } else {
+    await supabase
+      .from("idea_market_opportunity" as never)
+      .insert({ idea_id: ideaId, ...payload } as never);
+  }
+
+  return {};
+}
+
+// ── Risk & Validation Generation ──────────────────────────────────────────────
+
+interface RiskAndValidationOutput {
+  risk_register: Array<{
+    risk: string;
+    severity: string;
+    likelihood: string;
+    mitigation: string;
+    owner: string;
+  }>;
+  validation_test: {
+    budget_max: string;
+    duration_weeks: number;
+    steps: Array<{ week_range: string; action: string; success_metric: string; kill_criterion: string }>;
+    kill_criteria: string;
+    deliverable: string;
+  };
+  why_we_win: Array<{ advantage: string; why_hard_to_copy: string }>;
+}
+
+async function generateRiskAndValidation(
+  supabase: SupabaseClient,
+  idea: { name: string; description: string | null; location?: string | null; jurisdiction?: string | null },
+  ideaId: string,
+  aiConfig: AiConfig,
+  requestId: string
+): Promise<{ error?: string }> {
+  const [{ data: reportRow }, { data: benchRow }, { data: pdRow }] = await Promise.all([
+    supabase
+      .from("idea_report" as never)
+      .select("agreed_problem, agreed_solution, recommendation, final_score, threshold_bucket")
+      .eq("idea_id", ideaId)
+      .maybeSingle(),
+    supabase
+      .from("idea_benchmarking" as never)
+      .select("takeaways")
+      .eq("idea_id", ideaId)
+      .maybeSingle(),
+    supabase
+      .from("idea_product_definition_and_flows" as never)
+      .select("summary")
+      .eq("idea_id", ideaId)
+      .maybeSingle(),
+  ]);
+
+  const report = reportRow as {
+    agreed_problem: string | null;
+    agreed_solution: string | null;
+    recommendation: string | null;
+    final_score: number | null;
+    threshold_bucket: string | null;
+  } | null;
+
+  const bench = benchRow as { takeaways: string | null } | null;
+  const pd = pdRow as { summary: string | null } | null;
+
+  const template = (await getPromptTemplate("risk_and_validation")) ?? FALLBACK_RISK_AND_VALIDATION;
+  const prompt = renderPrompt(template, {
+    agreed_problem: report?.agreed_problem ?? "Not defined (run Report step first)",
+    agreed_solution: report?.agreed_solution ?? "Not defined (run Report step first)",
+    recommendation: report?.recommendation ?? "Not defined",
+    final_score: String(report?.final_score ?? "n/a"),
+    threshold_bucket: report?.threshold_bucket ?? "n/a",
+    location: idea.location || "Not specified",
+    jurisdiction: idea.jurisdiction || "Not specified",
+    product_overview: stripHtml(pd?.summary) || "Not defined yet",
+    benchmarking_takeaways: stripHtml(bench?.takeaways) || "Not defined yet",
+  });
+
+  const res = await generateAiJsonResponse<RiskAndValidationOutput>({
+    service: aiConfig.service,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    prompt,
+    maxTokens: 8192,
+  });
+
+  if (res.returned_an_error || !res.data) {
+    return { error: res.error ?? "AI returned no data" };
+  }
+
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  const d = res.data;
+  const { data: existing } = await supabase
+    .from("idea_risk_and_validation" as never)
+    .select("id")
+    .eq("idea_id", ideaId)
+    .maybeSingle();
+
+  const payload = {
+    risk_register: d.risk_register ?? null,
+    validation_test: d.validation_test ?? null,
+    why_we_win: d.why_we_win ?? null,
+  };
+
+  if (existing) {
+    await supabase
+      .from("idea_risk_and_validation" as never)
+      .update(payload as never)
+      .eq("id", (existing as { id: string }).id);
+  } else {
+    await supabase
+      .from("idea_risk_and_validation" as never)
+      .insert({ idea_id: ideaId, ...payload } as never);
+  }
+
+  return {};
+}

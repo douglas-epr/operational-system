@@ -40,10 +40,15 @@ export function useRegenerate(
     setIsRegenerating(true);
     setError(null);
     clearAutoTriggerGuard(ideaId, step);
-    // Report runs a multi-call debate loop; strategic_frameworks loops per-ICP. Allow 10 min.
-    const longSteps: IdeaBlock[] = ["report", "strategic_frameworks"];
+    // Report runs a multi-call Devil's Advocate debate loop (up to 10 rounds ×
+    // 2 sides × 2 gates + synthesis ≈ 46 sequential calls) — give it a 45-min
+    // ceiling so the "timed out" toast never fires mid-debate. strategic_frameworks
+    // loops per-ICP — 10 min is plenty. (isRegenerating also clears on the Realtime
+    // edge, so this timeout mainly governs the error toast.)
+    const reportTimeoutMs = step === "report" ? 2_700_000 : undefined;
+    const frameworksTimeoutMs = step === "strategic_frameworks" ? 600_000 : undefined;
     const result = await runAiWithTimeout(action, {
-      timeoutMs: longSteps.includes(step) ? 600_000 : undefined,
+      timeoutMs: reportTimeoutMs ?? frameworksTimeoutMs,
     });
     // Fallback: clear if Realtime didn't already do so.
     setIsRegenerating(false);

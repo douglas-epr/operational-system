@@ -14,6 +14,8 @@ export type IdeaBlock =
   | "structure_align"
   | "refining_icp"
   | "product_definition_flows"
+  | "location_legislation"
+  | "market_opportunity"
   | "strategic_frameworks"
   | "benchmarking"
   | "prd"
@@ -21,6 +23,7 @@ export type IdeaBlock =
   | "visual_styles"
   | "milestones_and_tasks"
   | "report"
+  | "risk_and_validation"
   | "playbook";
 
 /** Maps to PostgreSQL enum os_idea_field */
@@ -46,6 +49,8 @@ export const IDEA_BLOCK_LABELS: Record<IdeaBlock, string> = {
   structure_align: "Structure & Align",
   refining_icp: "Refining ICP",
   product_definition_flows: "Product Definition & Flows",
+  location_legislation: "Location & Legislation",
+  market_opportunity: "Market Opportunity",
   strategic_frameworks: "Strategic Frameworks",
   benchmarking: "Benchmarking",
   prd: "PRD",
@@ -53,6 +58,7 @@ export const IDEA_BLOCK_LABELS: Record<IdeaBlock, string> = {
   visual_styles: "Visual Styles",
   milestones_and_tasks: "Project Milestones & Tasks",
   report: "Report",
+  risk_and_validation: "Risk & Validation",
   playbook: "Playbook",
 };
 
@@ -74,36 +80,48 @@ export const IDEA_BLOCK_STEPS: Record<IdeaBlock, { step: number; subtitle: strin
     step: 4,
     subtitle: "Define your product's core features and map out user journeys.",
   },
-  benchmarking: {
+  location_legislation: {
     step: 5,
+    subtitle: "Regulatory bodies, key legislation, and compliance requirements for your target market.",
+  },
+  market_opportunity: {
+    step: 6,
+    subtitle: "TAM/SAM/SOM sizing, data sources, and market growth drivers.",
+  },
+  benchmarking: {
+    step: 7,
     subtitle: "Competitive analysis and benchmarking.",
   },
   strategic_frameworks: {
-    step: 6,
+    step: 8,
     subtitle: "Your Strategic Frameworks. Review the synthesis below.",
   },
+  risk_and_validation: {
+    step: 9,
+    subtitle: "Risk register, lean validation experiment, and competitive advantage analysis.",
+  },
   report: {
-    step: 7,
+    step: 10,
     subtitle: "Go/no-go verdict before committing to the build.",
   },
   prd: {
-    step: 8,
+    step: 11,
     subtitle: "Product Requirements Document.",
   },
   database: {
-    step: 9,
+    step: 12,
     subtitle: "Data model and schema design.",
   },
   visual_styles: {
-    step: 10,
+    step: 13,
     subtitle: "Visual identity and branding.",
   },
   milestones_and_tasks: {
-    step: 11,
+    step: 14,
     subtitle: "Project milestones, tasks, and time estimates.",
   },
   playbook: {
-    step: 12,
+    step: 15,
     subtitle: "Project playbook / build guide.",
   },
 };
@@ -114,8 +132,11 @@ export const IDEA_BLOCKS_ORDERED: IdeaBlock[] = [
   "structure_align",
   "refining_icp",
   "product_definition_flows",
+  "location_legislation",
+  "market_opportunity",
   "benchmarking",
   "strategic_frameworks",
+  "risk_and_validation",
   "report",
   "prd",
   "database",
@@ -137,6 +158,8 @@ export interface Idea {
   score: number | null;
   description: string | null;
   success_metrics: string | null;
+  location: string | null;
+  jurisdiction: string | null;
   current_block_ended: IdeaBlock | null;
   current_blocks_updating: string | null;
   created_at: string;
@@ -209,6 +232,80 @@ export interface IdeaBlockStructureAlign {
   success_metrics: string | null;
   target_audience: string | null;
   core_problem: string | null;
+  created_at: string;
+}
+
+/** Represents a row in the `idea_location_legislation` table. */
+export interface IdeaLocationLegislation {
+  id: string;
+  idea_id: string;
+  regulatory_bodies: string | null;
+  key_legislation: string | null;
+  licensing_requirements: string | null;
+  data_privacy_rules: string | null;
+  compliance_timeline: string | null;
+  regulatory_moat: string | null;
+  red_flags: string | null;
+  created_at: string;
+}
+
+/** Represents a row in the `idea_market_opportunity` table. */
+export interface IdeaMarketOpportunity {
+  id: string;
+  idea_id: string;
+  tam_description: string | null;
+  tam_estimate: string | null;
+  sam_description: string | null;
+  sam_estimate: string | null;
+  som_description: string | null;
+  som_estimate: string | null;
+  data_sources: string | null;
+  segment_filter_logic: string | null;
+  growth_drivers: string | null;
+  market_risks: string | null;
+  price_point: string | null;
+  billing_model: string | null;
+  cac_estimate: string | null;
+  ltv_estimate: string | null;
+  created_at: string;
+}
+
+/** Risk item in the risk_register JSONB array. */
+export interface RiskItem {
+  risk: string;
+  severity: "Critical" | "High" | "Medium" | "Low";
+  likelihood: "Very Likely" | "Likely" | "Possible" | "Unlikely";
+  mitigation: string;
+  owner: string;
+}
+
+/** Validation test step in the validation_test JSONB object. */
+export interface ValidationTestStep {
+  week_range: string;
+  action: string;
+  success_metric: string;
+  kill_criterion: string;
+}
+
+/** Competitive advantage item in the why_we_win JSONB array. */
+export interface WhyWeWinItem {
+  advantage: string;
+  why_hard_to_copy: string;
+}
+
+/** Represents a row in the `idea_risk_and_validation` table. */
+export interface IdeaRiskAndValidation {
+  id: string;
+  idea_id: string;
+  risk_register: RiskItem[] | null;
+  validation_test: {
+    budget_max: string;
+    duration_weeks: number;
+    steps: ValidationTestStep[];
+    kill_criteria: string;
+    deliverable: string;
+  } | null;
+  why_we_win: WhyWeWinItem[] | null;
   created_at: string;
 }
 
@@ -388,6 +485,11 @@ export interface IdeaReport {
     solution_converged: boolean;
     impasse_note?: string;
   } | null;
+  // Build Brief fields (added 2026-06-17)
+  brief_title: string | null;
+  brief_subtitle: string | null;
+  brief_html: string | null;
+  brief_generated_at: string | null;
 }
 
 // ── Composite Types ──────────────────────────────────────────────────────────
@@ -399,7 +501,10 @@ export interface IdeaFull {
   icps: IdeaIcp[];
   productDefinition: IdeaBlockProductDefinition | null;
   optimizationSuggestions: IdeaOptimizationSuggestion[];
+  locationLegislation: IdeaLocationLegislation | null;
+  marketOpportunity: IdeaMarketOpportunity | null;
   benchmarking: IdeaBenchmarking | null;
+  riskAndValidation: IdeaRiskAndValidation | null;
   prd: IdeaPrd | null;
   database: IdeaDatabase | null;
   styles: IdeaStyles | null;

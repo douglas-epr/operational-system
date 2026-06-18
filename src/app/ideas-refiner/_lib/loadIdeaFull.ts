@@ -18,7 +18,10 @@ import type {
   IdeaBlockProductDefinition,
   IdeaBlockStructureAlign,
   IdeaOptimizationSuggestion,
+  IdeaLocationLegislation,
+  IdeaMarketOpportunity,
   IdeaBenchmarking,
+  IdeaRiskAndValidation,
   IdeaPrd,
   IdeaDatabase,
   IdeaStyles,
@@ -64,7 +67,10 @@ export async function loadIdeaFull(
     { data: icpsData },
     { data: productDefData },
     { data: suggestionsData },
+    { data: locationLegislationData },
+    { data: marketOpportunityData },
     { data: benchmarkingData },
+    { data: riskAndValidationData },
     { data: prdData },
     { data: databaseData },
     { data: stylesData },
@@ -97,7 +103,22 @@ export async function loadIdeaFull(
       .eq("idea_id", ideaId)
       .order("created_at", { ascending: true }),
     supabase
+      .from("idea_location_legislation" as never)
+      .select("*")
+      .eq("idea_id", ideaId)
+      .maybeSingle(),
+    supabase
+      .from("idea_market_opportunity" as never)
+      .select("*")
+      .eq("idea_id", ideaId)
+      .maybeSingle(),
+    supabase
       .from("idea_benchmarking" as never)
+      .select("*")
+      .eq("idea_id", ideaId)
+      .maybeSingle(),
+    supabase
+      .from("idea_risk_and_validation" as never)
       .select("*")
       .eq("idea_id", ideaId)
       .maybeSingle(),
@@ -139,7 +160,10 @@ export async function loadIdeaFull(
     icps: (icpsData ?? []) as unknown as IdeaIcp[],
     productDefinition: (productDefData as unknown as IdeaBlockProductDefinition) ?? null,
     optimizationSuggestions: (suggestionsData ?? []) as unknown as IdeaOptimizationSuggestion[],
+    locationLegislation: (locationLegislationData as unknown as IdeaLocationLegislation) ?? null,
+    marketOpportunity: (marketOpportunityData as unknown as IdeaMarketOpportunity) ?? null,
     benchmarking: (benchmarkingData as unknown as IdeaBenchmarking) ?? null,
+    riskAndValidation: (riskAndValidationData as unknown as IdeaRiskAndValidation) ?? null,
     prd: (prdData as unknown as IdeaPrd) ?? null,
     database: (databaseData as unknown as IdeaDatabase) ?? null,
     styles: (stylesData as unknown as IdeaStyles) ?? null,

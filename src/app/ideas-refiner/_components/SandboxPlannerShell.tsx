@@ -20,7 +20,10 @@ import StructureAlignStep from "./StructureAlignStep";
 import RefiningIcpStep from "./RefiningIcpStep";
 import ProductDefinitionStep from "./ProductDefinitionStep";
 import StrategicFrameworksStep from "./StrategicFrameworksStep";
+import LocationLegislationStep from "./LocationLegislationStep";
+import MarketOpportunityStep from "./MarketOpportunityStep";
 import BenchmarkingStep from "./BenchmarkingStep";
+import RiskAndValidationStep from "./RiskAndValidationStep";
 import PrdStep from "./PrdStep";
 import DatabaseStep from "./DatabaseStep";
 import VisualStylesStep from "./VisualStylesStep";
@@ -68,29 +71,50 @@ function computeUnlockedSteps(ideaFull: IdeaFull): Set<IdeaBlock> {
     !!productDefinition?.summary?.trim() &&
     !!productDefinition?.features?.trim();
 
-  // Step 5 is now Benchmarking (was Strategic Frameworks)
-  if (productDone) unlocked.add("benchmarking");
-
-  // Step 6 is now Strategic Frameworks — unlocks after Benchmarking has content
-  const benchmarkingDone =
+  // New steps unlock after product definition.
+  // Backward compat: if benchmarking already has data, location_legislation and
+  // market_opportunity are also unlocked (existing ideas that predate these steps).
+  const benchmarkingHasContent =
     !!ideaFull.benchmarking?.overview?.trim() ||
     !!ideaFull.benchmarking?.comparison?.trim();
-  if (benchmarkingDone) unlocked.add("strategic_frameworks");
+  const locationLegislationHasContent =
+    !!ideaFull.locationLegislation?.regulatory_bodies?.trim() ||
+    !!ideaFull.locationLegislation?.key_legislation?.trim();
+  const marketOpportunityHasContent =
+    !!ideaFull.marketOpportunity?.tam_description?.trim() ||
+    !!ideaFull.marketOpportunity?.tam_estimate?.trim();
 
-  // Report (now Step 7) is a pre-build go/no-go gate. It unlocks once
-  // Strategic Frameworks has content OR if a report already exists.
-  // (Regenerating an upstream step — e.g. Refining ICP — must NOT lock a downstream step
-  // that has already been generated and saved to its own table.)
+  if (productDone || locationLegislationHasContent || benchmarkingHasContent) {
+    unlocked.add("location_legislation");
+  }
+  if (locationLegislationHasContent || marketOpportunityHasContent || benchmarkingHasContent) {
+    unlocked.add("market_opportunity");
+  }
+
+  // Benchmarking unlocks after market_opportunity has content, or already has its own data.
+  if (marketOpportunityHasContent || benchmarkingHasContent) unlocked.add("benchmarking");
+
+  // Strategic Frameworks unlocks after Benchmarking has content.
+  if (benchmarkingHasContent) unlocked.add("strategic_frameworks");
+
+  // Risk & Validation (step 9) comes before Report. Unlocks once Strategic Frameworks
+  // has content OR already has data.
   const strategicDone = icps.some(
     (i) => !!i.value_proposition_icp_pains?.trim() || !!i.jtbd?.trim()
   );
+  const riskHasContent =
+    !!ideaFull.riskAndValidation?.risk_register ||
+    !!ideaFull.riskAndValidation?.validation_test;
+  if (strategicDone || riskHasContent) unlocked.add("risk_and_validation");
+
+  // Report (step 10) is the go/no-go verdict after risk validation.
+  // Backward compat: also unlocks if a report already exists (legacy ideas that pre-date the risk step).
   const reportHasContent =
     ideaFull.report?.final_score != null ||
     !!ideaFull.report?.summary?.trim();
-  if (strategicDone || reportHasContent) unlocked.add("report");
+  if (riskHasContent || reportHasContent) unlocked.add("report");
 
-  // PRD (now Step 8) is the first build-phase step. It unlocks once the Report
-  // verdict exists OR if PRD already has its own data.
+  // PRD is the first build-phase step. Unlocks once Report exists OR PRD already has data.
   const prdHasContent =
     !!ideaFull.prd?.app_overview?.trim() ||
     !!ideaFull.prd?.essential_features?.trim();
@@ -106,12 +130,10 @@ function computeUnlockedSteps(ideaFull: IdeaFull): Set<IdeaBlock> {
   const stylesHasContent = !!ideaFull.styles?.color_palette?.trim();
   if (databaseDone || stylesHasContent) unlocked.add("visual_styles");
 
-  // Project Milestones & Tasks is now Step 11.
   const stylesDone = !!ideaFull.styles?.color_palette?.trim();
   const milestonesHasContent = !!ideaFull.milestonesAndTasks?.content?.trim();
   if (stylesDone || milestonesHasContent) unlocked.add("milestones_and_tasks");
 
-  // Playbook (Step 12) unlocks once milestones have content OR a playbook version already exists.
   if (milestonesHasContent || ideaFull.playbookVersions.length > 0) unlocked.add("playbook");
 
   return unlocked;
@@ -318,6 +340,12 @@ export default function SandboxPlannerShell({
         {activeTab === "product_definition_flows" && (
           <ProductDefinitionStep ideaFull={ideaFull} />
         )}
+        {activeTab === "location_legislation" && (
+          <LocationLegislationStep ideaFull={ideaFull} />
+        )}
+        {activeTab === "market_opportunity" && (
+          <MarketOpportunityStep ideaFull={ideaFull} />
+        )}
         {activeTab === "benchmarking" && (
           <BenchmarkingStep ideaFull={ideaFull} />
         )}
@@ -338,6 +366,9 @@ export default function SandboxPlannerShell({
         )}
         {activeTab === "report" && (
           <ReportStep ideaFull={ideaFull} />
+        )}
+        {activeTab === "risk_and_validation" && (
+          <RiskAndValidationStep ideaFull={ideaFull} />
         )}
         {activeTab === "playbook" && (
           <PlaybookStep

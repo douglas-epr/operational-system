@@ -21,11 +21,15 @@ const STUCK_TIMEOUT_MS = 270_000;
 /** strategic_frameworks loops one AI call per ICP — allow 10 min for up to ~10 ICPs. */
 const STRATEGIC_FRAMEWORKS_STUCK_TIMEOUT_MS = 600_000;
 /**
- * The Report step runs a multi-call debate pipeline (up to ~14 AI calls).
- * Give it enough headroom so the stuck-state auto-clear never fires while
- * a valid generation is still running — 25 min covers the worst case.
+ * The Report step runs a multi-call Devil's Advocate debate pipeline. With the
+ * round cap raised to 10 per gate (MAX_ROUNDS_PER_GATE), a fully-contested idea
+ * can reach ~40 debate calls (10 rounds × 2 sides × 2 gates) plus ~6 synthesis
+ * calls (reframer + scorer + HTML) ≈ 46 sequential AI calls. The debate is the
+ * crux kill/refine/build gate, so we never want the stuck-state auto-clear to
+ * fire while a valid generation is still running — 45 min covers the worst case
+ * even on slower models. Latency is intentionally traded for verdict quality.
  */
-const REPORT_STUCK_TIMEOUT_MS = 1_500_000;
+const REPORT_STUCK_TIMEOUT_MS = 2_700_000;
 
 /** Field names that AI updates per step — shown in the "soon you will have…" message. */
 const STEP_FIELDS: Record<IdeaBlock, string[]> = {
@@ -39,6 +43,8 @@ const STEP_FIELDS: Record<IdeaBlock, string[]> = {
     "Our Solution Value",
   ],
   product_definition_flows: ["Product Summary", "Feature List & Logic", "Go-to-Market"],
+  location_legislation: ["Regulatory Bodies", "Key Legislation", "Licensing Requirements", "Data Privacy Rules", "Compliance Timeline", "Regulatory Moat", "Red Flags"],
+  market_opportunity: ["TAM", "SAM", "SOM", "Price Point", "Billing Model", "CAC", "LTV", "Growth Drivers", "Market Risks"],
   strategic_frameworks: [
     "Value Proposition",
     "JTBD Synthesis",
@@ -68,6 +74,7 @@ const STEP_FIELDS: Record<IdeaBlock, string[]> = {
     "Revised Idea Description",
     "Go/No-Go Verdict",
   ],
+  risk_and_validation: ["Risk Register", "Validation Experiment", "Why We Win"],
   playbook: ["Playbook Content"],
 };
 
