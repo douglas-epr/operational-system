@@ -162,7 +162,7 @@ export const TAB_LABELS: Record<ChatTab, string> = {
   files:           "Files",
   links:           "Links",
   videos:          "Videos",
-  daily_feedback:  "Daily Feedback",
+  daily_feedback:  "Work Feedback",
   client_requests: "General Tasks",
   chatbot:         "Chatbot",
   tasks:           "General Tasks",

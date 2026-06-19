@@ -55,7 +55,7 @@ export const IDEA_BLOCK_LABELS: Record<IdeaBlock, string> = {
   benchmarking: "Benchmarking",
   prd: "PRD",
   database: "Database",
-  visual_styles: "Visual Styles",
+  visual_styles: "Design System",
   milestones_and_tasks: "Project Milestones & Tasks",
   report: "Report",
   risk_and_validation: "Risk & Validation",
@@ -114,7 +114,7 @@ export const IDEA_BLOCK_STEPS: Record<IdeaBlock, { step: number; subtitle: strin
   },
   visual_styles: {
     step: 13,
-    subtitle: "Visual identity and branding.",
+    subtitle: "Logo-driven design system — colors, type, and tokens derived from your brand.",
   },
   milestones_and_tasks: {
     step: 14,
@@ -293,6 +293,49 @@ export interface WhyWeWinItem {
   why_hard_to_copy: string;
 }
 
+export interface DemandAssumption {
+  assumption: string;
+  evidence_today: string;
+  evidence_needed: string;
+  strength: "stated" | "behavioral" | "financial";
+  status: "unproven" | "emerging" | "proven";
+}
+
+export interface DemandExperiment {
+  method: string;
+  why_this_method: string;
+  sample_or_budget: string;
+  success_threshold: string;
+  kill_criterion: string;
+  sequence_order: number;
+}
+
+export interface DemandSignal {
+  signal: string;
+  type: "stated" | "behavioral" | "financial";
+  is_anti_signal: boolean;
+}
+
+export interface DemandDebateInsight {
+  insight: string;
+  source: "skeptic challenge" | "advocate could-not-defend" | "reframer flag" | "agreed conclusion";
+  implication_for_demand: string;
+}
+
+export interface DemandEvidence {
+  hypothesis: string;
+  riskiest_assumptions: DemandAssumption[];
+  experiments: DemandExperiment[];
+  signals_to_watch: DemandSignal[];
+  debate_insights: DemandDebateInsight[];
+  verdict: {
+    grade: "unproven" | "emerging" | "proven";
+    confidence: "low" | "medium" | "high";
+    rationale: string;
+    highest_leverage_next_test: string;
+  };
+}
+
 /** Represents a row in the `idea_risk_and_validation` table. */
 export interface IdeaRiskAndValidation {
   id: string;
@@ -306,6 +349,17 @@ export interface IdeaRiskAndValidation {
     deliverable: string;
   } | null;
   why_we_win: WhyWeWinItem[] | null;
+  demand_evidence: DemandEvidence | null;
+  debate_transcript: IdeaReportDebateTurn[];
+  debate_meta: {
+    problem_rounds: number;
+    solution_rounds: number;
+    problem_converged: boolean;
+    solution_converged: boolean;
+    impasse_note?: string;
+  } | null;
+  agreed_problem: string | null;
+  agreed_solution: string | null;
   created_at: string;
 }
 
@@ -329,6 +383,7 @@ export interface IdeaPrd {
   priority_personas: string | null;
   essential_features: string | null;
   user_flow: string | null;
+  features_per_page: string | null;
   non_functional_reqs: string | null;
   out_of_scope: string | null;
   success_indicators: string | null;
@@ -404,6 +459,11 @@ export interface IdeaStyles {
   brand_voice: string | null;
   iconography_style: string | null;
   motion_principles: string | null;
+  // Logo columns (added 2026-06-18)
+  logo_url: string | null;
+  logo_svg: string | null;
+  logo_type: "upload" | "ai_svg" | null;
+  logo_colors: { hex: string; label: string }[] | null;
   created_at: string;
 }
 
@@ -514,6 +574,13 @@ export interface IdeaFull {
 }
 
 // ── Helper Types ─────────────────────────────────────────────────────────────
+
+/** Maps "design-system" URL alias → "visual_styles" internal key. All other values pass through. */
+export function normalizeTabParam(tab: string | undefined | null): IdeaBlock | undefined {
+  if (!tab) return undefined;
+  if (tab === "design-system") return "visual_styles";
+  return tab as IdeaBlock;
+}
 
 /** Minimal project shape for the project dropdown in Create Idea modal. */
 export interface ProjectOption {

@@ -15,7 +15,6 @@ import BriefPreviewModal from "./BriefPreviewModal";
 import { useRegenerate } from "../_hooks/useRegenerate";
 import { createPortal } from "react-dom";
 import { useStepActions } from "../_context/StepActionsContext";
-import { useRouter } from "next/navigation";
 
 interface ReportStepProps {
   ideaFull: IdeaFull;
@@ -71,28 +70,32 @@ function Donut({ score, color }: { score: number; color: string }) {
 }
 
 export default function ReportStep({ ideaFull }: ReportStepProps) {
-  const { idea, report } = ideaFull;
+  const { idea, report, riskAndValidation } = ideaFull;
   const isAiWorking = idea.current_blocks_updating === "report";
 
-  const router = useRouter();
   const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "report", isAiWorking);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isDebateOpen, setIsDebateOpen] = useState(false);
-  const [isGeneratingBrief, setIsGeneratingBrief] = useState(false);
-  const [briefError, setBriefError] = useState<string | null>(null);
   const [isBriefOpen, setIsBriefOpen] = useState(false);
+  const [isViewingBrief, setIsViewingBrief] = useState(false);
+  const [briefViewError, setBriefViewError] = useState<string | null>(null);
+  const [freshBriefData, setFreshBriefData] = useState<{ briefHtml: string; briefTitle: string; briefSubtitle: string } | null>(null);
 
-  const handleGenerateBrief = useCallback(async () => {
-    setIsGeneratingBrief(true);
-    setBriefError(null);
+  const handleViewBrief = useCallback(async () => {
+    setIsViewingBrief(true);
+    setBriefViewError(null);
     const result = await assembleIdeaBrief(idea.id);
     if (result.error) {
-      setBriefError(result.error);
-    } else {
-      router.refresh();
+      setBriefViewError(result.error);
+      setIsViewingBrief(false);
+      return;
     }
-    setIsGeneratingBrief(false);
-  }, [idea.id, router]);
+    if (result.briefHtml && result.briefTitle && result.briefSubtitle) {
+      setFreshBriefData({ briefHtml: result.briefHtml, briefTitle: result.briefTitle, briefSubtitle: result.briefSubtitle });
+    }
+    setIsViewingBrief(false);
+    setIsBriefOpen(true);
+  }, [idea.id]);
 
   const { actionBarEl, onOpenAiConfig } = useStepActions();
 
@@ -102,6 +105,19 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
 
   if (isAiWorking || isRegenerating) {
     return <AiLoadingOverlay ideaId={idea.id} step="report" />;
+  }
+
+  if (!report && !(riskAndValidation as { agreed_problem?: string | null } | null | undefined)?.agreed_problem) {
+    return (
+      <>
+        <div className="rounded-xl border border-border bg-surface p-8 text-center max-w-xl mx-auto mt-8">
+          <p className="text-sm font-semibold text-text-primary mb-2">Debate required</p>
+          <p className="text-sm text-text-muted">
+            Complete the Risk &amp; Validation step first to run the Devil&apos;s Advocate debate, then generate this report.
+          </p>
+        </div>
+      </>
+    );
   }
 
   const score = report?.final_score ?? 0;
@@ -398,10 +414,11 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
                       Generated {new Date(report.brief_generated_at).toLocaleDateString()}. Opens a 10-section investor brief with PDF/DOCX export.
                     </p>
                     <button
-                      onClick={() => setIsBriefOpen(true)}
-                      className="w-full text-xs px-3 py-2 rounded-md bg-accent text-white hover:bg-accent/90 transition-colors"
+                      onClick={handleViewBrief}
+                      disabled={isViewingBrief}
+                      className="w-full text-xs px-3 py-2 rounded-md bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      View Brief
+                      {isViewingBrief ? "Preparing Brief..." : "View Brief"}
                     </button>
                   </>
                 ) : (
@@ -409,8 +426,8 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
                     Synthesizes all discovery steps into an investor-grade brief with 10 sections: thesis, build plan, customer targeting, unit economics, GTM, regulatory posture, validation test, risks, and verdict.
                   </p>
                 )}
-                {briefError && (
-                  <p className="text-xs text-red-400" role="alert">{briefError}</p>
+                {briefViewError && (
+                  <p className="text-xs text-red-400" role="alert">{briefViewError}</p>
                 )}
               </div>
             </div>
@@ -511,20 +528,13 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
         onClose={() => setIsBriefOpen(false)}
         ideaName={idea.name}
         report={report}
+        briefHtmlOverride={freshBriefData?.briefHtml}
+        briefTitleOverride={freshBriefData?.briefTitle}
+        briefSubtitleOverride={freshBriefData?.briefSubtitle}
       />
 
       {actionBarEl && createPortal(
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleGenerateBrief}
-            disabled={isGeneratingBrief}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            {isGeneratingBrief ? "Generating Brief..." : "Generate Brief"}
-          </button>
           <button
             onClick={handleRegenerate}
             disabled={isRegenerating}

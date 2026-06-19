@@ -11,6 +11,9 @@ interface BriefPreviewModalProps {
   onClose: () => void;
   ideaName: string;
   report: IdeaReport | null;
+  briefHtmlOverride?: string;
+  briefTitleOverride?: string;
+  briefSubtitleOverride?: string;
 }
 
 function slugify(s: string): string {
@@ -49,6 +52,9 @@ export default function BriefPreviewModal({
   onClose,
   ideaName,
   report,
+  briefHtmlOverride,
+  briefTitleOverride,
+  briefSubtitleOverride,
 }: BriefPreviewModalProps) {
   const docRef = useRef<HTMLDivElement>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -78,9 +84,9 @@ export default function BriefPreviewModal({
       const htmlDocxMod = await import("html-docx-js/dist/html-docx");
       const asBlob = htmlDocxMod.asBlob ?? htmlDocxMod.default?.asBlob;
       if (!asBlob) throw new Error("html-docx-js module shape unexpected");
-      const title = report?.brief_title ?? "Build Brief";
-      const subtitle = report?.brief_subtitle ?? `Generated for ${ideaName}`;
-      const body = report?.brief_html ?? "<p><em>No brief generated yet.</em></p>";
+      const title = briefTitleOverride ?? report?.brief_title ?? "Build Brief";
+      const subtitle = briefSubtitleOverride ?? report?.brief_subtitle ?? `Generated for ${ideaName}`;
+      const body = briefHtmlOverride ?? report?.brief_html ?? "<p><em>No brief generated yet.</em></p>";
       const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(
         title
       )}</title></head><body style="font-family: Georgia, serif; color: #111;">
@@ -97,8 +103,9 @@ ${body}
     }
   }
 
-  const title = report?.brief_title ?? "Build Brief";
-  const subtitle = report?.brief_subtitle ?? `Generated for ${ideaName}`;
+  const activeBriefHtml = briefHtmlOverride ?? report?.brief_html;
+  const title = briefTitleOverride ?? report?.brief_title ?? "Build Brief";
+  const subtitle = briefSubtitleOverride ?? report?.brief_subtitle ?? `Generated for ${ideaName}`;
 
   return (
     <Modal open={isOpen} onClose={onClose} title="Move37 Build Brief" width="max-w-4xl">
@@ -106,7 +113,7 @@ ${body}
         <div className="flex items-center justify-end gap-2 px-6 pt-2 pb-4 border-b border-border">
           <button
             onClick={handleDownloadPdf}
-            disabled={isExportingPdf || isExportingDocx || !report?.brief_html}
+            disabled={isExportingPdf || isExportingDocx || !activeBriefHtml}
             className={cn(
               "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium",
               "bg-accent text-white hover:bg-accent/90 transition-colors",
@@ -120,7 +127,7 @@ ${body}
           </button>
           <button
             onClick={handleDownloadDocx}
-            disabled={isExportingPdf || isExportingDocx || !report?.brief_html}
+            disabled={isExportingPdf || isExportingDocx || !activeBriefHtml}
             className={cn(
               "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium",
               "bg-blue-600 text-white hover:bg-blue-700 transition-colors",
@@ -166,10 +173,10 @@ ${body}
               <p style={{ color: "#555", margin: 0, fontSize: "15px" }}>{subtitle}</p>
             </div>
             {/* Body */}
-            {report?.brief_html ? (
+            {activeBriefHtml ? (
               <div
                 className="brief-body"
-                dangerouslySetInnerHTML={{ __html: report.brief_html }}
+                dangerouslySetInnerHTML={{ __html: activeBriefHtml }}
               />
             ) : (
               <p style={{ color: "#999", fontStyle: "italic" }}>No brief generated yet.</p>

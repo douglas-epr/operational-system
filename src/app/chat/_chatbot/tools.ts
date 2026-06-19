@@ -429,7 +429,7 @@ export async function runTool(
                 "idea", "idea_icp", "client", "talent", "company",
                 "recommended_project", "prompt", "prompt_group", "sop", "lead",
                 "user_ai_settings", "agency",
-                "project_file", "project_link", "project_video", "project_daily_feedback",
+                "project_file", "project_link", "project_video", "project_work_feedback",
               ],
               note: "fallback list — public_table_list RPC is not deployed",
             },

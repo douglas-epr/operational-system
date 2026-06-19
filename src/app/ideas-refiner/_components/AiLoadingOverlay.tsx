@@ -21,15 +21,16 @@ const STUCK_TIMEOUT_MS = 270_000;
 /** strategic_frameworks loops one AI call per ICP — allow 10 min for up to ~10 ICPs. */
 const STRATEGIC_FRAMEWORKS_STUCK_TIMEOUT_MS = 600_000;
 /**
- * The Report step runs a multi-call Devil's Advocate debate pipeline. With the
- * round cap raised to 10 per gate (MAX_ROUNDS_PER_GATE), a fully-contested idea
- * can reach ~40 debate calls (10 rounds × 2 sides × 2 gates) plus ~6 synthesis
- * calls (reframer + scorer + HTML) ≈ 46 sequential AI calls. The debate is the
- * crux kill/refine/build gate, so we never want the stuck-state auto-clear to
- * fire while a valid generation is still running — 45 min covers the worst case
- * even on slower models. Latency is intentionally traded for verdict quality.
+ * The Risk & Validation step runs the multi-call Devil's Advocate debate pipeline.
+ * With the round cap at 10 per gate (MAX_ROUNDS_PER_GATE), a fully-contested idea
+ * can reach ~40 debate calls (10 rounds × 2 sides × 2 gates) plus the risk/validation
+ * + demand-evidence synthesis call. The debate is the crux kill/refine/build gate,
+ * so we never want the stuck-state auto-clear to fire while a valid generation is
+ * still running — 45 min covers the worst case even on slower models. Report (which
+ * now only reframes + scores using the debate outcome) keeps the same ceiling for
+ * safety. Latency is intentionally traded for verdict quality.
  */
-const REPORT_STUCK_TIMEOUT_MS = 2_700_000;
+const DEBATE_STUCK_TIMEOUT_MS = 2_700_000;
 
 /** Field names that AI updates per step — shown in the "soon you will have…" message. */
 const STEP_FIELDS: Record<IdeaBlock, string[]> = {
@@ -116,7 +117,7 @@ export default function AiLoadingOverlay({
   useEffect(() => {
     if (justCompleted) return; // already done — don't arm the timer
     const timeoutMs =
-      step === "report" ? REPORT_STUCK_TIMEOUT_MS :
+      step === "risk_and_validation" || step === "report" ? DEBATE_STUCK_TIMEOUT_MS :
       step === "strategic_frameworks" ? STRATEGIC_FRAMEWORKS_STUCK_TIMEOUT_MS :
       STUCK_TIMEOUT_MS;
     const timer = setTimeout(async () => {

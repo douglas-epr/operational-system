@@ -154,6 +154,7 @@ export interface PrdOutput {
   priority_personas: string;
   essential_features: string;
   user_flow: string;
+  features_per_page: string;
   non_functional_reqs: string;
   out_of_scope: string;
   success_indicators: string;

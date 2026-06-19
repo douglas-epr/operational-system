@@ -10,8 +10,9 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import type { IdeaBlock } from "@/types/idea-refiner";
-import { runAiWithTimeout } from "./useAiWithTimeout";
+import { runAiWithTimeout, TIMEOUT_TOAST_ID } from "./useAiWithTimeout";
 import { clearAutoTriggerGuard } from "./useAutoTriggerAi";
 
 export function useRegenerate(
@@ -33,6 +34,8 @@ export function useRegenerate(
     if (!isAiWorking && hadAiWorkingRef.current && isRegenerating) {
       hadAiWorkingRef.current = false;
       setIsRegenerating(false);
+      // AI completed via Realtime — dismiss any stale timeout toast
+      toast.dismiss(TIMEOUT_TOAST_ID);
     }
   }, [isAiWorking, isRegenerating]);
 
@@ -40,15 +43,18 @@ export function useRegenerate(
     setIsRegenerating(true);
     setError(null);
     clearAutoTriggerGuard(ideaId, step);
-    // Report runs a multi-call Devil's Advocate debate loop (up to 10 rounds ×
-    // 2 sides × 2 gates + synthesis ≈ 46 sequential calls) — give it a 45-min
-    // ceiling so the "timed out" toast never fires mid-debate. strategic_frameworks
-    // loops per-ICP — 10 min is plenty. (isRegenerating also clears on the Realtime
-    // edge, so this timeout mainly governs the error toast.)
-    const reportTimeoutMs = step === "report" ? 2_700_000 : undefined;
+    // risk_and_validation runs the multi-call Devil's Advocate debate loop (up to
+    // 10 rounds × 2 sides × 2 gates ≈ 40 sequential calls) PLUS the risk/validation
+    // + demand-evidence synthesis call — give it a 45-min ceiling so the "timed out"
+    // toast never fires mid-debate. report now only does reframer + scorer but keeps
+    // the long ceiling for safety. strategic_frameworks loops per-ICP — 10 min is
+    // plenty. (isRegenerating also clears on the Realtime edge, so this timeout
+    // mainly governs the error toast.)
+    const debateTimeoutMs =
+      step === "risk_and_validation" || step === "report" ? 2_700_000 : undefined;
     const frameworksTimeoutMs = step === "strategic_frameworks" ? 600_000 : undefined;
     const result = await runAiWithTimeout(action, {
-      timeoutMs: reportTimeoutMs ?? frameworksTimeoutMs,
+      timeoutMs: debateTimeoutMs ?? frameworksTimeoutMs,
     });
     // Fallback: clear if Realtime didn't already do so.
     setIsRegenerating(false);

@@ -52,7 +52,7 @@ export default function DailyFeedbackTab({
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-        <h3 className="text-heading-3 text-text-primary">Daily Feedback</h3>
+        <h3 className="text-heading-3 text-text-primary">Work Feedback</h3>
         {canCreate && (
           <button
             onClick={openCreate}
@@ -72,8 +72,8 @@ export default function DailyFeedbackTab({
               </h4>
               <p className="text-xs text-text-muted">
                 {canCreate
-                  ? 'Click "+ New entry" to share today\'s progress.'
-                  : "No daily feedback has been shared for this project."}
+                  ? 'Click "+ New entry" to share your work progress.'
+                  : "No work feedback has been shared for this project."}
               </p>
             </div>
           </div>
@@ -90,10 +90,14 @@ export default function DailyFeedbackTab({
               // Pin the locale so the server (en) and the client (e.g. pt-BR
               // for Brazilian users) render the same string — otherwise the
               // SSR HTML mismatches and React tears down the subtree.
-              const dateDisplay = new Date(`${f.date}T00:00:00`).toLocaleDateString(
-                "en-US",
-                { weekday: "long", year: "numeric", month: "long", day: "numeric" }
-              );
+              const fmt = (d: string) =>
+                new Date(`${d}T00:00:00`).toLocaleDateString("en-US", {
+                  year: "numeric", month: "long", day: "numeric",
+                });
+              const dateDisplay =
+                f.start_date && f.end_date
+                  ? `${fmt(f.start_date)} → ${fmt(f.end_date)}`
+                  : fmt(f.start_date ?? f.date);
 
               return (
                 <li
@@ -117,6 +121,7 @@ export default function DailyFeedbackTab({
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-text-primary truncate">
                           {dateDisplay}
+                          {f.total_time != null ? ` · ${f.total_time}h` : ""}
                         </p>
                         <p className="text-[11px] text-text-muted truncate">
                           {ownerName}

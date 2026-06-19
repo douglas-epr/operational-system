@@ -8,6 +8,9 @@ import { requirePageAccess } from "@/lib/auth/page-gate";
 import PageShell from "@/components/layout/PageShell";
 import SandboxPlannerShell from "./_components/SandboxPlannerShell";
 import { loadIdeaFull } from "./_lib/loadIdeaFull";
+import {
+  normalizeTabParam,
+} from "@/types/idea-refiner";
 import type {
   Idea,
   IdeaBlock,
@@ -42,7 +45,7 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
 
   const params = await searchParams;
   const ideaId = params.idea;
-  const tabParam = params.tab as IdeaBlock | undefined;
+  const tabParam = normalizeTabParam(params.tab);
   const projectParam = params.project ?? null;
 
   // Fetch ideas, projects, AI settings, and profiles in parallel

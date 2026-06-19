@@ -585,9 +585,25 @@ export async function deleteProjectVideo(id: string): Promise<{ error?: string }
   return {};
 }
 
-// ── Daily feedback (Docs › Daily Feedback tab) ─────────────────────────────────
+// ── Work feedback (Docs › Work Feedback tab) ──────────────────────────────────
+// DB table: project_work_feedback (formerly project_daily_feedback).
 
-function buildFeedbackMessage(date: string, fields: {
+/** Human-readable work period: "start → end", or a single date fallback. */
+function formatFeedbackPeriod(
+  start: string | null,
+  end: string | null,
+  fallback: string
+): string {
+  if (start && end) return `${start} → ${end}`;
+  if (start) return start;
+  return fallback;
+}
+
+function buildFeedbackMessage(fields: {
+  date: string;
+  start_date: string | null;
+  end_date: string | null;
+  total_time: number | null;
   today_work: string | null;
   tomorrow_work: string | null;
   blockers: string | null;
@@ -595,10 +611,16 @@ function buildFeedbackMessage(date: string, fields: {
 }): string {
   const s = (label: string, html: string | null) =>
     `<p><strong>${label}</strong></p>${html ?? "<p>—</p>"}`;
+  const period = formatFeedbackPeriod(fields.start_date, fields.end_date, fields.date);
+  const totalLine =
+    fields.total_time != null
+      ? `<p><strong>Total time worked:</strong> ${fields.total_time}h</p>`
+      : "";
   return [
-    `<p><strong>📋 Daily Feedback – ${date}</strong></p>`,
-    s("What I worked on today", fields.today_work),
-    s("What I will work on tomorrow", fields.tomorrow_work),
+    `<p><strong>📋 Work Feedback – ${period}</strong></p>`,
+    totalLine,
+    s("What I worked on", fields.today_work),
+    s("What I will work on next", fields.tomorrow_work),
     s("Blockers", fields.blockers),
     s("Video &amp; Links", fields.video_and_links),
   ].join("");
@@ -606,7 +628,9 @@ function buildFeedbackMessage(date: string, fields: {
 
 export async function createDailyFeedback(input: {
   projectId: string;
-  date: string;
+  start_date: string | null;
+  end_date: string | null;
+  total_time: number | null;
   today_work: string | null;
   tomorrow_work: string | null;
   blockers: string | null;
@@ -615,11 +639,18 @@ export async function createDailyFeedback(input: {
   const { user, supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
   if (authErr) return { error: authErr };
 
+  // The legacy NOT NULL `date` column mirrors the work-period start so existing
+  // ordering/queries keep working.
+  const legacyDate = input.start_date ?? new Date().toISOString().slice(0, 10);
+
   const { data, error } = await supabase
-    .from("project_daily_feedback")
+    .from("project_work_feedback")
     .insert({
       project_id:      input.projectId,
-      date:            input.date,
+      date:            legacyDate,
+      start_date:      input.start_date,
+      end_date:        input.end_date,
+      total_time:      input.total_time,
       today_work:      input.today_work,
       tomorrow_work:   input.tomorrow_work,
       blockers:        input.blockers,
@@ -642,7 +673,7 @@ export async function createDailyFeedback(input: {
         project_id:  input.projectId,
         created_by:  user!.id,
         author_type: "user",
-        message:     buildFeedbackMessage(input.date, input),
+        message:     buildFeedbackMessage({ ...input, date: legacyDate }),
         attachments: [],
         links:       [],
       })
@@ -651,7 +682,7 @@ export async function createDailyFeedback(input: {
     if (msg?.id) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (supabase as any)
-        .from("project_daily_feedback")
+        .from("project_work_feedback")
         .update({ conversation_project_external_message_id: msg.id })
         .eq("id", data.id);
     }
@@ -664,7 +695,9 @@ export async function createDailyFeedback(input: {
 export async function updateDailyFeedback(
   id: string,
   patch: {
-    date?: string;
+    start_date?: string | null;
+    end_date?: string | null;
+    total_time?: number | null;
     today_work?: string | null;
     tomorrow_work?: string | null;
     blockers?: string | null;
@@ -676,8 +709,12 @@ export async function updateDailyFeedback(
   for (const [k, v] of Object.entries(patch)) {
     if (v !== undefined) updates[k] = v;
   }
+  // Keep the legacy `date` column aligned with the work-period start.
+  if (patch.start_date !== undefined && patch.start_date) {
+    updates.date = patch.start_date;
+  }
   const { error } = await supabase
-    .from("project_daily_feedback")
+    .from("project_work_feedback")
     .update(updates)
     .eq("id", id);
   if (error) return { error: error.message };
@@ -685,8 +722,8 @@ export async function updateDailyFeedback(
   // Sync updated fields to the linked chat message.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: fb } = await (supabase as any)
-    .from("project_daily_feedback")
-    .select("date, today_work, tomorrow_work, blockers, video_and_links, conversation_project_external_message_id")
+    .from("project_work_feedback")
+    .select("date, start_date, end_date, total_time, today_work, tomorrow_work, blockers, video_and_links, conversation_project_external_message_id")
     .eq("id", id)
     .single();
   if (fb?.conversation_project_external_message_id) {
@@ -694,7 +731,7 @@ export async function updateDailyFeedback(
     const svc = createServiceClient() as any;
     await svc
       .from("conversation_project_external_message")
-      .update({ message: buildFeedbackMessage(fb.date, fb) })
+      .update({ message: buildFeedbackMessage(fb) })
       .eq("id", fb.conversation_project_external_message_id);
   }
 
@@ -704,7 +741,7 @@ export async function updateDailyFeedback(
 
 export async function deleteDailyFeedback(id: string): Promise<{ error?: string }> {
   const supabase = await createClient();
-  const { error } = await supabase.from("project_daily_feedback").delete().eq("id", id);
+  const { error } = await supabase.from("project_work_feedback").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/docs");
   return {};

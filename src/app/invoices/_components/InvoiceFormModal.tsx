@@ -4,7 +4,22 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import DatePicker from "@/components/DatePicker";
 import type { Invoice } from "@/types/docs";
-import { createInvoice, updateInvoice, type InvoicePayload } from "../actions";
+import {
+  createInvoice,
+  updateInvoice,
+  aiFillInvoiceFromFeedback,
+  type InvoicePayload,
+} from "../actions";
+
+/** Compose legacy swift/iban into the merged account-details text (edit fallback). */
+function legacyAccountDetails(inv: Invoice | null): string {
+  if (!inv) return "";
+  if (inv.account_details) return inv.account_details;
+  const lines: string[] = [];
+  if (inv.swift_code) lines.push(`SWIFT / BIC: ${inv.swift_code}`);
+  if (inv.iban_code) lines.push(`IBAN: ${inv.iban_code}`);
+  return lines.join("\n");
+}
 
 interface Props {
   invoice: Invoice | null;
@@ -40,14 +55,40 @@ export default function InvoiceFormModal({ invoice, onClose }: Props) {
   const [dueDate, setDueDate]                       = useState<string>(invoice?.due_date ?? "");
   const [serviceTitle, setServiceTitle]             = useState(invoice?.service_title ?? "");
   const [serviceDescription, setServiceDescription] = useState(invoice?.service_description ?? "");
-  const [swiftCode, setSwiftCode]                   = useState(invoice?.swift_code ?? "");
-  const [ibanCode, setIbanCode]                     = useState(invoice?.iban_code ?? "");
+  const [accountDetails, setAccountDetails]         = useState(legacyAccountDetails(invoice));
+  const [startDate, setStartDate]                   = useState<string>(invoice?.start_date ?? "");
+  const [endDate, setEndDate]                       = useState<string>(invoice?.end_date ?? "");
+  const [totalTime, setTotalTime]                   = useState<string>(
+    invoice?.total_time !== null && invoice?.total_time !== undefined
+      ? String(invoice.total_time)
+      : ""
+  );
+  const [aiFilling, setAiFilling] = useState(false);
+
+  async function handleAiFill() {
+    if (!startDate || !endDate) {
+      alert("Please set both Start date and End date first.");
+      return;
+    }
+    setAiFilling(true);
+    try {
+      const res = await aiFillInvoiceFromFeedback({ startDate, endDate });
+      if (res.totalTime !== undefined) setTotalTime(String(res.totalTime));
+      if (res.serviceDescription) setServiceDescription(res.serviceDescription);
+      if (res.error) alert(res.error);
+    } finally {
+      setAiFilling(false);
+    }
+  }
 
   function handleSave() {
     const trimmedCode = code.trim();
     if (!trimmedCode) { alert("Invoice code is required."); return; }
     const priceNum = servicePrice.trim() === "" ? null : Number(servicePrice);
     if (priceNum !== null && Number.isNaN(priceNum)) { alert("Service price must be a number."); return; }
+    const totalNum = totalTime.trim() === "" ? null : Number(totalTime);
+    if (totalNum !== null && (Number.isNaN(totalNum) || totalNum < 0)) { alert("Total time must be a non-negative number."); return; }
+    if (startDate && endDate && startDate > endDate) { alert("Start date must be on or before end date."); return; }
 
     const payload: InvoicePayload = {
       code: trimmedCode,
@@ -61,8 +102,10 @@ export default function InvoiceFormModal({ invoice, onClose }: Props) {
       due_date:             dueDate || null,
       service_title:        serviceTitle.trim() || null,
       service_description:  serviceDescription.trim() || null,
-      swift_code:           swiftCode.trim() || null,
-      iban_code:            ibanCode.trim() || null,
+      account_details:      accountDetails.trim() || null,
+      start_date:           startDate || null,
+      end_date:             endDate || null,
+      total_time:           totalNum,
     };
 
     startSave(async () => {
@@ -156,15 +199,48 @@ export default function InvoiceFormModal({ invoice, onClose }: Props) {
           </section>
 
           <section>
-            <SectionTitle>Payment details</SectionTitle>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="SWIFT / BIC">
-                <TextInput value={swiftCode} onChange={setSwiftCode} placeholder="CHASUS33" />
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                Work period
+              </h4>
+              <button
+                type="button"
+                onClick={handleAiFill}
+                disabled={aiFilling}
+                title="Fill total time worked and service description from your work feedback in this date range"
+                className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-md bg-muted border border-border text-text-secondary hover:text-text-primary hover:border-accent transition-colors disabled:opacity-50"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 3v4M3 5h4M6 17v4m-2-2h4" />
+                  <path d="M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z" />
+                </svg>
+                {aiFilling ? "Filling…" : "AI Fill"}
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Field label="Start date">
+                <DatePicker value={startDate} onChange={setStartDate} size="compact" />
               </Field>
-              <Field label="IBAN">
-                <TextInput value={ibanCode} onChange={setIbanCode} placeholder="DE89 3704 0044 0532 0130 00" />
+              <Field label="End date">
+                <DatePicker value={endDate} onChange={setEndDate} size="compact" minDate={startDate || undefined} />
+              </Field>
+              <Field label="Total time worked (h)">
+                <TextInput value={totalTime} onChange={setTotalTime} type="number" placeholder="0" />
               </Field>
             </div>
+          </section>
+
+          <section>
+            <SectionTitle>Payment details</SectionTitle>
+            <Field label="Account details (SWIFT / BIC, IBAN, Wise Code, etc.)">
+              <textarea
+                value={accountDetails}
+                onChange={(e) => setAccountDetails(e.target.value)}
+                rows={3}
+                className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+                placeholder={"SWIFT / BIC: CHASUS33\nIBAN: DE89 3704 0044 0532 0130 00\nWise: ..."}
+              />
+            </Field>
           </section>
         </div>
 

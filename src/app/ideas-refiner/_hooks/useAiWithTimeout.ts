@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { openAiConfigModal } from "./aiConfigModalStore";
 
 const AI_TIMEOUT_MS = 240_000; // 4 minutes — heavy prompts (e.g. Report) can exceed 2 min on slower models
-const TIMEOUT_TOAST_ID = "ai-timeout";
+export const TIMEOUT_TOAST_ID = "ai-timeout";
 
 /** Toast shown when an AI call exceeds the timeout threshold. */
 function showTimeoutToast() {

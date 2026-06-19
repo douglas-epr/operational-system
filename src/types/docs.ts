@@ -54,7 +54,7 @@ export const DOCS_TAB_LABELS: Record<DocsTabKey, string> = {
   files:          "Files",
   links:          "Links",
   videos:         "Videos",
-  daily_feedback: "Daily Feedback",
+  daily_feedback: "Work Feedback",
 };
 
 export const DOCS_TAB_ORDER: DocsTabKey[] = [
@@ -172,10 +172,14 @@ export interface ProjectVideo {
   updated_at: string;
 }
 
+// DB table: project_work_feedback (formerly project_daily_feedback).
 export interface ProjectDailyFeedback {
   id: string;
   project_id: string | null;
-  date: string;               // ISO yyyy-mm-dd
+  date: string;               // ISO yyyy-mm-dd (legacy single date)
+  start_date: string | null;  // ISO yyyy-mm-dd — work period start
+  end_date: string | null;    // ISO yyyy-mm-dd — work period end
+  total_time: number | null;  // total hours worked in the interval
   today_work: string | null;
   tomorrow_work: string | null;
   blockers: string | null;
@@ -215,10 +219,14 @@ export interface InternalProjectVideo {
   updated_at: string;
 }
 
+// DB table: internal_project_work_feedback (formerly internal_project_daily_feedback).
 export interface InternalProjectDailyFeedback {
   id: string;
   internal_project_id: string | null;
   date: string;
+  start_date: string | null;  // ISO yyyy-mm-dd — work period start
+  end_date: string | null;    // ISO yyyy-mm-dd — work period end
+  total_time: number | null;  // total hours worked in the interval
   today_work: string | null;
   tomorrow_work: string | null;
   blockers: string | null;
@@ -242,8 +250,12 @@ export interface Invoice {
   due_date: string | null;           // ISO yyyy-mm-dd
   service_title: string | null;
   service_description: string | null;
-  swift_code: string | null;
-  iban_code: string | null;
+  account_details: string | null;    // free-form bank/payment details (replaces swift+iban)
+  start_date: string | null;         // ISO yyyy-mm-dd — work period start
+  end_date: string | null;           // ISO yyyy-mm-dd — work period end
+  total_time: number | null;         // total hours worked in the interval
+  swift_code: string | null;         // legacy — no longer edited in the form
+  iban_code: string | null;          // legacy — no longer edited in the form
   created_at: string;
   updated_at: string;
 }

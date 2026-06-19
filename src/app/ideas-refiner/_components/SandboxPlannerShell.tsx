@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Idea, IdeaBlock, IdeaFull, ProjectOption } from "@/types/idea-refiner";
 import type { UserProfile } from "@/types/projects";
 import type { UserAiSettingsClient } from "@/types/settings";
-import { IDEA_BLOCK_LABELS, IDEA_BLOCKS_ORDERED, IDEA_BLOCK_STEPS } from "@/types/idea-refiner";
+import { IDEA_BLOCK_LABELS, IDEA_BLOCKS_ORDERED, IDEA_BLOCK_STEPS, normalizeTabParam } from "@/types/idea-refiner";
 import { cn } from "@/lib/utils";
 import { saveAiSettings } from "@/app/settings/actions";
 import { registerOpenAiConfigModal } from "../_hooks/aiConfigModalStore";
@@ -168,7 +168,7 @@ export default function SandboxPlannerShell({
 
   // Sync tab from URL; if the tab is locked, navigate to the last unlocked step
   useEffect(() => {
-    const tab = searchParams.get("tab") as IdeaBlock | null;
+    const tab = normalizeTabParam(searchParams.get("tab")) ?? null;
     if (tab && IDEA_BLOCKS_ORDERED.includes(tab)) {
       if (ideaFull && !unlockedSteps.has(tab)) {
         // Find the last unlocked step

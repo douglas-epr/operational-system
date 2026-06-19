@@ -104,14 +104,10 @@ export default function StrategicFrameworksStep({ ideaFull }: StrategicFramework
   const completionBadges = useMemo(() => {
     const badges: Record<string, string> = {};
     for (const icp of icps) {
-      if (icp.score != null) {
-        badges[icp.id] = `${icp.score}/100`;
-      } else {
-        const filled = FRAMEWORK_FIELDS.filter(
-          (f) => icp[f] != null && String(icp[f]).trim() !== ""
-        ).length;
-        badges[icp.id] = `${filled}/${FRAMEWORK_FIELDS.length}`;
-      }
+      const filled = FRAMEWORK_FIELDS.filter(
+        (f) => icp[f] != null && String(icp[f]).trim() !== ""
+      ).length;
+      badges[icp.id] = `${filled}/${FRAMEWORK_FIELDS.length}`;
     }
     return badges;
   }, [icps]);
@@ -566,16 +562,6 @@ function EditableIcpArchitectCard({
           IA
         </span>
         <h3 className="text-sm font-semibold text-text-primary">ICP Architect</h3>
-        {icp.score != null && (
-          <span className={cn(
-            "ml-auto text-xs font-semibold px-2 py-0.5 rounded-md",
-            icp.score >= 75 ? "bg-green-500/15 text-green-400" :
-            icp.score >= 50 ? "bg-yellow-500/15 text-yellow-400" :
-            "bg-red-500/15 text-red-400"
-          )}>
-            Fit {icp.score}/100
-          </span>
-        )}
       </div>
 
       {icp.score_rationale && (

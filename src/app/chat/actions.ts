@@ -1227,9 +1227,9 @@ export async function getProjectDailyFeedbacks(
   const ctx = await requireChatUser();
   if ("error" in ctx) return [];
   const { data } = await ctx.supabase
-    .from("project_daily_feedback")
+    .from("project_work_feedback")
     .select(
-      "id, project_id, date, today_work, tomorrow_work, blockers, video_and_links, created_by, created_at, updated_at"
+      "id, project_id, date, start_date, end_date, total_time, today_work, tomorrow_work, blockers, video_and_links, created_by, created_at, updated_at"
     )
     .eq("project_id", projectId)
     .order("date", { ascending: false });
@@ -1711,14 +1711,18 @@ export async function getInternalProjectDailyFeedbacks(internalProjectId: string
   if ("error" in ctx) return [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (ctx.supabase as any)
-    .from("internal_project_daily_feedback")
-    .select("id, internal_project_id, date, today_work, tomorrow_work, blockers, video_and_links, created_by, created_at, updated_at")
+    .from("internal_project_work_feedback")
+    .select("id, internal_project_id, date, start_date, end_date, total_time, today_work, tomorrow_work, blockers, video_and_links, created_by, created_at, updated_at")
     .eq("internal_project_id", internalProjectId)
     .order("date", { ascending: false });
   return (data ?? []) as unknown as InternalProjectDailyFeedback[];
 }
 
-function buildInternalFeedbackMessage(date: string, fields: {
+function buildInternalFeedbackMessage(fields: {
+  date: string;
+  start_date: string | null;
+  end_date: string | null;
+  total_time: number | null;
   today_work: string | null;
   tomorrow_work: string | null;
   blockers: string | null;
@@ -1726,10 +1730,19 @@ function buildInternalFeedbackMessage(date: string, fields: {
 }): string {
   const s = (label: string, html: string | null) =>
     `<p><strong>${label}</strong></p>${html ?? "<p>—</p>"}`;
+  const period =
+    fields.start_date && fields.end_date
+      ? `${fields.start_date} → ${fields.end_date}`
+      : fields.start_date ?? fields.date;
+  const totalLine =
+    fields.total_time != null
+      ? `<p><strong>Total time worked:</strong> ${fields.total_time}h</p>`
+      : "";
   return [
-    `<p><strong>📋 Daily Feedback – ${date}</strong></p>`,
-    s("What I worked on today", fields.today_work),
-    s("What I will work on tomorrow", fields.tomorrow_work),
+    `<p><strong>📋 Work Feedback – ${period}</strong></p>`,
+    totalLine,
+    s("What I worked on", fields.today_work),
+    s("What I will work on next", fields.tomorrow_work),
     s("Blockers", fields.blockers),
     s("Video &amp; Links", fields.video_and_links),
   ].join("");
@@ -1737,7 +1750,9 @@ function buildInternalFeedbackMessage(date: string, fields: {
 
 export async function createInternalProjectDailyFeedback(input: {
   internalProjectId: string;
-  date: string;
+  start_date: string | null;
+  end_date: string | null;
+  total_time: number | null;
   today_work: string | null;
   tomorrow_work: string | null;
   blockers: string | null;
@@ -1746,10 +1761,12 @@ export async function createInternalProjectDailyFeedback(input: {
   const ctx = await requireChatUser();
   if ("error" in ctx) return { error: ctx.error };
   const { internalProjectId, ...rest } = input;
+  // Legacy NOT NULL `date` mirrors the work-period start.
+  const legacyDate = input.start_date ?? new Date().toISOString().slice(0, 10);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (ctx.supabase as any)
-    .from("internal_project_daily_feedback")
-    .insert({ internal_project_id: internalProjectId, created_by: ctx.userId, ...rest })
+    .from("internal_project_work_feedback")
+    .insert({ internal_project_id: internalProjectId, created_by: ctx.userId, date: legacyDate, ...rest })
     .select("id")
     .single();
   if (error) return { error: error.message };
@@ -1764,7 +1781,7 @@ export async function createInternalProjectDailyFeedback(input: {
         internal_project_id: internalProjectId,
         created_by:          ctx.userId,
         author_type:         "user",
-        message:             buildInternalFeedbackMessage(input.date, input),
+        message:             buildInternalFeedbackMessage({ ...input, date: legacyDate }),
         attachments:         [],
         links:               [],
       })
@@ -1773,7 +1790,7 @@ export async function createInternalProjectDailyFeedback(input: {
     if (msg?.id) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (ctx.supabase as any)
-        .from("internal_project_daily_feedback")
+        .from("internal_project_work_feedback")
         .update({ conversation_internal_project_message_id: msg.id })
         .eq("id", data.id);
     }
@@ -1786,7 +1803,9 @@ export async function createInternalProjectDailyFeedback(input: {
 export async function updateInternalProjectDailyFeedback(
   id: string,
   input: {
-    date: string;
+    start_date: string | null;
+    end_date: string | null;
+    total_time: number | null;
     today_work: string | null;
     tomorrow_work: string | null;
     blockers: string | null;
@@ -1795,18 +1814,21 @@ export async function updateInternalProjectDailyFeedback(
 ): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
   if ("error" in ctx) return { error: ctx.error };
+  // Keep the legacy `date` column aligned with the work-period start.
+  const updates: Record<string, unknown> = { ...input };
+  if (input.start_date) updates.date = input.start_date;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (ctx.supabase as any)
-    .from("internal_project_daily_feedback")
-    .update(input)
+    .from("internal_project_work_feedback")
+    .update(updates)
     .eq("id", id);
   if (error) return { error: error.message };
 
   // Sync updated fields to the linked chat message.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: fb } = await (ctx.supabase as any)
-    .from("internal_project_daily_feedback")
-    .select("date, today_work, tomorrow_work, blockers, video_and_links, conversation_internal_project_message_id")
+    .from("internal_project_work_feedback")
+    .select("date, start_date, end_date, total_time, today_work, tomorrow_work, blockers, video_and_links, conversation_internal_project_message_id")
     .eq("id", id)
     .single();
   if (fb?.conversation_internal_project_message_id) {
@@ -1814,7 +1836,7 @@ export async function updateInternalProjectDailyFeedback(
     const svc = createServiceClient() as any;
     await svc
       .from("conversation_internal_project_message")
-      .update({ message: buildInternalFeedbackMessage(fb.date, fb) })
+      .update({ message: buildInternalFeedbackMessage(fb) })
       .eq("id", fb.conversation_internal_project_message_id);
   }
 
@@ -1826,7 +1848,7 @@ export async function deleteInternalProjectDailyFeedback(id: string): Promise<{ 
   const ctx = await requireChatUser();
   if ("error" in ctx) return { error: ctx.error };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (ctx.supabase as any).from("internal_project_daily_feedback").delete().eq("id", id);
+  const { error } = await (ctx.supabase as any).from("internal_project_work_feedback").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/chat");
   return {};

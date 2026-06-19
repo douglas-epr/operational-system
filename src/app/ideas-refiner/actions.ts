@@ -498,6 +498,41 @@ export async function deleteOptimizationSuggestion(
   return {};
 }
 
+// ── Risk & Validation ────────────────────────────────────────────────────────
+
+/** Upsert risk_register, validation_test, and why_we_win on an existing idea_risk_and_validation row. */
+export async function saveRiskAndValidation(
+  ideaId: string,
+  data: {
+    risk_register?: unknown;
+    validation_test?: unknown;
+    why_we_win?: unknown;
+  }
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("idea_risk_and_validation" as never)
+    .select("id")
+    .eq("idea_id", ideaId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("idea_risk_and_validation" as never)
+      .update(data as never)
+      .eq("id", (existing as { id: string }).id);
+    if (error) return { error: error.message };
+  } else {
+    const { error } = await supabase
+      .from("idea_risk_and_validation" as never)
+      .insert({ idea_id: ideaId, ...data } as never);
+    if (error) return { error: error.message };
+  }
+
+  revalidatePath(PATH);
+  return {};
+}
+
 // ── Benchmarking ────────────────────────────────────────────────────────────
 
 /** Upsert benchmarking block for an idea. */
@@ -540,6 +575,7 @@ export async function savePrd(
     priority_personas?: string;
     essential_features?: string;
     user_flow?: string;
+    features_per_page?: string;
     non_functional_reqs?: string;
     out_of_scope?: string;
     success_indicators?: string;
@@ -646,6 +682,101 @@ export async function saveStyles(
 
   revalidatePath(PATH);
   return {};
+}
+
+/** Save logo data (and optionally seed primary colors) for an idea. */
+export async function saveIdeaLogo(
+  ideaId: string,
+  data: {
+    logo_url: string | null;
+    logo_svg: string | null;
+    logo_type: "upload" | "ai_svg";
+    logo_colors: { hex: string; label: string }[];
+    primary_color?: string;
+    secondary_color?: string;
+    accent_color?: string;
+    neutral_color?: string;
+  }
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  return saveStyles(ideaId, data);
+}
+
+/** Generate 3-4 SVG logo concepts for an idea using AI.
+ *  Returns raw logos — caller picks one and calls saveIdeaLogo. */
+export async function generateIdeaLogos(
+  ideaId: string
+): Promise<{ logos?: { svg: string; name: string; rationale: string }[]; error?: string }> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const aiConfig = await resolveAiConfig(supabase, user.id);
+  if (!aiConfig) return { error: "No AI service configured. Please set up your API key in Settings." };
+
+  const [{ data: ideaData }, { data: prdData }] = await Promise.all([
+    supabase.from("idea" as never).select("name, description").eq("id", ideaId).single(),
+    supabase.from("idea_prd" as never).select("app_overview, priority_personas, essential_features").eq("idea_id", ideaId).maybeSingle(),
+  ]);
+
+  const idea = ideaData as { name: string; description: string | null } | null;
+  const prd = prdData as { app_overview: string | null; priority_personas: string | null; essential_features: string | null } | null;
+  if (!idea) return { error: "Idea not found" };
+
+  const logoPrompt = `You are a senior brand designer and SVG illustrator. Generate 4 distinct logo concepts for the following product.
+
+Product: ${idea.name}
+Description: ${stripHtml(idea.description) || "Not defined"}
+App Overview: ${stripHtml(prd?.app_overview) || "Not defined"}
+Target Personas: ${stripHtml(prd?.priority_personas) || "Not defined"}
+Core Features: ${stripHtml(prd?.essential_features) || "Not defined"}
+
+## Requirements
+- Each logo must be a COMPLETE, self-contained SVG with a viewBox (e.g. viewBox="0 0 200 200").
+- NO <script> tags, NO on* event handlers, NO external URLs (href/src/xlink:href).
+- Each concept must have a distinct visual direction (e.g. wordmark, icon-only, monogram, abstract mark).
+- Use clean vector shapes, bold choices, and distinctive color palettes.
+- Avoid generic clipart or generic SaaS styles.
+- SVG must render correctly at 200×200px and 64×64px.
+- Do NOT include any background rectangle filling the entire viewBox — logos should look good on both light and dark backgrounds.
+
+Return a JSON object with exactly one key:
+- "logos": array of exactly 4 objects, each with:
+  - "svg": string — the complete SVG markup (self-contained, viewBox'd)
+  - "name": string — short concept name (e.g. "Geometric Mark", "Bold Wordmark")
+  - "rationale": string — one sentence explaining the visual direction and why it fits the brand
+
+Return ONLY valid JSON, no markdown fences.`;
+
+  const res = await generateAiJsonResponse<{ logos: { svg: string; name: string; rationale: string }[] }>({
+    service: aiConfig.service,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    prompt: logoPrompt,
+    maxTokens: 8192,
+  });
+
+  if (res.returned_an_error || !res.data?.logos) {
+    return { error: res.error ?? "AI returned no logos" };
+  }
+
+  const sanitized = res.data.logos.map((logo) => ({
+    ...logo,
+    svg: sanitizeSvg(logo.svg),
+  }));
+
+  return { logos: sanitized };
+}
+
+function sanitizeSvg(svg: string): string {
+  return svg
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, "")
+    .replace(/xlink:href\s*=\s*["'](?!#)[^"']*["']/gi, "")
+    .replace(/href\s*=\s*["'](?!#)[^"']*["']/gi, "");
 }
 
 // ── Milestones & Tasks ──────────────────────────────────────────────────────
@@ -792,20 +923,26 @@ Idea Description: {{idea_description}}
 
 Return ONLY valid JSON.`;
 
-const FALLBACK_REFINING_ICP = `You are an expert in Ideal Customer Profile analysis. Given the following business idea and its structure, generate 3-5 distinct ICPs.
+const FALLBACK_REFINING_ICP = `You are a world-class business intelligence analyst specialising in B2B Ideal Customer Profile (ICP) definition. Your task is to generate 3–5 TRULY DISTINCT ICPs for the given business idea.
+
+CRITICAL RULES:
+1. Each ICP must represent a FUNDAMENTALLY DIFFERENT buyer segment — different industry vertical, company size tier, decision-maker role, or problem context. If you cannot find 3 genuinely distinct segments, generate fewer — do NOT pad with overlapping ICPs.
+2. ICP names must be SHORT and ROLE-BASED (max 5 words). Use job title / segment descriptors such as "Mid-Market SaaS CFO", "SMB Operations Lead", "Enterprise Compliance Officer". NEVER use fictional personal names (no "Sarah", "John", "David", etc.).
+3. ICPs must differ meaningfully in at least 3 dimensions: (a) industry or company size, (b) decision-maker role or budget authority, (c) severity or nature of the pain. Two ICPs that differ only in company name or sector are NOT distinct — merge them into one.
+4. Quality over quantity: 3 sharp, distinct ICPs are far better than 5 similar ones.
 
 Idea: {{idea_name}} — {{idea_description}}
 Core Problem: {{core_problem}}
 Target Audience: {{target_audience}}
 
 Return a JSON object with key "ICPs" containing an array of objects, each with:
-- "name": ICP persona name
-- "description": Brief description of this persona
-- "operational_environment": Day in the life context and environment (rich HTML allowed)
-- "strategic_pain_points_and_acute_needs": Key pain points and urgent needs (rich HTML allowed)
-- "how_problems_are_solved_currently": Rich HTML describing how this ICP solves those problems today — tools, services, workarounds, manual processes, and compromises.
-- "how_problems_could_be_solved": Rich HTML enumerating ALL plausible ways these problems could be solved — existing tools/services, alternative workflows, emerging technologies, DIY approaches, and finally where our product could fit in. This is a broad solution-landscape survey, not a pitch for our product.
-- "our_solution_value": REQUIRED. Rich HTML describing specifically what value our product's solution brings to this ICP — tied directly to their acute pain points and daily friction, not generic benefits. Be concrete and specific; cite specific pains from above and name the exact capability that resolves each one. **Do not leave this field empty or return a generic statement.**
+- "name": Short role-based ICP label (max 5 words, no personal names, no "like Sarah")
+- "description": 1–2 sentences on what makes this segment unique and why this problem is acute specifically for them
+- "operational_environment": Day-in-the-life context and work environment (rich HTML allowed)
+- "strategic_pain_points_and_acute_needs": Key pain points and urgent needs specific to this segment (rich HTML allowed)
+- "how_problems_are_solved_currently": Rich HTML describing the exact tools, services, workarounds, manual processes, and compromises this ICP uses today
+- "how_problems_could_be_solved": Rich HTML surveying ALL plausible ways these problems could be solved — existing tools, alternative workflows, emerging tech, DIY — and where our product fits. This is a solution-landscape survey, not a sales pitch.
+- "our_solution_value": REQUIRED. Rich HTML describing the specific value our product delivers to THIS ICP — tied directly to their named pain points. Be concrete; cite the exact pain and the exact capability that resolves it. Do not leave this field empty or generic.
 
 Return ONLY valid JSON.`;
 
@@ -894,50 +1031,98 @@ Return a JSON object with exactly these keys:
 All values must be valid HTML strings.
 Return ONLY valid JSON.`;
 
-const FALLBACK_PRD = `You are a senior product manager. Given the following startup idea and its complete context, write a comprehensive Product Requirements Document (PRD).
+const FALLBACK_PRD = `You are an expert product manager writing a precise, build-ready Product Requirements Document (PRD) for an engineering team that will code this application. Use ALL the context below. Be concrete and technical; avoid marketing fluff and filler adjectives.
 
+## FULL CONTEXT (all prior discovery steps)
 Idea: {{idea_name}} — {{idea_description}}
+Agreed Problem (from go/no-go debate): {{agreed_problem}}
+Agreed Solution (from go/no-go debate): {{agreed_solution}}
+Recommendation: {{recommendation}}
 Core Problem: {{core_problem}}
 Target Audience: {{target_audience}}
 Product Overview: {{product_overview}}
 Features: {{features}}
-ICPs: {{icp_names}}
+ICP names: {{icp_names}}
+ICP details:
+{{icp_details}}
+Benchmarking:
+{{benchmarking}}
+Location & Legislation:
+{{location_legislation}}
+Market Opportunity:
+{{market_opportunity}}
+Risk & Validation:
+{{risk_and_validation}}
 
-Return a JSON object with exactly these keys:
-- "app_overview": Rich HTML text with the full app overview and vision.
-- "objectives": Rich HTML text listing measurable objectives.
-- "priority_personas": Rich HTML text listing the distinct user types who will access the application (e.g., Admin, Client, Seller, Supplier, Guest, Operator). For each user type, briefly describe their role and main actions within the app. Do NOT describe marketing ICPs or target audience segments — focus on the functional roles inside the product.
-- "essential_features": Rich HTML text with essential features organized by category with sub-items.
-- "user_flow": Rich HTML text describing the primary user flows for each persona.
-- "non_functional_reqs": Rich HTML text listing non-functional requirements (platform, security, scalability, etc.).
-- "out_of_scope": Rich HTML text listing what is explicitly out of scope for v1.
-- "success_indicators": Rich HTML text with measurable success indicators.
-- "phasing_notes": Rich HTML text with phasing/roadmap notes for future development.
+## CRITICAL CONCEPT DISTINCTION
+"Personas" (a.k.a. User Types) are a TECHNICAL concept: the functional roles that log into and operate the application — e.g. Admin, Manager, Client, Seller, Supplier, Operator, Guest. They are NOT the marketing ICPs / target-audience segments above. Derive personas from how the app actually works, not from buyer demographics.
+
+## OUTPUT — return a JSON object with EXACTLY these keys (every value a valid rich HTML string):
+- "app_overview": Full app overview and product vision, grounded in the agreed problem/solution.
+- "objectives": Measurable product objectives.
+- "priority_personas": The distinct TECHNICAL user types who access the app. Use short, role-based names (Admin, Client, Seller, Manager, etc.). For each: a one-line role description and their main actions/permissions inside the product. Do NOT restate marketing ICPs or audience segments.
+- "essential_features": Essential features organized by category with sub-items.
+- "user_flow": ONE clearly-labelled core flow PER persona listed in "priority_personas". Head each flow with the persona name (e.g. "<h3>Admin</h3>") and give the ordered steps that persona takes through the app. Every persona must have its own flow.
+- "features_per_page": A page-by-page breakdown of the application. For EACH page/screen, describe: its purpose, which personas use it, the features it exposes (drawn from "essential_features"), and which step(s) of each persona's flow (from "user_flow") it serves. This section is the bridge from features+flows to implementation — it must let an engineer understand how each page works and what logic it needs. Organize as one labelled block per page.
+- "non_functional_reqs": Non-functional requirements (platform, performance, security, scalability, compliance — reflect the Location & Legislation context where relevant).
+- "out_of_scope": What is explicitly out of scope for v1, and why.
+- "success_indicators": Measurable success indicators / KPIs.
+- "phasing_notes": Phasing/roadmap notes for future development.
 
 All values must be valid HTML strings.
 Return ONLY valid JSON.`;
 
-const FALLBACK_DATABASE = `You are a database architect. Given the following startup idea, its PRD, and product definition, design a complete data model.
+const FALLBACK_DATABASE = `You are a database architect. The PRD (Product Requirements Document) is your PRIMARY input — design the data model so it directly supports the documented features, pages, personas, and user flows. Do not invent entities the PRD does not imply, and do not model anything listed as out of scope.
 
 Idea: {{idea_name}} — {{idea_description}}
 Core Problem: {{core_problem}}
 Product Overview: {{product_overview}}
 Features: {{features}}
-PRD Essential Features: {{essential_features}}
+
+--- PRD (primary source) ---
+App Overview: {{app_overview}}
+Essential Features: {{essential_features}}
+Features Per Page: {{features_per_page}}
+User Flows: {{user_flow}}
+Priority Personas: {{priority_personas}}
+Non-Functional Requirements: {{non_functional_reqs}}
+Out of Scope (do NOT model these): {{out_of_scope}}
+
+How to use the PRD:
+- Derive tables/entities from the PRD essential features and the per-page feature breakdown — every page/feature that persists data should map to one or more tables.
+- Model role/permission/account tables from the priority personas (e.g. admin, client, member) and reflect their access needs.
+- Let the user flows reveal relationships, state/status columns, and join tables (many-to-many).
+- Reflect the non-functional requirements in indexing, constraints, soft-delete/audit columns, and security/RLS notes.
+- Explicitly EXCLUDE anything in the out-of-scope list.
 
 Return a JSON object with exactly these keys:
 - "tables_schema": Rich HTML text defining all database tables. For each table, include field name, type, and description in HTML table format. Include primary keys, foreign keys, and constraints.
 - "relationships": Rich HTML text describing all entity relationships (one-to-one, one-to-many, many-to-many), with clear descriptions of how tables connect.
-- "notes": Rich HTML text with important architectural decisions, MVP simplifications, and migration notes.
+- "notes": Rich HTML text with important architectural decisions, MVP simplifications, indexing/security considerations (from the non-functional requirements), and migration notes.
 
 All values must be valid HTML strings.
 Return ONLY valid JSON.`;
 
-const FALLBACK_VISUAL_STYLES = `You are a brand identity designer and design systems expert. Given the following startup idea and product context, create a comprehensive visual style guide and design system.
+const FALLBACK_VISUAL_STYLES = `You are a brand identity designer and design systems expert. Create a comprehensive, logo-driven Design System.
 
+## Key inputs
 Idea: {{idea_name}} — {{idea_description}}
+App Overview: {{app_overview}}
+Essential Features: {{essential_features}}
+Priority Personas (your target audience): {{priority_personas}}
 Core Problem: {{core_problem}}
-Target Audience: {{target_audience}}
+
+## Logo Colors (SOURCE OF TRUTH for all color decisions)
+{{logo_colors}}
+
+## Color derivation rules
+- When Logo Colors are provided (not "Not defined"), you MUST derive primary_color, secondary_color, accent_color, and neutral_color directly from those logo colors. Do not invent an unrelated palette.
+- Extend the logo colors into a harmonized, accessible palette: choose the most dominant/vibrant logo color as primary, a complementary or analogous tone as secondary, the brightest/most saturated as accent, and a desaturated/near-neutral as neutral.
+- Ensure all text-on-background combinations meet WCAG AA contrast (≥4.5:1 for normal text).
+- If Logo Colors = "Not defined", derive a coherent palette from the idea's domain, persona psychology, and emotional tone.
+
+## Brand voice grounding
+Ground the brand_voice, product_feeling, and logo_branding in the Priority Personas — their professional context, emotional triggers, and communication style. Use plain language that these people recognize, not generic SaaS copy.
 
 Return a JSON object with EXACTLY these keys (no extra keys, no omissions):
 - "logo_branding": Rich HTML describing the conceptual logo, app name styling, icon/symbol concepts, and overall brand style.
@@ -959,18 +1144,47 @@ Return a JSON object with EXACTLY these keys (no extra keys, no omissions):
 All HTML values must be valid HTML strings. All color values must be valid hex strings.
 Return ONLY valid JSON with no markdown fences.`;
 
-const FALLBACK_MILESTONES = `You are a project planning expert. Given the following startup idea, its PRD, and database design, create a comprehensive project milestone and task breakdown.
+const FALLBACK_MILESTONES = `You are a senior project planner for software built with Claude Code — AI-assisted development on a TypeScript / Next.js / React / Supabase / Tailwind stack. The PRD is your PRIMARY input. Produce a MACRO milestone-and-task plan, not a granular hand-coding checklist.
+
+CRITICAL — development speed reality: This app is built with Claude Code, an AI coding agent that writes whole pages, components, server actions, database migrations, and RLS policies in minutes, not hours. Development is dramatically faster than traditional hand-coding (roughly 3–5× faster) and MASSIVELY faster than no-code / visual builders like Bubble (roughly 8–10× faster). A page that takes days in a no-code tool is generated and wired in an hour or two with Claude Code. Plan and estimate accordingly — these are AI-speed timelines, not human-typing timelines. Do NOT inflate estimates. If you find yourself writing a large number, it is almost certainly wrong.
 
 Idea: {{idea_name}} — {{idea_description}}
-PRD Overview: {{prd_overview}}
-PRD Features: {{essential_features}}
+
+--- PRD (primary source) ---
+App Overview: {{prd_overview}}
+Essential Features: {{essential_features}}
+Features Per Page: {{features_per_page}}
+User Flows: {{user_flow}}
+Priority Personas: {{priority_personas}}
+Phasing Notes: {{phasing_notes}}
+Non-Functional Requirements: {{non_functional_reqs}}
+Out of Scope (do NOT plan work for these): {{out_of_scope}}
+
+## How to structure milestones
+- Create ONE milestone per app PAGE or cohesive feature area, taken primarily from the PRD "Features Per Page" breakdown. Respect the PRD phasing notes for ordering.
+- ALWAYS begin with these foundation milestones, in order:
+  1. Project Setup & Scaffolding — Next.js + Supabase + Tailwind + auth shell + CI/Vercel project.
+  2. Database Schema & RLS — all tables, migrations, RLS policies, generated types.
+  3. Authentication & Roles — sign-in/up and role gating for the priority personas.
+  Then one milestone per page/area, then a final "Polish, NFRs & Deploy" milestone covering the non-functional requirements + production deploy.
+- 3–6 MACRO tasks per milestone. A macro task = a page, a server-action set, a schema area, or an integration — never a micro-step like "add a button".
+
+## Realistic Claude Code time estimates (hours)
+Claude Code generates boilerplate, pages, and CRUD wiring in a fraction of hand-coding time. Use these as anchors (one developer pairing with Claude Code):
+- Project scaffold (Next.js + Supabase + Tailwind + CI/Vercel): 2–3h
+- Full DB schema + migrations + RLS + generated types: 2–4h
+- Authentication / onboarding + role gating: 2–4h
+- Simple CRUD page (list + form + server action + types): 1–2h
+- Moderate page (filters, relations, multiple states): 2–4h
+- Complex page / multi-step flow / dashboard / external integration: 4–8h
+- Production deploy (Vercel + env + domains): 1–2h
+Do NOT inflate. These reflect AI-assisted reality (~2–4× faster than traditional hand-coding). Keep totals honest and macro.
+
+## Standard buffer task (end of EVERY milestone)
+1. General Tasks — 4h — bugs, client change requests, QA fixes, and minor improvements for this milestone.
 
 Return a JSON object with exactly this key:
-- "content": Rich HTML text containing the complete project milestones and tasks breakdown. Structure as:
-  - Multiple milestones (Milestone 1, 2, 3, etc.), each with a Focus description and Total Estimated Time in hours.
-  - For each milestone, include an HTML table with columns: Task Name, Estimated Time (h), Definition of Done.
-  - Include QA and client request buffer tasks in each milestone.
-  - End with exit criteria for each milestone.
+- "content": Rich HTML. For each milestone include: a heading ("Milestone N — <page/area name>"), a one-line Focus, a "Total Estimated Time" in hours, an HTML table with columns [Task Name, Estimated Time (h), Definition of Done] (macro tasks followed by the General Tasks buffer), and a short "Exit criteria" line.
 
 The value must be a valid HTML string.
 Return ONLY valid JSON.`;
@@ -1074,7 +1288,7 @@ export async function triggerAiGeneration(
     let marketRow: any = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let riskRow: any = null;
-    if (step === "report") {
+    if (step === "report" || step === "prd" || step === "risk_and_validation") {
       const [sugRes, benchRes, locRes, mktRes, riskRes] = await Promise.all([
         supabase.from("idea_optimization_suggestion").select("*").eq("idea_id", ideaId),
         supabase.from("idea_benchmarking" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
@@ -1115,7 +1329,9 @@ export async function triggerAiGeneration(
         break;
       case "prd":
         result = await generatePrdContent(
-          supabase, idea, structureAlign, icps ?? [], productDef, ideaId, aiConfig, requestId
+          supabase, idea, structureAlign, icps ?? [], productDef,
+          benchmarkingRow, locationRow, marketRow, riskRow,
+          ideaId, aiConfig, requestId
         );
         break;
       case "database":
@@ -1162,7 +1378,9 @@ export async function triggerAiGeneration(
         break;
       case "risk_and_validation":
         result = await generateRiskAndValidation(
-          supabase, idea, ideaId, aiConfig, requestId
+          supabase, idea, structureAlign, icps ?? [], suggestionsRows ?? [],
+          productDef, benchmarkingRow, locationRow, marketRow,
+          ideaId, aiConfig, requestId
         );
         break;
     }
@@ -1744,14 +1962,38 @@ async function generateBenchmarking(
 async function generatePrdContent(
   supabase: SupabaseClient,
   idea: { name: string; description: string | null },
-  structureAlign: { core_problem: string | null; target_audience: string | null } | null,
-  icps: { name: string | null }[],
-  productDef: { summary: string | null; features: string | null } | null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  structureAlign: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  icps: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  productDef: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  benchmarking: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  location: any, // idea_location_legislation row or null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  market: any, // idea_market_opportunity row or null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  risk: any, // idea_risk_and_validation row or null
   ideaId: string,
   aiConfig: AiConfig,
   requestId: string
 ): Promise<{ error?: string }> {
   const icpNames = icps.map((i) => i.name).filter(Boolean).join(", ");
+
+  // The PRD is the build blueprint, so it must see every discovery step. Fetch
+  // the go/no-go report's agreed framing so the PRD inherits the sharpened
+  // problem/solution the debate converged on.
+  const { data: reportRow } = await supabase
+    .from("idea_report" as never)
+    .select("agreed_problem, agreed_solution, recommendation")
+    .eq("idea_id", ideaId)
+    .maybeSingle();
+  const report = reportRow as
+    | { agreed_problem: string | null; agreed_solution: string | null; recommendation: string | null }
+    | null;
+
   const template = (await getPromptTemplate("prd")) ?? FALLBACK_PRD;
   const prompt = renderPrompt(template, {
     idea_name: idea.name,
@@ -1761,6 +2003,22 @@ async function generatePrdContent(
     product_overview: stripHtml(productDef?.summary) || "Not defined yet",
     features: stripHtml(productDef?.features) || "Not defined yet",
     icp_names: icpNames || "None defined yet",
+    icp_details: buildIcpsBlock(icps as Array<Record<string, unknown>>) || "None defined yet",
+    benchmarking:
+      [
+        stripHtml(benchmarking?.overview),
+        stripHtml(benchmarking?.comparison),
+        stripHtml(benchmarking?.possible_business_models),
+        stripHtml(benchmarking?.takeaways),
+      ]
+        .filter(Boolean)
+        .join("\n") || "Not defined yet",
+    location_legislation: buildLocationBlock(location as Record<string, unknown> | null) || "Not defined yet",
+    market_opportunity: buildMarketBlock(market as Record<string, unknown> | null) || "Not defined yet",
+    risk_and_validation: buildRiskBlock(risk as Record<string, unknown> | null) || "Not defined yet",
+    agreed_problem: stripHtml(report?.agreed_problem) || "Not defined yet",
+    agreed_solution: stripHtml(report?.agreed_solution) || "Not defined yet",
+    recommendation: stripHtml(report?.recommendation) || "Not defined yet",
   });
 
   const res = await generateAiJsonResponse<PrdOutput>({
@@ -1768,7 +2026,7 @@ async function generatePrdContent(
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
-    maxTokens: 16384, // 9 rich HTML PRD sections can exceed 8192 default
+    maxTokens: 16384, // 10 rich HTML PRD sections can exceed 8192 default
   });
 
   if (res.returned_an_error || !res.data) {
@@ -1791,6 +2049,7 @@ async function generatePrdContent(
     priority_personas: d.priority_personas,
     essential_features: d.essential_features,
     user_flow: d.user_flow,
+    features_per_page: d.features_per_page,
     non_functional_reqs: d.non_functional_reqs,
     out_of_scope: d.out_of_scope,
     success_indicators: d.success_indicators,
@@ -1824,7 +2083,15 @@ async function generateDatabaseContent(
   aiConfig: AiConfig,
   requestId: string
 ): Promise<{ error?: string }> {
-  const prd = prdData as { essential_features: string | null } | null;
+  const prd = prdData as {
+    app_overview: string | null;
+    essential_features: string | null;
+    user_flow: string | null;
+    features_per_page: string | null;
+    priority_personas: string | null;
+    non_functional_reqs: string | null;
+    out_of_scope: string | null;
+  } | null;
   const template = (await getPromptTemplate("database")) ?? FALLBACK_DATABASE;
   const prompt = renderPrompt(template, {
     idea_name: idea.name,
@@ -1833,6 +2100,12 @@ async function generateDatabaseContent(
     product_overview: stripHtml(productDef?.summary) || "Not defined yet",
     features: stripHtml(productDef?.features) || "Not defined yet",
     essential_features: stripHtml(prd?.essential_features) || "Not defined yet",
+    app_overview: stripHtml(prd?.app_overview) || "Not defined yet",
+    user_flow: stripHtml(prd?.user_flow) || "Not defined yet",
+    features_per_page: stripHtml(prd?.features_per_page) || "Not defined yet",
+    priority_personas: stripHtml(prd?.priority_personas) || "Not defined yet",
+    non_functional_reqs: stripHtml(prd?.non_functional_reqs) || "Not defined yet",
+    out_of_scope: stripHtml(prd?.out_of_scope) || "Not defined yet",
   });
 
   const res = await generateAiJsonResponse<DatabaseOutput>({
@@ -1887,12 +2160,28 @@ async function generateVisualStylesContent(
   aiConfig: AiConfig,
   requestId: string
 ): Promise<{ error?: string }> {
+  const [{ data: prdData }, { data: stylesData }] = await Promise.all([
+    supabase.from("idea_prd" as never).select("app_overview, essential_features, priority_personas").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_styles" as never).select("logo_colors").eq("idea_id", ideaId).maybeSingle(),
+  ]);
+
+  const prd = prdData as { app_overview: string | null; essential_features: string | null; priority_personas: string | null } | null;
+  const savedStyles = stylesData as { logo_colors: { hex: string; label: string }[] | null } | null;
+
+  const logoColorsText = savedStyles?.logo_colors?.length
+    ? savedStyles.logo_colors.map((c) => `${c.hex} (${c.label})`).join(", ")
+    : "Not defined — derive palette from idea context";
+
   const template = (await getPromptTemplate("visual_styles")) ?? FALLBACK_VISUAL_STYLES;
   const prompt = renderPrompt(template, {
     idea_name: idea.name,
     idea_description: stripHtml(idea.description),
     core_problem: stripHtml(structureAlign?.core_problem) || "Not defined yet",
     target_audience: stripHtml(structureAlign?.target_audience) || "Not defined yet",
+    app_overview: stripHtml(prd?.app_overview) || "Not defined yet",
+    essential_features: stripHtml(prd?.essential_features) || "Not defined yet",
+    priority_personas: stripHtml(prd?.priority_personas) || "Not defined yet",
+    logo_colors: logoColorsText,
   });
 
   const res = await generateAiJsonResponse<VisualStylesOutput>({
@@ -1961,7 +2250,16 @@ async function generateMilestonesContent(
   requestId: string,
   platform?: "bubble" | "claude_code"
 ): Promise<{ error?: string }> {
-  const prd = prdData as { app_overview: string | null; essential_features: string | null } | null;
+  const prd = prdData as {
+    app_overview: string | null;
+    essential_features: string | null;
+    features_per_page: string | null;
+    user_flow: string | null;
+    priority_personas: string | null;
+    phasing_notes: string | null;
+    non_functional_reqs: string | null;
+    out_of_scope: string | null;
+  } | null;
   const stepKey = platform === "bubble"
     ? "milestones_and_tasks_bubble"
     : "milestones_and_tasks_claude_code";
@@ -1971,6 +2269,12 @@ async function generateMilestonesContent(
     idea_description: stripHtml(idea.description),
     prd_overview: stripHtml(prd?.app_overview) || "Not defined yet",
     essential_features: stripHtml(prd?.essential_features) || "Not defined yet",
+    features_per_page: stripHtml(prd?.features_per_page) || "Not defined yet",
+    user_flow: stripHtml(prd?.user_flow) || "Not defined yet",
+    priority_personas: stripHtml(prd?.priority_personas) || "Not defined yet",
+    phasing_notes: stripHtml(prd?.phasing_notes) || "Not defined yet",
+    non_functional_reqs: stripHtml(prd?.non_functional_reqs) || "Not defined yet",
+    out_of_scope: stripHtml(prd?.out_of_scope) || "Not defined yet",
   });
 
   const res = await generateAiJsonResponse<MilestonesAndTasksOutput>({
@@ -2024,21 +2328,31 @@ const FALLBACK_SKEPTIC = `You are the Devil's Advocate — a hyper-critical eval
 2. One move at a time. One challenge, one question, or one demand for evidence per turn.
 3. Label every key claim: [Fact] (in the source), [Inference] (logical but unproven), [Speculation] (low/no evidence).
 4. Challenge vagueness and symptoms. Push to the root cause via "five whys" thinking.
-5. Concede when genuinely beaten — say "Conceded: [point]" and move to the next challenge.
-6. ANTI-SYCOPHANCY: never soften, never open with agreement, never validate unless the Advocate actually proved a point with external evidence.
-7. You are WILLING to collapse a multi-feature idea to one wedge if the evidence only supports one. The collapse IS the insight.
-8. AI-GENERATED CONTENT RULE: ALL content in [SOURCE] was produced with AI assistance and is UNVERIFIED FOUNDER ASSERTION. Treat it exactly as you would an unsourced claim. Demand external evidence — named customers, named competitors, real market data, cited studies. "The AI said so" is not evidence.
+5. Concede when genuinely beaten — say "Conceded: [point]" and move to the next live challenge.
+6. ANTI-SYCOPHANCY: never soften, never open with agreement, never validate unless the Advocate proved a point with external evidence.
+7. You are WILLING to collapse a multi-feature idea to one wedge if evidence only supports one. The collapse IS the insight.
+8. AI-GENERATED CONTENT RULE: ALL content in [SOURCE] is UNVERIFIED FOUNDER ASSERTION produced with AI assistance. Demand external evidence — named customers, named competitors, real market data, cited studies. "The AI said so" is not evidence.
+9. EVIDENCE LADDER: distinguish between (weakest) stated interest ("would use/pay") → behavioral signal (signed up, clicked, trialled) → financial commitment (pre-sold, LOI, deposit). Only behavioral or financial evidence moves the needle. Challenge stated-only evidence hard.
+10. MINIMUM ROUNDS: Do NOT set agree=true before round 5. Even if the Advocate's statement sounds good, your job is to stress-test it until round 5 minimum. After round 5 you may agree ONLY IF the statement is specific, evidence-backed, and survives the swap test.
+
+## ROUND-DEPTH ESCALATION MANDATE
+Each round you MUST escalate depth, not repeat the same challenge. Follow this sequence:
+- Rounds 1-2: FRAMING — Is this the real problem or a symptom? Who defined it? Whose voice is missing? Apply five whys: "why does X happen?" at least twice.
+- Rounds 3-4: EVIDENCE — What evidence exists? Apply the say/do/pay ladder. Challenge any stated-only signal. What would prove this problem is acute vs. chronic?
+- Rounds 5-6: ALTERNATIVES — What alternative framings survive? Is there an incumbent solution that already works well enough? What does "good enough today" look like for the target user?
+- Rounds 7-8: SPECIFICITY — Force the most specific possible bottleneck statement. The Abilene Paradox check: is the team committing to a direction no individual actually supports?
+- Rounds 9-10: RESIDUAL RISKS — What must be true for this to succeed? What kills this in 6 months? Name the single most likely failure mode.
 
 ## GATE RULES
-- Gate 1 (PROBLEM): Challenge whether the stated problem is the real bottleneck or a symptom. Ask: Who defined this problem? Whose perspective is missing? Is it a functional/experiential/social need? What does "good enough" look like today? What specific circumstance makes the pain acute vs. chronic?
-- Gate 2 (SOLUTION): Challenge only after Gate 1 is resolved. Anchor exclusively to the agreed bottleneck. Apply the SWAP TEST: if you replaced this solution with a competitor's and the bottleneck is still solved, it is not differentiated. Name the strongest counter-argument an investor would raise.
+- Gate 1 (PROBLEM): Challenge whether the stated problem is the real bottleneck or a symptom. Explore functional need (what must it do), experiential need (how must it feel), and social need (what must it mean). Push five whys. Demand named affected parties.
+- Gate 2 (SOLUTION): Anchor exclusively to the agreed bottleneck. Apply the SWAP TEST explicitly: "If I swapped this solution for [competitor X], would the bottleneck still be solved?" If yes, reject as not differentiated. Name the strongest investor counter-argument.
 
 ## YOUR OUTPUT (strict JSON, no markdown)
 {
-  "content": "Your argument in plain text — direct, blunt, Hemingway-short sentences.",
-  "proposed_statement": "Your current best one-sentence version of the [bottleneck / solution] that the debate should converge on.",
+  "content": "Your argument in plain text — direct, blunt, Hemingway-short sentences. Reference the round number's escalation tier.",
+  "proposed_statement": "Your current best one-sentence version of the [bottleneck / solution] the debate should converge on.",
   "agree": false,
-  "reason": "Why you do or do not accept the other side's latest proposed_statement."
+  "reason": "Why you do or do not accept the other side's latest proposed_statement. Before round 5, agree must be false."
 }
 
 ## [SOURCE]
@@ -2050,28 +2364,32 @@ const FALLBACK_SKEPTIC = `You are the Devil's Advocate — a hyper-critical eval
 ## ADVOCATE'S LAST PROPOSED STATEMENT
 {{other_proposed_statement}}
 
-Now give your turn. Be brief. Be sharp. One move.`;
+Now give your turn. Escalate depth per the round mandate. One move.`;
 
 const FALLBACK_ADVOCATE = `You are the Founder's Advocate — you defend the idea's current framing but only with evidence from [SOURCE]. You are NOT a yes-person. You ARE trying to find the strongest defensible version of the problem/solution.
 
 ## YOUR STANDING RULES (non-negotiable)
-1. Answer the Skeptic's specific challenge directly. Never deflect.
-2. Use ONLY evidence from [SOURCE]. Never invent data or cite outside facts.
-3. Refine your proposed_statement toward the sharpest, most defensible version each round.
-4. Concede when the Skeptic's challenge is correct and unrefuted by the source — say "Conceded: [point]" and update your proposed_statement accordingly.
-5. Label key claims: [Fact], [Inference], [Speculation].
-6. You may set agree=true ONLY when [SOURCE] contains concrete external evidence — a named customer, a named competitor, a real cited metric, an external study — that directly refutes the Skeptic's challenge. AI-generated text in [SOURCE] is UNVERIFIED ASSERTION and does NOT count as evidence. If the only support is AI-generated content, stay at agree=false and concede the gap.
+1. CONCEDE-THEN-DEFEND RATCHET: Start every response by explicitly naming what the Skeptic proved in the last round — "Conceded: [point]." Only then defend what remains. Each round locks in a gain. You cannot un-concede.
+2. Answer the Skeptic's specific challenge directly. Never deflect to a different point.
+3. Use ONLY evidence from [SOURCE]. Never invent data or cite outside facts.
+4. Refine your proposed_statement toward the sharpest, most defensible version each round — narrower, more specific, more evidence-anchored.
+5. Label key claims: [Fact] (from source), [Inference] (logical extension), [Speculation] (low evidence).
+6. EVIDENCE LADDER: Know the hierarchy — stated interest (weakest, AI-asserted) → behavioral signal (signed up, trialled) → financial commitment (pre-sold, LOI). Never treat stated AI-generated beliefs as strong evidence. When the Skeptic invokes the evidence ladder, acknowledge it directly.
+7. You may set agree=true ONLY when ALL three conditions are met: (a) round ≥ 5, (b) [SOURCE] contains concrete external evidence — a named customer, a named competitor, a real cited metric, or an external study — that directly addresses the Skeptic's challenge, AND (c) your proposed_statement is specific enough that it could not apply to any other company or idea. If any condition fails, stay at agree=false.
+
+## ROUND DISCIPLINE
+Your goal per round: fix exactly ONE named flaw from the last round. Then hold the ground you've gained. Do not try to win everything at once. A tighter, more specific statement is stronger than a broader one that tries to defend everything.
 
 ## GATE RULES
-- Gate 1 (PROBLEM): Defend the problem framing. Show the pain is real, acute, and specific using source evidence.
-- Gate 2 (SOLUTION): Defend the solution. Show it directly addresses the agreed bottleneck and survives the swap test.
+- Gate 1 (PROBLEM): Defend the problem framing. Show the pain is real, acute, and specific for a named segment. Acknowledge when the Skeptic correctly identifies a symptom vs. root cause.
+- Gate 2 (SOLUTION): Defend the solution only against the agreed bottleneck. For the swap test, name what makes this solution non-swappable — a specific capability, data advantage, or distribution moat. Concede if you cannot.
 
 ## YOUR OUTPUT (strict JSON, no markdown)
 {
-  "content": "Your defense in plain text — direct, evidence-anchored.",
-  "proposed_statement": "Your current best one-sentence version of the [bottleneck / solution].",
+  "content": "Start with 'Conceded: [what you concede from last round].' Then your evidence-anchored defense.",
+  "proposed_statement": "Your current best one-sentence version of the [bottleneck / solution] — sharper and more specific than last round.",
   "agree": false,
-  "reason": "Why you do or do not accept the Skeptic's latest proposed_statement."
+  "reason": "Why you do or do not accept the Skeptic's proposed_statement. Cite which of the 3 agree conditions is or is not met."
 }
 
 ## [SOURCE]
@@ -2083,7 +2401,7 @@ const FALLBACK_ADVOCATE = `You are the Founder's Advocate — you defend the ide
 ## SKEPTIC'S LAST PROPOSED STATEMENT
 {{other_proposed_statement}}
 
-Now give your defense. Be direct. Use source evidence.`;
+Now give your defense. Concede first, then defend. Fix one flaw. Sharpen your statement.`;
 
 // Meta call: returns only the 3 short string fields as JSON (no HTML inside JSON — avoids
 // truncation and literal-newline encoding bugs when revised_description is large).
@@ -2183,8 +2501,8 @@ Evidence: core_problem, target_audience, ICP pain_points, how_problems_are_solve
 Questions: Is the pain acute or a vitamin? Is it quantified with external data? How is it solved today — is "good enough" the real competitor? Does evidence come from real customers or AI inference?
 
 ### Area 2 — demand_evidence (weight 15%)
-Evidence: idea_success_metrics, structure_success_metrics, ICP score_rationale, suggestions_block.
-Questions: Are success metrics MEASURABLE (numbers, thresholds)? Is there ANY signal of real demand — interviews, waitlist, payments — or only founder conviction? AI-generated success metrics are NOT demand evidence.
+Evidence: the Demand Evidence block (hypothesis, riskiest assumptions graded say/do/pay, ordered experiments with pre-registered thresholds + kill criteria, debate insights, verdict) AND the full debate transcript.
+Questions: Does a real demand evidence object exist with an honest verdict? Score by the evidence ladder: a plan with verdict=unproven and only stated/AI-asserted signal CANNOT exceed 60; behavioral signal (run smoke test / interviews with results) reaches 60-80; financial signal (pre-sales, LOIs, deposits) reaches 80+. A demand claim the skeptic dismantled and the advocate could not defend with evidence scores LOW even if a plan exists. A validation plan is not validation. Surviving a debate is not market demand. If the Demand Evidence block is "Not completed", this area cannot exceed 40. AI-generated success metrics are NOT demand evidence.
 
 ### Area 3 — market_realism (weight 12%)
 Evidence: Market Opportunity section — TAM/SAM/SOM estimates, data_sources, segment_filter_logic.
@@ -2207,8 +2525,8 @@ Evidence: Location & Legislation section — red_flags, licensing_requirements, 
 Questions: Do regulatory red flags threaten the business model or launch timeline? Are licensing requirements quantified (cost, duration)? Is "Not completed" — that is itself a risk.
 
 ### Area 8 — validation_rigor (weight 8%)
-Evidence: Risk & Validation section — validation_test (steps, kill_criteria, budget_max), risk_register.
-Questions: Is there a real experiment with measurable kill criteria? Is the budget realistic for early-stage? Are Critical risks mitigated or actively owned? "Not completed" → cannot exceed 40.
+Evidence: Risk & Validation section — validation_test (steps, kill_criteria, budget_max), risk_register. Also weigh the Demand Evidence experiments against the debate: did the validation plan survive skeptic scrutiny? Did the skeptic expose it as untestable?
+Questions: Is there a real experiment with measurable, pre-registered kill criteria? Is the budget realistic for early-stage? Are Critical risks mitigated or actively owned? A validation plan whose kill criteria the skeptic could not poke through scores higher than a plan the debate exposed as untestable or circular. "Not completed" → cannot exceed 40.
 
 ### Area 9 — assumption_risk (weight 5%)
 Evidence: synthesize across the entire [SOURCE].
@@ -2300,7 +2618,8 @@ const FALLBACK_SCORER_HTML = `You are writing the strategic playbook section of 
 - Every section must cite a concrete detail from [SOURCE].
 - Section 6 (Market Realism): cite the TAM/SAM/SOM figures and data_sources. If market data is missing or top-down only, say so plainly and explain why that is a problem.
 - Section 7 (Regulatory): cite red_flags by severity. If Location & Legislation was not completed, flag that as a risk. State the single biggest compliance threat.
-- Section 8 (Validation): describe the validation_test steps and kill_criteria. If Risk & Validation was not completed, name that gap. State whether the kill criteria are measurable.
+- Section 5 (Demand and Validation Signals): cite the Demand Evidence block explicitly — state the hypothesis, the verdict grade (unproven/emerging/proven), the riskiest assumption and its current strength (say/do/pay), and the single highest-leverage next test. If a demand claim was dismantled in the debate (advocate could not defend it), say so. If the Demand Evidence block is "Not completed", name that gap and explain the risk it represents for the demand_evidence score area.
+- Section 8 (Validation): describe the validation_test steps and kill_criteria. Cross-reference the Demand Evidence experiments. If Risk & Validation was not completed, name that gap. State whether the kill criteria are measurable and whether they survived debate scrutiny.
 - Section 9 ("Strongest Case Against") must be genuinely adversarial: argue, in good faith, why a smart investor would pass. Lead with the debate Skeptic's strongest unresolved objection.
 - Use epistemic labels where useful: [Fact], [Inference], [Uncertain], [Speculation].
 
@@ -2497,6 +2816,37 @@ Validation Test: ${vtText}
 Why We Win:\n${wins}`;
 }
 
+function buildDemandBlock(risk: Record<string, unknown> | null): string {
+  const de = risk?.["demand_evidence"] as Record<string, unknown> | null | undefined;
+  if (!de) return "Not completed";
+  const hypothesis = (de["hypothesis"] as string) || "Not defined";
+  const verdict = de["verdict"] as Record<string, unknown> | null;
+  const verdictText = verdict
+    ? `Grade: ${verdict["grade"]} | Confidence: ${verdict["confidence"]} | Next test: ${verdict["highest_leverage_next_test"]}\nRationale: ${verdict["rationale"]}`
+    : "Not defined";
+  const assumptions = Array.isArray(de["riskiest_assumptions"])
+    ? (de["riskiest_assumptions"] as Array<Record<string, unknown>>)
+        .map((a) => `  • [${a["strength"]}/${a["status"]}] ${a["assumption"]} — Evidence today: ${a["evidence_today"]} — Needed: ${a["evidence_needed"]}`)
+        .join("\n")
+    : "Not defined";
+  const experiments = Array.isArray(de["experiments"])
+    ? (de["experiments"] as Array<Record<string, unknown>>)
+        .sort((a, b) => Number(a["sequence_order"] ?? 0) - Number(b["sequence_order"] ?? 0))
+        .map((e) => `  ${e["sequence_order"]}. [${e["method"]}] ${e["why_this_method"]} — Budget/sample: ${e["sample_or_budget"]} — Pass: ${e["success_threshold"]} — Kill: ${e["kill_criterion"]}`)
+        .join("\n")
+    : "Not defined";
+  const insights = Array.isArray(de["debate_insights"])
+    ? (de["debate_insights"] as Array<Record<string, unknown>>)
+        .map((i) => `  • [${i["source"]}] ${i["insight"]} → ${i["implication_for_demand"]}`)
+        .join("\n")
+    : "(none)";
+  return `Hypothesis: ${hypothesis}
+Verdict: ${verdictText}
+Riskiest Assumptions:\n${assumptions}
+Ordered Experiments (cheapest→strongest):\n${experiments}
+Debate Insights on Demand:\n${insights}`;
+}
+
 // ── Debate turn output (Skeptic & Advocate) ──────────────────────────────────
 interface DebateTurnOutput {
   content: string;
@@ -2532,14 +2882,10 @@ interface ReframerOutput extends ReframerMetaOutput {
   revised_description: string;
 }
 
-// Each "round" is one Skeptic turn + one Advocate turn. The gate exits early the
-// moment both sides agree, so this is a CEILING, not a fixed count — most gates
-// converge well before it. Raised to 10 (was 2) so the debate can go the full
-// distance when an idea is genuinely contested: up to 10 protagonist + 10 skeptic
-// turns per gate. This is the crux gate for kill/refine/build, so we prioritise
-// reaching the most defensible framing over speed. Worst case: 10 rounds × 2 sides
-// × 2 gates = 40 debate calls (+ reframer/scorer/HTML). Generation time is
-// intentionally unbounded here — correctness of the verdict outweighs latency.
+// Each "round" is one Skeptic turn + one Advocate turn. The gate exits EARLY the
+// moment both sides agree — this cap is only hit when the debate genuinely cannot
+// converge. Worst case: 5 rounds × 2 sides × 2 gates = 20 debate calls (+ reframer/
+// scorer/HTML). Early exit happens as soon as sk.agree === true && av.agree === true.
 const MAX_ROUNDS_PER_GATE = 10;
 
 async function generateReport(
@@ -2566,6 +2912,7 @@ async function generateReport(
   requestId: string
 ): Promise<{ error?: string }> {
   // ── Build the shared [SOURCE] block used across all personas ─────────────────
+  const riskRow = risk as Record<string, unknown> | null;
   const sourceBlock = `Idea: ${idea.name} — ${stripHtml(idea.description)}
 Success Metrics: ${stripHtml(idea.success_metrics) || "Not defined"}
 Core Problem: ${stripHtml(structureAlign?.core_problem) || "Not defined"}
@@ -2582,143 +2929,52 @@ ${buildLocationBlock(location as Record<string, unknown> | null)}
 Market Opportunity:
 ${buildMarketBlock(market as Record<string, unknown> | null)}
 Risk & Validation:
-${buildRiskBlock(risk as Record<string, unknown> | null)}`;
+${buildRiskBlock(riskRow)}
+Demand Evidence (AI-generated validation plan + honest verdict):
+${buildDemandBlock(riskRow)}`;
 
   // ── Load persona prompt templates (DB rows win; fallbacks cover missing rows) ─
-  const [skepticTemplate, advocateTemplate, reframerTemplate, scorerTemplate] = await Promise.all([
-    getPromptTemplate("report_skeptic"),
-    getPromptTemplate("report_advocate"),
+  const [reframerTemplate, scorerTemplate] = await Promise.all([
     getPromptTemplate("report_reframer"),
     getPromptTemplate("report_scorer"),
   ]);
-  const skepticPromptBase = skepticTemplate ?? FALLBACK_SKEPTIC;
-  const advocatePromptBase = advocateTemplate ?? FALLBACK_ADVOCATE;
   const reframerPromptBase = reframerTemplate ?? FALLBACK_REFRAMER;
   const scorerPromptBase = scorerTemplate ?? FALLBACK_SCORER;
 
-  const transcript: IdeaReportDebateTurn[] = [];
+  // ── Read debate outcome from Risk & Validation (step 9 produced it) ───────────
+  const typedRiskRow = riskRow as {
+    agreed_problem: string | null;
+    agreed_solution: string | null;
+    debate_transcript: IdeaReportDebateTurn[] | null;
+    debate_meta: {
+      problem_rounds: number;
+      solution_rounds: number;
+      problem_converged: boolean;
+      solution_converged: boolean;
+      impasse_note?: string;
+    } | null;
+  } | null;
 
-  // ── Helper: build the running transcript string for prompt injection ──────────
-  function transcriptText(gate: "problem" | "solution"): string {
-    const lines = transcript
-      .filter((t) => t.gate === gate)
-      .map(
-        (t) =>
-          `[Round ${t.round} — ${t.role.toUpperCase()}]\n${t.content}\nProposed: ${t.proposed_statement}\nAgrees: ${t.agree}`
-      );
-    return lines.length ? lines.join("\n\n") : "(none yet)";
+  if (!typedRiskRow?.agreed_problem) {
+    return { error: "Complete the Risk & Validation step first to run the debate, then generate this report." };
   }
 
-  // ── Gate runner: runs Skeptic → Advocate per round until convergence ──────────
-  async function runGate(
-    gate: "problem" | "solution"
-  ): Promise<{ converged: boolean; agreed_statement: string; rounds: number }> {
-    let skepticStatement = "";
-    let advocateStatement = "";
-    let converged = false;
+  const agreedProblem = typedRiskRow.agreed_problem;
+  const agreedSolution = typedRiskRow.agreed_solution ?? "";
+  const transcript: IdeaReportDebateTurn[] = typedRiskRow.debate_transcript ?? [];
+  const debateMeta = typedRiskRow.debate_meta ?? {
+    problem_rounds: 0,
+    solution_rounds: 0,
+    problem_converged: false,
+    solution_converged: false,
+  };
 
-    for (let round = 1; round <= MAX_ROUNDS_PER_GATE; round++) {
-      const soFar = transcriptText(gate);
-
-      // Skeptic turn
-      const skepticPrompt = renderPrompt(skepticPromptBase, {
-        source_block: sourceBlock,
-        gate,
-        round: String(round),
-        transcript_so_far: soFar,
-        other_proposed_statement: advocateStatement || "(none yet — first round)",
-      });
-      const skepticRes = await generateAiJsonResponse<DebateTurnOutput>({
-        service: aiConfig.service,
-        apiKey: aiConfig.apiKey,
-        model: aiConfig.model,
-        prompt: skepticPrompt,
-        maxTokens: 4096,
-      });
-      if (skepticRes.returned_an_error || !skepticRes.data) {
-        return { converged: false, agreed_statement: advocateStatement || skepticStatement, rounds: round };
-      }
-      const sk = skepticRes.data;
-      skepticStatement = sk.proposed_statement || skepticStatement;
-      transcript.push({
-        gate,
-        round,
-        role: "skeptic",
-        content: sk.content || "",
-        proposed_statement: skepticStatement,
-        agree: sk.agree,
-      });
-
-      // Advocate turn
-      const advocatePrompt = renderPrompt(advocatePromptBase, {
-        source_block: sourceBlock,
-        gate,
-        round: String(round),
-        transcript_so_far: transcriptText(gate),
-        other_proposed_statement: skepticStatement,
-      });
-      const advocateRes = await generateAiJsonResponse<DebateTurnOutput>({
-        service: aiConfig.service,
-        apiKey: aiConfig.apiKey,
-        model: aiConfig.model,
-        prompt: advocatePrompt,
-        maxTokens: 4096,
-      });
-      if (advocateRes.returned_an_error || !advocateRes.data) {
-        return { converged: false, agreed_statement: skepticStatement, rounds: round };
-      }
-      const av = advocateRes.data;
-      advocateStatement = av.proposed_statement || advocateStatement;
-      transcript.push({
-        gate,
-        round,
-        role: "advocate",
-        content: av.content || "",
-        proposed_statement: advocateStatement,
-        agree: av.agree,
-      });
-
-      // Both agree → convergence
-      if (sk.agree && av.agree) {
-        converged = true;
-        return { converged, agreed_statement: advocateStatement || skepticStatement, rounds: round };
-      }
-    }
-
-    return { converged: false, agreed_statement: advocateStatement || skepticStatement, rounds: MAX_ROUNDS_PER_GATE };
-  }
-
-  // ── Gate 1: Right Problem ────────────────────────────────────────────────────
-  const gate1 = await runGate("problem");
-  const agreedProblem = gate1.agreed_statement;
-
-  // Bail early if a newer request superseded this one
-  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
-
-  // ── Gate 2: Right Solution ───────────────────────────────────────────────────
-  const gate2 = await runGate("solution");
-  const agreedSolution = gate2.agreed_statement;
-
-  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
-
-  // ── Build full transcript text for synthesis calls ───────────────────────────
   const fullTranscriptText = transcript
     .map(
       (t) =>
         `[${t.gate.toUpperCase()} Gate — Round ${t.round} — ${t.role.toUpperCase()}]\n${t.content}\nProposed: ${t.proposed_statement}\nAgrees: ${t.agree}`
     )
     .join("\n\n");
-
-  const debateMeta = {
-    problem_rounds: gate1.rounds,
-    solution_rounds: gate2.rounds,
-    problem_converged: gate1.converged,
-    solution_converged: gate2.converged,
-    impasse_note:
-      !gate1.converged || !gate2.converged
-        ? `Debate hit the round cap without full convergence. ${!gate1.converged ? `Problem gate: ${gate1.rounds} rounds, no agreement. ` : ""}${!gate2.converged ? `Solution gate: ${gate2.rounds} rounds, no agreement.` : ""}`
-        : undefined,
-  };
 
   // ── Reframer step 1: get the 3 short meta fields as JSON ─────────────────────
   // Kept separate from step 2 so the JSON never contains a large HTML string
@@ -2867,6 +3123,12 @@ ${buildRiskBlock(risk as Record<string, unknown> | null)}`;
     const va = areas.find((a) => a.key === "validation_rigor");
     if (va) va.raw_score_pct = Math.min(va.raw_score_pct, 40);
     missingStepPenalties.push({ label: "Risk & Validation step not completed", points: -8 });
+  }
+  const hasDemandEvidence = !!(riskRow?.["demand_evidence"]);
+  if (!hasDemandEvidence) {
+    const da = areas.find((a) => a.key === "demand_evidence");
+    if (da) da.raw_score_pct = Math.min(da.raw_score_pct, 40);
+    missingStepPenalties.push({ label: "Demand validation not completed", points: -8 });
   }
 
   for (const a of areas) {
@@ -3640,7 +3902,7 @@ export async function generateIdeaBrief(ideaId: string): Promise<{ error?: strin
 }
 
 /** Compile a Build Brief directly from existing step data — no AI call required. */
-export async function assembleIdeaBrief(ideaId: string): Promise<{ error?: string }> {
+export async function assembleIdeaBrief(ideaId: string): Promise<{ briefHtml?: string; briefTitle?: string; briefSubtitle?: string; error?: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
@@ -3680,7 +3942,7 @@ export async function assembleIdeaBrief(ideaId: string): Promise<{ error?: strin
 
   // ── HTML helpers ──────────────────────────────────────────────────────────
   const td = (label: string, val: string | null | undefined) =>
-    `<tr><td style="font-weight:600;padding:6px 12px 6px 0;width:180px;vertical-align:top;white-space:nowrap;">${label}</td><td style="padding:6px 0;">${stripHtml(val ?? "").trim() || "—"}</td></tr>`;
+    `<tr><td style="font-weight:600;padding:8px 12px;width:180px;vertical-align:top;white-space:nowrap;border-bottom:1px solid #e5e7eb;">${label}</td><td style="padding:8px 12px;vertical-align:top;border-bottom:1px solid #e5e7eb;">${stripHtml(val ?? "").trim() || "—"}</td></tr>`;
   const tbl = (rows: string) =>
     `<table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:12px;">${rows}</table>`;
   const sec = (title: string, body: string) =>
@@ -3841,7 +4103,7 @@ export async function assembleIdeaBrief(ideaId: string): Promise<{ error?: strin
     .eq("id", rpt.id);
 
   revalidatePath(PATH);
-  return {};
+  return { briefHtml, briefTitle, briefSubtitle };
 }
 
 const FALLBACK_BUILD_BRIEF = `You are a Move37 build strategist writing an investor-grade Build Brief. Use ONLY the source data supplied. Label inferences: [Fact], [Inference], [Uncertain], [Speculation]. Empty fields are gaps -- state them explicitly.
@@ -4012,16 +4274,16 @@ Return a JSON object with exactly these keys (all values must be valid HTML stri
 
 Return ONLY valid JSON.`;
 
-const FALLBACK_RISK_AND_VALIDATION = `You are a risk management and startup validation expert. Given the following context, produce a risk register, validation experiment, and competitive advantage analysis.
+const FALLBACK_RISK_AND_VALIDATION = `You are a risk management, startup validation, and demand-validation expert. The Devil's Advocate debate has just been run on this idea and produced an agreed problem and solution framing. Use these outputs to produce a risk register, validation experiment, competitive advantage analysis, AND a demand evidence assessment.
 
-Agreed Problem: {{agreed_problem}}
-Agreed Solution: {{agreed_solution}}
-Recommendation: {{recommendation}}
-Score: {{final_score}} / Verdict: {{threshold_bucket}}
+Agreed Problem (from Devil's Advocate debate): {{agreed_problem}}
+Agreed Solution (from Devil's Advocate debate): {{agreed_solution}}
 Location: {{location}}
 Jurisdiction: {{jurisdiction}}
 Product Overview: {{product_overview}}
 Benchmarking Takeaways: {{benchmarking_takeaways}}
+
+IMPORTANT: The agreed problem and solution above come from a rigorous Devil's Advocate debate. Ground ALL of your output in these agreed framings, not in the original idea description. The debate_insights field should reflect what the debate revealed about demand (skeptic challenges, advocate defences, agreed conclusions).
 
 Return a JSON object with exactly these keys:
 
@@ -4030,6 +4292,35 @@ Return a JSON object with exactly these keys:
 "validation_test": Object with: { "budget_max": string, "duration_weeks": number, "steps": [{ "week_range": string, "action": string, "success_metric": string, "kill_criterion": string }], "kill_criteria": string, "deliverable": string }
 
 "why_we_win": Array of competitive advantage objects, each with: { "advantage": string, "why_hard_to_copy": string }
+
+"demand_evidence": Object using the demand-validation playbook below. HONESTY IS MANDATORY.
+
+## Demand Validation Playbook (name these methods in your output)
+- The Mom Test: evidence from past behaviour and life, never compliments or hypotheticals
+- Riskiest-assumption-first: validate the belief that kills the idea if false
+- Evidence strength ladder: say < do < pay (stated interest weakest; behavioral stronger; money down strongest)
+- Smoke / fake-door test: landing page + CTA to measure real click-through intent
+- Pre-sales / Letters of Intent / deposits: strongest pre-build demand proof
+- Concierge & Wizard-of-Oz MVP: manual delivery to test demand before building
+- Sean Ellis PMF survey: "how disappointed if you could no longer use this?" target >= 40% very disappointed
+- Van Westendorp / willingness-to-pay: price-sensitivity, not a guessed number
+- Pre-registered decision contract: success thresholds AND kill criteria written BEFORE the test
+
+## Honesty Rules (MANDATORY)
+1. A plan to validate is NOT validation. With no run experiment, verdict.grade MUST be "unproven" and confidence "low".
+2. A debate is adversarial scrutiny, NOT market demand. Surviving the skeptic raises reasoning confidence, never proves demand.
+3. Only behavioral/financial signal can push verdict.grade to "emerging" or "proven".
+4. State the honest grade even if the debate was favorable.
+
+## demand_evidence object structure:
+{
+  "hypothesis": "Falsifiable demand statement: <segment> will <behaviour/pay $X> to solve <problem>.",
+  "riskiest_assumptions": [{ "assumption": string, "evidence_today": string, "evidence_needed": string, "strength": "stated"|"behavioral"|"financial", "status": "unproven"|"emerging"|"proven" }],
+  "experiments": [{ "method": string, "why_this_method": string, "sample_or_budget": string, "success_threshold": string, "kill_criterion": string, "sequence_order": number }],
+  "signals_to_watch": [{ "signal": string, "type": "stated"|"behavioral"|"financial", "is_anti_signal": boolean }],
+  "debate_insights": [{ "insight": string, "source": "skeptic challenge"|"advocate could-not-defend"|"reframer flag"|"agreed conclusion", "implication_for_demand": string }],
+  "verdict": { "grade": "unproven"|"emerging"|"proven", "confidence": "low"|"medium"|"high", "rationale": string, "highest_leverage_next_test": string }
+}
 
 Return ONLY valid JSON.`;
 
@@ -4220,55 +4511,222 @@ interface RiskAndValidationOutput {
     deliverable: string;
   };
   why_we_win: Array<{ advantage: string; why_hard_to_copy: string }>;
+  demand_evidence: {
+    hypothesis: string;
+    riskiest_assumptions: Array<{
+      assumption: string;
+      evidence_today: string;
+      evidence_needed: string;
+      strength: string;
+      status: string;
+    }>;
+    experiments: Array<{
+      method: string;
+      why_this_method: string;
+      sample_or_budget: string;
+      success_threshold: string;
+      kill_criterion: string;
+      sequence_order: number;
+    }>;
+    signals_to_watch: Array<{
+      signal: string;
+      type: string;
+      is_anti_signal: boolean;
+    }>;
+    debate_insights: Array<{
+      insight: string;
+      source: string;
+      implication_for_demand: string;
+    }>;
+    verdict: {
+      grade: string;
+      confidence: string;
+      rationale: string;
+      highest_leverage_next_test: string;
+    };
+  } | null;
 }
 
 async function generateRiskAndValidation(
   supabase: SupabaseClient,
-  idea: { name: string; description: string | null; location?: string | null; jurisdiction?: string | null },
+  idea: { name: string; description: string | null; success_metrics: string | null; location?: string | null; jurisdiction?: string | null },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  structureAlign: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  icps: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  suggestions: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  productDef: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  benchmarkingRow: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  locationRow: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  marketRow: any,
   ideaId: string,
   aiConfig: AiConfig,
   requestId: string
 ): Promise<{ error?: string }> {
-  const [{ data: reportRow }, { data: benchRow }, { data: pdRow }] = await Promise.all([
-    supabase
-      .from("idea_report" as never)
-      .select("agreed_problem, agreed_solution, recommendation, final_score, threshold_bucket")
-      .eq("idea_id", ideaId)
-      .maybeSingle(),
-    supabase
-      .from("idea_benchmarking" as never)
-      .select("takeaways")
-      .eq("idea_id", ideaId)
-      .maybeSingle(),
-    supabase
-      .from("idea_product_definition_and_flows" as never)
-      .select("summary")
-      .eq("idea_id", ideaId)
-      .maybeSingle(),
+  // ── Phase 1: Build the shared [SOURCE] block for the debate ──────────────────
+  const sourceBlock = `Idea: ${idea.name} — ${stripHtml(idea.description)}
+Success Metrics: ${stripHtml(idea.success_metrics) || "Not defined"}
+Core Problem: ${stripHtml(structureAlign?.core_problem) || "Not defined"}
+Target Audience: ${stripHtml(structureAlign?.target_audience) || "Not defined"}
+Structure Success Metrics: ${stripHtml(structureAlign?.success_metrics) || "Not defined"}
+ICPs:
+${buildIcpsBlock(icps as Array<Record<string, unknown>>)}
+Optimization Suggestions:
+${buildSuggestionsBlock(suggestions as Array<Record<string, unknown>>)}
+Product Definition: ${stripHtml(productDef?.summary) || "Not defined"} / ${stripHtml(productDef?.features) || "Not defined"}
+Benchmarking: ${stripHtml(benchmarkingRow?.overview) || "Not defined"} / ${stripHtml(benchmarkingRow?.comparison) || "Not defined"} / ${stripHtml(benchmarkingRow?.possible_business_models) || "Not defined"} / ${stripHtml(benchmarkingRow?.takeaways) || "Not defined"}
+Location & Legislation:
+${buildLocationBlock(locationRow as Record<string, unknown> | null)}
+Market Opportunity:
+${buildMarketBlock(marketRow as Record<string, unknown> | null)}`;
+
+  // ── Phase 2: Run 2-gate Devil's Advocate debate ───────────────────────────────
+  const [skepticTemplate, advocateTemplate] = await Promise.all([
+    getPromptTemplate("report_skeptic"),
+    getPromptTemplate("report_advocate"),
   ]);
+  const skepticPromptBase = skepticTemplate ?? FALLBACK_SKEPTIC;
+  const advocatePromptBase = advocateTemplate ?? FALLBACK_ADVOCATE;
 
-  const report = reportRow as {
-    agreed_problem: string | null;
-    agreed_solution: string | null;
-    recommendation: string | null;
-    final_score: number | null;
-    threshold_bucket: string | null;
-  } | null;
+  const transcript: IdeaReportDebateTurn[] = [];
 
-  const bench = benchRow as { takeaways: string | null } | null;
-  const pd = pdRow as { summary: string | null } | null;
+  function transcriptText(gate: "problem" | "solution"): string {
+    const lines = transcript
+      .filter((t) => t.gate === gate)
+      .map(
+        (t) =>
+          `[Round ${t.round} — ${t.role.toUpperCase()}]\n${t.content}\nProposed: ${t.proposed_statement}\nAgrees: ${t.agree}`
+      );
+    return lines.length ? lines.join("\n\n") : "(none yet)";
+  }
+
+  async function runGate(
+    gate: "problem" | "solution"
+  ): Promise<{ converged: boolean; agreed_statement: string; rounds: number }> {
+    let skepticStatement = "";
+    let advocateStatement = "";
+    let converged = false;
+
+    for (let round = 1; round <= MAX_ROUNDS_PER_GATE; round++) {
+      const soFar = transcriptText(gate);
+
+      const skepticPrompt = renderPrompt(skepticPromptBase, {
+        source_block: sourceBlock,
+        gate,
+        round: String(round),
+        transcript_so_far: soFar,
+        other_proposed_statement: advocateStatement || "(none yet — first round)",
+      });
+      const skepticRes = await generateAiJsonResponse<DebateTurnOutput>({
+        service: aiConfig.service,
+        apiKey: aiConfig.apiKey,
+        model: aiConfig.model,
+        prompt: skepticPrompt,
+        maxTokens: 4096,
+      });
+      if (skepticRes.returned_an_error || !skepticRes.data) {
+        return { converged: false, agreed_statement: advocateStatement || skepticStatement, rounds: round };
+      }
+      const sk = skepticRes.data;
+      skepticStatement = sk.proposed_statement || skepticStatement;
+      transcript.push({
+        gate,
+        round,
+        role: "skeptic",
+        content: sk.content || "",
+        proposed_statement: skepticStatement,
+        agree: sk.agree,
+      });
+
+      const advocatePrompt = renderPrompt(advocatePromptBase, {
+        source_block: sourceBlock,
+        gate,
+        round: String(round),
+        transcript_so_far: transcriptText(gate),
+        other_proposed_statement: skepticStatement,
+      });
+      const advocateRes = await generateAiJsonResponse<DebateTurnOutput>({
+        service: aiConfig.service,
+        apiKey: aiConfig.apiKey,
+        model: aiConfig.model,
+        prompt: advocatePrompt,
+        maxTokens: 4096,
+      });
+      if (advocateRes.returned_an_error || !advocateRes.data) {
+        return { converged: false, agreed_statement: skepticStatement, rounds: round };
+      }
+      const av = advocateRes.data;
+      advocateStatement = av.proposed_statement || advocateStatement;
+      transcript.push({
+        gate,
+        round,
+        role: "advocate",
+        content: av.content || "",
+        proposed_statement: advocateStatement,
+        agree: av.agree,
+      });
+
+      if (sk.agree === true && av.agree === true) {
+        converged = true;
+        return { converged, agreed_statement: advocateStatement || skepticStatement, rounds: round };
+      }
+    }
+
+    return { converged: false, agreed_statement: advocateStatement || skepticStatement, rounds: MAX_ROUNDS_PER_GATE };
+  }
+
+  const gate1 = await runGate("problem");
+  const agreedProblem = gate1.agreed_statement;
+
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  const gate2 = await runGate("solution");
+  const agreedSolution = gate2.agreed_statement;
+
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  const debateMeta = {
+    problem_rounds: gate1.rounds,
+    solution_rounds: gate2.rounds,
+    problem_converged: gate1.converged,
+    solution_converged: gate2.converged,
+    impasse_note:
+      !gate1.converged || !gate2.converged
+        ? `Debate hit the round cap without full convergence. ${!gate1.converged ? `Problem gate: ${gate1.rounds} rounds, no agreement. ` : ""}${!gate2.converged ? `Solution gate: ${gate2.rounds} rounds, no agreement.` : ""}`
+        : undefined,
+  };
+
+  // ── Phase 4: Generate risk/validation content using debate outcome ────────────
+  // Build a compact debate-context string the demand-evidence prompt can mine:
+  // skeptic challenges, advocate defences, and the agreed conclusion per gate.
+  const debateContext = transcript.length
+    ? transcript
+        .map(
+          (t) =>
+            `[${t.gate.toUpperCase()} · Round ${t.round} · ${t.role === "skeptic" ? "Skeptic challenge" : "Advocate defence"}] ${t.content}`
+        )
+        .join("\n") +
+      `\n\nAgreed Problem: ${agreedProblem || "Not converged"}\nAgreed Solution: ${agreedSolution || "Not converged"}`
+    : "No debate was run.";
 
   const template = (await getPromptTemplate("risk_and_validation")) ?? FALLBACK_RISK_AND_VALIDATION;
   const prompt = renderPrompt(template, {
-    agreed_problem: report?.agreed_problem ?? "Not defined (run Report step first)",
-    agreed_solution: report?.agreed_solution ?? "Not defined (run Report step first)",
-    recommendation: report?.recommendation ?? "Not defined",
-    final_score: String(report?.final_score ?? "n/a"),
-    threshold_bucket: report?.threshold_bucket ?? "n/a",
+    agreed_problem: agreedProblem,
+    agreed_solution: agreedSolution,
+    // Report-step outputs are produced AFTER this step, so they are not yet known.
+    recommendation: "Not yet scored — the Report step runs after Risk & Validation.",
+    final_score: "n/a",
+    threshold_bucket: "n/a",
     location: idea.location || "Not specified",
     jurisdiction: idea.jurisdiction || "Not specified",
-    product_overview: stripHtml(pd?.summary) || "Not defined yet",
-    benchmarking_takeaways: stripHtml(bench?.takeaways) || "Not defined yet",
+    product_overview: stripHtml(productDef?.summary) || "Not defined yet",
+    benchmarking_takeaways: stripHtml(benchmarkingRow?.takeaways) || "Not defined yet",
+    debate_context: debateContext,
   });
 
   const res = await generateAiJsonResponse<RiskAndValidationOutput>({
@@ -4293,20 +4751,29 @@ async function generateRiskAndValidation(
     .maybeSingle();
 
   const payload = {
-    risk_register: d.risk_register ?? null,
-    validation_test: d.validation_test ?? null,
-    why_we_win: d.why_we_win ?? null,
+    risk_register:     d.risk_register ?? null,
+    validation_test:   d.validation_test ?? null,
+    why_we_win:        d.why_we_win ?? null,
+    demand_evidence:   d.demand_evidence ?? null,
+    debate_transcript: transcript,
+    debate_meta:       debateMeta,
+    agreed_problem:    agreedProblem,
+    agreed_solution:   agreedSolution,
   };
 
+  // Surface DB write errors instead of silently swallowing them — a missing
+  // column or constraint must not look like a successful (but empty) generation.
   if (existing) {
-    await supabase
+    const { error: updErr } = await supabase
       .from("idea_risk_and_validation" as never)
       .update(payload as never)
       .eq("id", (existing as { id: string }).id);
+    if (updErr) return { error: updErr.message };
   } else {
-    await supabase
+    const { error: insErr } = await supabase
       .from("idea_risk_and_validation" as never)
       .insert({ idea_id: ideaId, ...payload } as never);
+    if (insErr) return { error: insErr.message };
   }
 
   return {};

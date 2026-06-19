@@ -30,7 +30,9 @@ export default function DailyFeedbackFormModal({
   const isEdit = feedback !== null;
   const [saving, startSave] = useTransition();
 
-  const [date, setDate] = useState<string>(feedback?.date ?? todayIso());
+  const [startDate, setStartDate] = useState<string>(feedback?.start_date ?? feedback?.date ?? todayIso());
+  const [endDate, setEndDate] = useState<string>(feedback?.end_date ?? feedback?.date ?? todayIso());
+  const [totalTime, setTotalTime] = useState<string>(feedback?.total_time != null ? String(feedback.total_time) : "");
 
   const todayRef = useRef<RichTextEditorHandle>(null);
   const tomorrowRef = useRef<RichTextEditorHandle>(null);
@@ -38,12 +40,23 @@ export default function DailyFeedbackFormModal({
   const linksRef = useRef<RichTextEditorHandle>(null);
 
   function handleSave() {
-    if (!date) {
-      alert("Please pick a date.");
+    if (!startDate || !endDate) {
+      alert("Please pick a start and end date.");
+      return;
+    }
+    if (startDate > endDate) {
+      alert("Start date must be on or before end date.");
+      return;
+    }
+    const parsedTotal = totalTime.trim() === "" ? null : Number(totalTime);
+    if (parsedTotal !== null && (Number.isNaN(parsedTotal) || parsedTotal < 0)) {
+      alert("Total time must be a non-negative number.");
       return;
     }
     const payload = {
-      date,
+      start_date:      startDate,
+      end_date:        endDate,
+      total_time:      parsedTotal,
       today_work:      todayRef.current?.getHTML() ?? null,
       tomorrow_work:   tomorrowRef.current?.getHTML() ?? null,
       blockers:        blockersRef.current?.getHTML() ?? null,
@@ -67,7 +80,7 @@ export default function DailyFeedbackFormModal({
       <div className="bg-surface border border-border rounded-lg w-full max-w-4xl flex flex-col max-h-[92vh]">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <h3 className="text-heading-3 text-text-primary">
-            {isEdit ? "Edit daily feedback" : "New daily feedback"}
+            {isEdit ? "Edit work feedback" : "New work feedback"}
           </h3>
           <button
             onClick={onClose}
@@ -90,11 +103,27 @@ export default function DailyFeedbackFormModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <label className="text-xs font-medium text-text-secondary">
-              Date
-            </label>
-            <DatePicker value={date} onChange={setDate} size="compact" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">Start date</label>
+              <DatePicker value={startDate} onChange={setStartDate} size="compact" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">End date</label>
+              <DatePicker value={endDate} onChange={setEndDate} size="compact" minDate={startDate} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">Total time worked (h)</label>
+              <input
+                type="number"
+                min={0}
+                step="0.25"
+                value={totalTime}
+                onChange={(e) => setTotalTime(e.target.value)}
+                placeholder="0"
+                className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

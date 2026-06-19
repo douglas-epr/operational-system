@@ -6,6 +6,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import DOMPurify from "dompurify";
 import type {
   IdeaFull,
   ColorToken,
@@ -20,6 +21,7 @@ import RichTextEditor from "./RichTextEditor";
 import { useRegenerate } from "../_hooks/useRegenerate";
 import { createPortal } from "react-dom";
 import { useStepActions } from "../_context/StepActionsContext";
+import LogoPickerModal from "./LogoPickerModal";
 
 interface VisualStylesStepProps {
   ideaFull: IdeaFull;
@@ -44,6 +46,9 @@ export default function VisualStylesStep({ ideaFull }: VisualStylesStepProps) {
   const [neutralColor, setNeutralColor] = useState(styles?.neutral_color ?? "#6B7280");
 
   const [isSaving, setIsSaving] = useState(false);
+  const [showLogoPicker, setShowLogoPicker] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(styles?.logo_url ?? null);
+  const [logoSvg, setLogoSvg] = useState<string | null>(styles?.logo_svg ?? null);
   const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "visual_styles", isAiWorking);
 
   useEffect(() => {
@@ -57,6 +62,8 @@ export default function VisualStylesStep({ ideaFull }: VisualStylesStepProps) {
     setSecondaryColor(styles?.secondary_color ?? "#8B5CF6");
     setAccentColor(styles?.accent_color ?? "#10B981");
     setNeutralColor(styles?.neutral_color ?? "#6B7280");
+    setLogoUrl(styles?.logo_url ?? null);
+    setLogoSvg(styles?.logo_svg ?? null);
   }, [styles]);
 
   const { actionBarEl, onOpenAiConfig } = useStepActions();
@@ -100,7 +107,51 @@ export default function VisualStylesStep({ ideaFull }: VisualStylesStepProps) {
   const shadows = styles?.shadows as ShadowToken[] | null;
 
   return (
+    <>
+    <LogoPickerModal
+      ideaId={idea.id}
+      open={showLogoPicker}
+      onClose={() => setShowLogoPicker(false)}
+      onLogoSaved={(data) => {
+        setLogoUrl(data.logo_url);
+        setLogoSvg(data.logo_svg);
+      }}
+    />
     <div className="space-y-8">
+      {/* ── Logo Preview ──────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-4 p-4 rounded-lg border border-border bg-elevated">
+        {logoUrl ? (
+          logoSvg ? (
+            <div
+              className="w-16 h-16 rounded-md border border-border bg-white flex items-center justify-center overflow-hidden shrink-0"
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(logoSvg, { USE_PROFILES: { svg: true, svgFilters: true } }) }}
+            />
+          ) : (
+            <img src={logoUrl} alt="Brand logo" className="w-16 h-16 rounded-md border border-border object-contain bg-white shrink-0" />
+          )
+        ) : (
+          <div className="w-16 h-16 rounded-md border-2 border-dashed border-border bg-muted flex items-center justify-center shrink-0">
+            <span className="text-xs text-text-muted text-center">No logo</span>
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-text-primary">
+            {logoUrl ? "Brand Logo" : "No logo set"}
+          </p>
+          <p className="text-xs text-text-muted mt-0.5">
+            {logoUrl
+              ? "Colors will be derived from this logo when you generate the Design System."
+              : "Set a logo first — all Design System colors will be derived from it."}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowLogoPicker(true)}
+          className="shrink-0 px-3 py-1.5 rounded-md text-sm font-medium border border-border text-text-secondary hover:text-text-primary hover:bg-muted transition-colors"
+        >
+          {logoUrl ? "Change Logo" : "Set Logo"}
+        </button>
+      </div>
+
       {/* ── Section 1: Brand Identity ──────────────────────────────────────── */}
       <Section title="Brand Identity">
         <Field label="Logo & Branding">
@@ -353,6 +404,7 @@ export default function VisualStylesStep({ ideaFull }: VisualStylesStepProps) {
         actionBarEl
       )}
     </div>
+    </>
   );
 }
 

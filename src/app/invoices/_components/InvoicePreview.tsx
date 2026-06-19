@@ -24,6 +24,20 @@ export default function InvoicePreview({ invoice, onClose }: Props) {
     year: "numeric", month: "short", day: "numeric",
   });
 
+  // Prefer the merged account-details field; fall back to legacy swift/iban.
+  const legacyPayment = [
+    invoice.swift_code ? `SWIFT / BIC: ${invoice.swift_code}` : null,
+    invoice.iban_code ? `IBAN: ${invoice.iban_code}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const paymentDetails = invoice.account_details || legacyPayment;
+
+  const periodLabel =
+    invoice.start_date && invoice.end_date
+      ? `${formatDate(invoice.start_date)} – ${formatDate(invoice.end_date)}`
+      : null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 invoice-preview-backdrop"
@@ -106,6 +120,13 @@ export default function InvoicePreview({ invoice, onClose }: Props) {
                 <div className="px-4 py-3 grid grid-cols-[1fr_140px]">
                   <div>
                     <p className="text-sm font-semibold text-neutral-900">{invoice.service_title ?? "—"}</p>
+                    {(periodLabel || invoice.total_time != null) && (
+                      <p className="text-[11px] text-neutral-500 mt-0.5">
+                        {periodLabel}
+                        {periodLabel && invoice.total_time != null ? " · " : ""}
+                        {invoice.total_time != null ? `${invoice.total_time}h worked` : ""}
+                      </p>
+                    )}
                     {invoice.service_description && (
                       <p className="text-xs text-neutral-600 mt-1 whitespace-pre-line">{invoice.service_description}</p>
                     )}
@@ -119,13 +140,10 @@ export default function InvoicePreview({ invoice, onClose }: Props) {
               </div>
             </div>
 
-            {(invoice.swift_code || invoice.iban_code) && (
+            {paymentDetails && (
               <div className="mt-8">
                 <p className="text-[10px] uppercase tracking-widest text-neutral-500 mb-1">Payment details</p>
-                <div className="grid grid-cols-2 gap-6 text-xs text-neutral-700">
-                  {invoice.swift_code && <p><span className="font-semibold">SWIFT / BIC: </span>{invoice.swift_code}</p>}
-                  {invoice.iban_code && <p><span className="font-semibold">IBAN: </span>{invoice.iban_code}</p>}
-                </div>
+                <p className="text-xs text-neutral-700 whitespace-pre-line">{paymentDetails}</p>
               </div>
             )}
 

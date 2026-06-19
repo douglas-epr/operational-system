@@ -715,16 +715,25 @@ function FeedbackModal({
 }) {
   const isEdit = feedback !== null;
   const [saving, startSave] = useTransition();
-  const [date, setDate] = useState(feedback?.date ?? new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState(feedback?.start_date ?? feedback?.date ?? new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState(feedback?.end_date ?? feedback?.date ?? new Date().toISOString().slice(0, 10));
+  const [totalTime, setTotalTime] = useState<string>(feedback?.total_time != null ? String(feedback.total_time) : "");
   const todayRef = useRef<RichTextEditorHandle>(null);
   const tomorrowRef = useRef<RichTextEditorHandle>(null);
   const blockersRef = useRef<RichTextEditorHandle>(null);
   const linksRef = useRef<RichTextEditorHandle>(null);
 
   function handleSave() {
-    if (!date) { alert("Please pick a date."); return; }
+    if (!startDate || !endDate) { alert("Please pick a start and end date."); return; }
+    if (startDate > endDate) { alert("Start date must be on or before end date."); return; }
+    const parsedTotal = totalTime.trim() === "" ? null : Number(totalTime);
+    if (parsedTotal !== null && (Number.isNaN(parsedTotal) || parsedTotal < 0)) {
+      alert("Total time must be a non-negative number."); return;
+    }
     const payload = {
-      date,
+      start_date: startDate,
+      end_date: endDate,
+      total_time: parsedTotal,
       today_work: todayRef.current?.getHTML() ?? null,
       tomorrow_work: tomorrowRef.current?.getHTML() ?? null,
       blockers: blockersRef.current?.getHTML() ?? null,
@@ -748,18 +757,36 @@ function FeedbackModal({
   ];
 
   return (
-    <ModalShell title={isEdit ? "Edit daily feedback" : "New daily feedback"} wide onClose={onClose}>
+    <ModalShell title={isEdit ? "Edit work feedback" : "New work feedback"} wide onClose={onClose}>
       <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-medium text-text-secondary">Date</label>
-          <DatePicker value={date} onChange={setDate} size="compact" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">Start date</label>
+            <DatePicker value={startDate} onChange={setStartDate} size="compact" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">End date</label>
+            <DatePicker value={endDate} onChange={setEndDate} size="compact" minDate={startDate} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">Total time worked (h)</label>
+            <input
+              type="number"
+              min={0}
+              step="0.25"
+              value={totalTime}
+              onChange={(e) => setTotalTime(e.target.value)}
+              placeholder="0"
+              className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+            />
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {fields.map(({ label, ref, html }) => (
             <div key={label} className="flex flex-col gap-1">
               <label className="text-[11px] font-medium uppercase tracking-wider text-text-muted">{label}</label>
-              <div className="border border-border rounded-md overflow-hidden bg-muted/30 h-[180px]">
-                <RichTextEditor ref={ref} initialHtml={html} hideFooter />
+              <div className="border border-border rounded-md overflow-y-auto bg-muted/30 max-h-[360px]">
+                <RichTextEditor ref={ref} initialHtml={html} hideFooter autoHeight />
               </div>
             </div>
           ))}
@@ -791,7 +818,7 @@ function FeedbackContent({
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-        <h3 className="text-heading-3 text-text-primary">Daily Feedback</h3>
+        <h3 className="text-heading-3 text-text-primary">Work Feedback</h3>
         {isAdminOrManager && (
           <button
             onClick={() => { setEditing(null); setModalOpen(true); }}
@@ -810,12 +837,13 @@ function FeedbackContent({
               const owner = profiles.find((p) => p.id === f.created_by);
               const name = owner ? [owner.first_name, owner.last_name].filter(Boolean).join(" ") || "?" : "?";
               const canEdit = isAdminOrManager || f.created_by === currentUserId;
-              const dateDisplay = new Date(`${f.date}T00:00:00`).toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
+              const fmt = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString("en-US", {
+                year: "numeric", month: "long", day: "numeric",
               });
+              const dateDisplay =
+                f.start_date && f.end_date
+                  ? `${fmt(f.start_date)} → ${fmt(f.end_date)}`
+                  : fmt(f.start_date ?? f.date);
               return (
                 <li key={f.id} className="bg-surface border border-border rounded-lg overflow-hidden">
                   <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-muted/30">
@@ -829,7 +857,10 @@ function FeedbackContent({
                         )}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-text-primary truncate">{dateDisplay}</p>
+                        <p className="text-sm font-medium text-text-primary truncate">
+                          {dateDisplay}
+                          {f.total_time != null ? ` · ${f.total_time}h` : ""}
+                        </p>
                         <p className="text-[11px] text-text-muted truncate">
                           {name}{f.updated_at && f.updated_at !== f.created_at ? " · edited" : ""}
                         </p>
@@ -842,7 +873,7 @@ function FeedbackContent({
                         </button>
                         <button
                           onClick={async () => {
-                            if (!confirm(`Delete feedback for ${f.date}?`)) return;
+                            if (!confirm("Delete this work feedback?")) return;
                             const res = await deleteInternalProjectDailyFeedback(f.id);
                             if (res.error) { alert(res.error); return; }
                             onRefresh();

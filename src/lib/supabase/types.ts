@@ -1959,16 +1959,19 @@ export type Database = {
           },
         ]
       }
-      internal_project_daily_feedback: {
+      internal_project_work_feedback: {
         Row: {
           blockers: string | null
           created_at: string
           created_by: string
           date: string
+          end_date: string | null
           id: string
           internal_project_id: string
+          start_date: string | null
           today_work: string | null
           tomorrow_work: string | null
+          total_time: number | null
           updated_at: string
           video_and_links: string | null
         }
@@ -1977,10 +1980,13 @@ export type Database = {
           created_at?: string
           created_by: string
           date: string
+          end_date?: string | null
           id?: string
           internal_project_id: string
+          start_date?: string | null
           today_work?: string | null
           tomorrow_work?: string | null
+          total_time?: number | null
           updated_at?: string
           video_and_links?: string | null
         }
@@ -1989,10 +1995,13 @@ export type Database = {
           created_at?: string
           created_by?: string
           date?: string
+          end_date?: string | null
           id?: string
           internal_project_id?: string
+          start_date?: string | null
           today_work?: string | null
           tomorrow_work?: string | null
+          total_time?: number | null
           updated_at?: string
           video_and_links?: string | null
         }
@@ -2374,6 +2383,7 @@ export type Database = {
       }
       invoice: {
         Row: {
+          account_details: string | null
           address: string | null
           client_name: string | null
           code: string
@@ -2383,16 +2393,20 @@ export type Database = {
           document_number: string | null
           due_date: string | null
           email: string | null
+          end_date: string | null
           iban_code: string | null
           id: string
           phone: string | null
           service_description: string | null
           service_price: number | null
           service_title: string | null
+          start_date: string | null
           swift_code: string | null
+          total_time: number | null
           updated_at: string
         }
         Insert: {
+          account_details?: string | null
           address?: string | null
           client_name?: string | null
           code: string
@@ -2402,16 +2416,20 @@ export type Database = {
           document_number?: string | null
           due_date?: string | null
           email?: string | null
+          end_date?: string | null
           iban_code?: string | null
           id?: string
           phone?: string | null
           service_description?: string | null
           service_price?: number | null
           service_title?: string | null
+          start_date?: string | null
           swift_code?: string | null
+          total_time?: number | null
           updated_at?: string
         }
         Update: {
+          account_details?: string | null
           address?: string | null
           client_name?: string | null
           code?: string
@@ -2421,13 +2439,16 @@ export type Database = {
           document_number?: string | null
           due_date?: string | null
           email?: string | null
+          end_date?: string | null
           iban_code?: string | null
           id?: string
           phone?: string | null
           service_description?: string | null
           service_price?: number | null
           service_title?: string | null
+          start_date?: string | null
           swift_code?: string | null
+          total_time?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -3570,16 +3591,19 @@ export type Database = {
           },
         ]
       }
-      project_daily_feedback: {
+      project_work_feedback: {
         Row: {
           blockers: string | null
           created_at: string
           created_by: string
           date: string
+          end_date: string | null
           id: string
           project_id: string | null
+          start_date: string | null
           today_work: string | null
           tomorrow_work: string | null
+          total_time: number | null
           updated_at: string
           video_and_links: string | null
         }
@@ -3588,10 +3612,13 @@ export type Database = {
           created_at?: string
           created_by: string
           date: string
+          end_date?: string | null
           id?: string
           project_id?: string | null
+          start_date?: string | null
           today_work?: string | null
           tomorrow_work?: string | null
+          total_time?: number | null
           updated_at: string
           video_and_links?: string | null
         }
@@ -3600,10 +3627,13 @@ export type Database = {
           created_at?: string
           created_by?: string
           date?: string
+          end_date?: string | null
           id?: string
           project_id?: string | null
+          start_date?: string | null
           today_work?: string | null
           tomorrow_work?: string | null
+          total_time?: number | null
           updated_at?: string
           video_and_links?: string | null
         }
