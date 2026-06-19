@@ -231,9 +231,10 @@ export async function deleteIdea(id: string): Promise<{ error?: string }> {
 }
 
 /**
- * Create a new project from an idea and advance the idea's stage to
- * "validating_market_and_building_product". Both operations succeed or the
- * caller gets an error — the project is not created if the stage update fails.
+ * Create a new project from an idea and link the idea to it via project_id.
+ * The new project inherits the idea's authorized_users (so the same people
+ * have access), unioned with the creator. The legacy `stage` column was
+ * dropped (migration 20260617000000_drop_idea_stage), so we only set project_id.
  */
 export async function buildProjectFromIdea(
   ideaId: string
@@ -244,10 +245,18 @@ export async function buildProjectFromIdea(
 
   const { data: idea, error: ideaErr } = await supabase
     .from("idea")
-    .select("name")
+    .select("name, authorized_users")
     .eq("id", ideaId)
     .single();
   if (ideaErr || !idea) return { error: ideaErr?.message ?? "Idea not found" };
+
+  // Carry the idea's members over to the new project so the same people have
+  // access. Union the creator so whoever builds the project keeps access even
+  // if they were not already in the idea's authorized_users list.
+  const ideaUsers = Array.isArray((idea as { authorized_users?: string[] }).authorized_users)
+    ? ((idea as { authorized_users?: string[] }).authorized_users as string[])
+    : [];
+  const projectAuthorizedUsers = Array.from(new Set([...ideaUsers, user.id]));
 
   const { data: project, error: projectErr } = await supabase
     .from("project")
@@ -255,6 +264,7 @@ export async function buildProjectFromIdea(
       name: idea.name,
       status: "not_started",
       created_by: user.id,
+      authorized_users: projectAuthorizedUsers,
       change_automatically_project_estimated_time: true,
       change_automatically_milestone_estimated_time: true,
       change_automatically_project_start_end_dates: true,
@@ -264,12 +274,11 @@ export async function buildProjectFromIdea(
     .single();
   if (projectErr) return { error: projectErr.message };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error: stageErr } = await (supabase as any)
+  const { error: linkErr } = await supabase
     .from("idea")
-    .update({ stage: "validating_market_and_building_product", project_id: project.id })
+    .update({ project_id: project.id })
     .eq("id", ideaId);
-  if (stageErr) return { error: (stageErr as { message: string }).message };
+  if (linkErr) return { error: linkErr.message };
 
   revalidatePath(PATH);
   revalidatePath("/projects");

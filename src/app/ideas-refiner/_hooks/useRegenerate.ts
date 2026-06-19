@@ -10,16 +10,18 @@
  */
 
 import { useState, useEffect, useRef } from "react";
-import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 import type { IdeaBlock } from "@/types/idea-refiner";
-import { runAiWithTimeout, TIMEOUT_TOAST_ID } from "./useAiWithTimeout";
+import { runAiWithTimeout } from "./useAiWithTimeout";
 import { clearAutoTriggerGuard } from "./useAutoTriggerAi";
+import { clearAiWorking } from "../actions";
 
 export function useRegenerate(
   ideaId: string,
   step: IdeaBlock,
   isAiWorking: boolean,
 ) {
+  const router = useRouter();
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Tracks that isAiWorking was seen as true during this regeneration cycle,
@@ -34,8 +36,6 @@ export function useRegenerate(
     if (!isAiWorking && hadAiWorkingRef.current && isRegenerating) {
       hadAiWorkingRef.current = false;
       setIsRegenerating(false);
-      // AI completed via Realtime — dismiss any stale timeout toast
-      toast.dismiss(TIMEOUT_TOAST_ID);
     }
   }, [isAiWorking, isRegenerating]);
 
@@ -58,7 +58,15 @@ export function useRegenerate(
     });
     // Fallback: clear if Realtime didn't already do so.
     setIsRegenerating(false);
-    if (result.error) setError(result.error);
+    if (result.error) {
+      // A genuine AI API error (timeouts no longer surface an error). Show the
+      // inline message AND force the loading overlay to disappear: clear the
+      // server `current_blocks_updating` flag and refresh so `isAiWorking`
+      // recomputes to false even if the server clear / Realtime event lagged.
+      setError(result.error);
+      await clearAiWorking(ideaId);
+      router.refresh();
+    }
   }
 
   return { isRegenerating, error, setError, triggerRegenerate };

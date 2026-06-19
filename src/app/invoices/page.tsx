@@ -21,7 +21,7 @@ export default async function InvoicesPage() {
 
   const { data: rows } = await supabase
     .from("invoice")
-    .select("id, created_by, code, company_or_user_name, document_number, address, phone, email, client_name, service_price, due_date, service_title, service_description, account_details, currency, start_date, end_date, total_time, swift_code, iban_code, created_at, updated_at")
+    .select("id, created_by, code, company_or_user_name, document_number, address, phone, email, client_name, service_price, due_date, service_title, service_description, account_details, currency, start_date, end_date, total_time, swift_code, iban_code, emails, created_at, updated_at")
     .order("created_at", { ascending: false });
 
   const invoices = ((rows ?? []) as unknown as (Omit<Invoice, "service_price"> & { service_price: number | string | null })[])

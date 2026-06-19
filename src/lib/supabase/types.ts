@@ -1966,6 +1966,7 @@ export type Database = {
           created_by: string
           current_work: string | null
           date: string
+          emails: string[]
           end_date: string | null
           id: string
           internal_project_id: string
@@ -1981,6 +1982,7 @@ export type Database = {
           created_by: string
           current_work?: string | null
           date: string
+          emails?: string[]
           end_date?: string | null
           id?: string
           internal_project_id: string
@@ -1996,6 +1998,7 @@ export type Database = {
           created_by?: string
           current_work?: string | null
           date?: string
+          emails?: string[]
           end_date?: string | null
           id?: string
           internal_project_id?: string
@@ -2027,6 +2030,7 @@ export type Database = {
           attachments: Json
           created_at: string
           created_by: string
+          description: string | null
           id: string
           internal_project_id: string
           name: string
@@ -2036,6 +2040,7 @@ export type Database = {
           attachments?: Json
           created_at?: string
           created_by: string
+          description?: string | null
           id?: string
           internal_project_id: string
           name: string
@@ -2045,6 +2050,7 @@ export type Database = {
           attachments?: Json
           created_at?: string
           created_by?: string
+          description?: string | null
           id?: string
           internal_project_id?: string
           name?: string
@@ -2071,6 +2077,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          description: string | null
           id: string
           internal_project_id: string
           name: string
@@ -2080,6 +2087,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
+          description?: string | null
           id?: string
           internal_project_id: string
           name: string
@@ -2089,6 +2097,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
+          description?: string | null
           id?: string
           internal_project_id?: string
           name?: string
@@ -2340,6 +2349,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          description: string | null
           id: string
           internal_project_id: string
           name: string | null
@@ -2349,6 +2359,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
+          description?: string | null
           id?: string
           internal_project_id: string
           name?: string | null
@@ -2358,6 +2369,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
+          description?: string | null
           id?: string
           internal_project_id?: string
           name?: string | null
@@ -2394,6 +2406,7 @@ export type Database = {
           document_number: string | null
           due_date: string | null
           email: string | null
+          emails: string[]
           end_date: string | null
           iban_code: string | null
           id: string
@@ -2418,6 +2431,7 @@ export type Database = {
           document_number?: string | null
           due_date?: string | null
           email?: string | null
+          emails?: string[]
           end_date?: string | null
           iban_code?: string | null
           id?: string
@@ -2442,6 +2456,7 @@ export type Database = {
           document_number?: string | null
           due_date?: string | null
           email?: string | null
+          emails?: string[]
           end_date?: string | null
           iban_code?: string | null
           id?: string
@@ -3601,6 +3616,7 @@ export type Database = {
           created_by: string
           current_work: string | null
           date: string
+          emails: string[]
           end_date: string | null
           id: string
           next_work: string | null
@@ -3616,6 +3632,7 @@ export type Database = {
           created_by: string
           current_work?: string | null
           date: string
+          emails?: string[]
           end_date?: string | null
           id?: string
           next_work?: string | null
@@ -3631,6 +3648,7 @@ export type Database = {
           created_by?: string
           current_work?: string | null
           date?: string
+          emails?: string[]
           end_date?: string | null
           id?: string
           next_work?: string | null
@@ -3662,6 +3680,7 @@ export type Database = {
           attachments: Json
           created_at: string
           created_by: string
+          description: string | null
           id: string
           name: string
           project_id: string
@@ -3671,6 +3690,7 @@ export type Database = {
           attachments?: Json
           created_at?: string
           created_by: string
+          description?: string | null
           id?: string
           name: string
           project_id: string
@@ -3680,6 +3700,7 @@ export type Database = {
           attachments?: Json
           created_at?: string
           created_by?: string
+          description?: string | null
           id?: string
           name?: string
           project_id?: string
@@ -3757,6 +3778,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          description: string | null
           id: string
           name: string
           project_id: string
@@ -3766,6 +3788,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
+          description?: string | null
           id?: string
           name: string
           project_id: string
@@ -3775,6 +3798,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
+          description?: string | null
           id?: string
           name?: string
           project_id?: string
@@ -4031,6 +4055,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string
+          description: string | null
           id: string
           name: string | null
           project_id: string | null
@@ -4040,6 +4065,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by: string
+          description?: string | null
           id?: string
           name?: string | null
           project_id?: string | null
@@ -4049,6 +4075,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string
+          description?: string | null
           id?: string
           name?: string | null
           project_id?: string | null

@@ -146,6 +146,7 @@ export interface ProjectFile {
   id: string;
   project_id: string;
   name: string;
+  description: string | null;
   attachments: DocsAttachment[];
   created_by: string;
   created_at: string;
@@ -156,6 +157,7 @@ export interface ProjectLink {
   id: string;
   project_id: string;
   name: string;
+  description: string | null;
   url: string;
   created_by: string;
   created_at: string;
@@ -166,6 +168,7 @@ export interface ProjectVideo {
   id: string;
   project_id: string | null;
   name: string | null;
+  description: string | null;
   url: string | null;
   created_by: string;
   created_at: string;
@@ -184,6 +187,7 @@ export interface ProjectDailyFeedback {
   next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
+  emails: string[];
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -193,6 +197,7 @@ export interface InternalProjectFile {
   id: string;
   internal_project_id: string;
   name: string;
+  description: string | null;
   attachments: DocsAttachment[];
   created_by: string;
   created_at: string;
@@ -203,6 +208,7 @@ export interface InternalProjectLink {
   id: string;
   internal_project_id: string;
   name: string;
+  description: string | null;
   url: string;
   created_by: string;
   created_at: string;
@@ -213,6 +219,7 @@ export interface InternalProjectVideo {
   id: string;
   internal_project_id: string | null;
   name: string | null;
+  description: string | null;
   url: string | null;
   created_by: string;
   created_at: string;
@@ -231,6 +238,7 @@ export interface InternalProjectDailyFeedback {
   next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
+  emails: string[];
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -255,6 +263,7 @@ export interface Invoice {
   start_date: string | null;         // ISO yyyy-mm-dd — work period start
   end_date: string | null;           // ISO yyyy-mm-dd — work period end
   total_time: number | null;         // total hours worked in the interval
+  emails: string[];                  // recipients notified with the invoice PDF on save
   swift_code: string | null;         // legacy — no longer edited in the form
   iban_code: string | null;          // legacy — no longer edited in the form
   created_at: string;

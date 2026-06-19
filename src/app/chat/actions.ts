@@ -15,6 +15,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { sendFeedbackEmails } from "@/lib/notifications/feedbackEmail";
 import {
   BLOCK_TABLES,
   CHAT_ALLOWED_ROLES,
@@ -1188,7 +1189,7 @@ export async function getProjectFiles(projectId: string): Promise<ProjectFile[]>
   if ("error" in ctx) return [];
   const { data } = await ctx.supabase
     .from("project_file")
-    .select("id, project_id, name, attachments, created_by, created_at, updated_at")
+    .select("id, project_id, name, description, attachments, created_by, created_at, updated_at")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
   return ((data ?? []) as unknown as Array<
@@ -1204,7 +1205,7 @@ export async function getProjectLinks(projectId: string): Promise<ProjectLink[]>
   if ("error" in ctx) return [];
   const { data } = await ctx.supabase
     .from("project_link")
-    .select("id, project_id, name, url, created_by, created_at, updated_at")
+    .select("id, project_id, name, description, url, created_by, created_at, updated_at")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
   return (data ?? []) as unknown as ProjectLink[];
@@ -1215,7 +1216,7 @@ export async function getProjectVideos(projectId: string): Promise<ProjectVideo[
   if ("error" in ctx) return [];
   const { data } = await ctx.supabase
     .from("project_video")
-    .select("id, project_id, name, url, created_by, created_at, updated_at")
+    .select("id, project_id, name, description, url, created_by, created_at, updated_at")
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
   return (data ?? []) as unknown as ProjectVideo[];
@@ -1229,7 +1230,7 @@ export async function getProjectDailyFeedbacks(
   const { data } = await ctx.supabase
     .from("project_work_feedback")
     .select(
-      "id, project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, created_by, created_at, updated_at"
+      "id, project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, emails, created_by, created_at, updated_at"
     )
     .eq("project_id", projectId)
     .order("date", { ascending: false });
@@ -1547,7 +1548,7 @@ export async function getInternalProjectFiles(internalProjectId: string): Promis
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (ctx.supabase as any)
     .from("internal_project_file")
-    .select("id, internal_project_id, name, attachments, created_by, created_at, updated_at")
+    .select("id, internal_project_id, name, description, attachments, created_by, created_at, updated_at")
     .eq("internal_project_id", internalProjectId)
     .order("created_at", { ascending: false });
   return ((data ?? []) as unknown as Array<Omit<InternalProjectFile, "attachments"> & { attachments: unknown }>).map((f) => ({
@@ -1559,6 +1560,7 @@ export async function getInternalProjectFiles(internalProjectId: string): Promis
 export async function createInternalProjectFile(input: {
   internalProjectId: string;
   name: string;
+  description?: string | null;
   attachments: DocsAttachment[];
 }): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
@@ -1566,7 +1568,7 @@ export async function createInternalProjectFile(input: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (ctx.supabase as any)
     .from("internal_project_file")
-    .insert({ internal_project_id: input.internalProjectId, name: input.name, attachments: input.attachments, created_by: ctx.userId });
+    .insert({ internal_project_id: input.internalProjectId, name: input.name, description: input.description ?? null, attachments: input.attachments, created_by: ctx.userId });
   if (error) return { error: error.message };
   revalidatePath("/chat");
   return {};
@@ -1574,14 +1576,14 @@ export async function createInternalProjectFile(input: {
 
 export async function updateInternalProjectFile(
   id: string,
-  input: { name: string; attachments: DocsAttachment[] }
+  input: { name: string; description?: string | null; attachments: DocsAttachment[] }
 ): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
   if ("error" in ctx) return { error: ctx.error };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (ctx.supabase as any)
     .from("internal_project_file")
-    .update({ name: input.name, attachments: input.attachments })
+    .update({ name: input.name, description: input.description ?? null, attachments: input.attachments })
     .eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/chat");
@@ -1604,7 +1606,7 @@ export async function getInternalProjectLinks(internalProjectId: string): Promis
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (ctx.supabase as any)
     .from("internal_project_link")
-    .select("id, internal_project_id, name, url, created_by, created_at, updated_at")
+    .select("id, internal_project_id, name, description, url, created_by, created_at, updated_at")
     .eq("internal_project_id", internalProjectId)
     .order("created_at", { ascending: false });
   return (data ?? []) as unknown as InternalProjectLink[];
@@ -1613,6 +1615,7 @@ export async function getInternalProjectLinks(internalProjectId: string): Promis
 export async function createInternalProjectLink(input: {
   internalProjectId: string;
   name: string;
+  description?: string | null;
   url: string;
 }): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
@@ -1620,7 +1623,7 @@ export async function createInternalProjectLink(input: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (ctx.supabase as any)
     .from("internal_project_link")
-    .insert({ internal_project_id: input.internalProjectId, name: input.name, url: input.url, created_by: ctx.userId });
+    .insert({ internal_project_id: input.internalProjectId, name: input.name, description: input.description ?? null, url: input.url, created_by: ctx.userId });
   if (error) return { error: error.message };
   revalidatePath("/chat");
   return {};
@@ -1628,14 +1631,14 @@ export async function createInternalProjectLink(input: {
 
 export async function updateInternalProjectLink(
   id: string,
-  input: { name: string; url: string }
+  input: { name: string; description?: string | null; url: string }
 ): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
   if ("error" in ctx) return { error: ctx.error };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (ctx.supabase as any)
     .from("internal_project_link")
-    .update({ name: input.name, url: input.url })
+    .update({ name: input.name, description: input.description ?? null, url: input.url })
     .eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/chat");
@@ -1658,7 +1661,7 @@ export async function getInternalProjectVideos(internalProjectId: string): Promi
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (ctx.supabase as any)
     .from("internal_project_video")
-    .select("id, internal_project_id, name, url, created_by, created_at, updated_at")
+    .select("id, internal_project_id, name, description, url, created_by, created_at, updated_at")
     .eq("internal_project_id", internalProjectId)
     .order("created_at", { ascending: false });
   return (data ?? []) as unknown as InternalProjectVideo[];
@@ -1667,6 +1670,7 @@ export async function getInternalProjectVideos(internalProjectId: string): Promi
 export async function createInternalProjectVideo(input: {
   internalProjectId: string;
   name: string;
+  description?: string | null;
   url: string;
 }): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
@@ -1674,7 +1678,7 @@ export async function createInternalProjectVideo(input: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (ctx.supabase as any)
     .from("internal_project_video")
-    .insert({ internal_project_id: input.internalProjectId, name: input.name, url: input.url, created_by: ctx.userId });
+    .insert({ internal_project_id: input.internalProjectId, name: input.name, description: input.description ?? null, url: input.url, created_by: ctx.userId });
   if (error) return { error: error.message };
   revalidatePath("/chat");
   return {};
@@ -1682,14 +1686,14 @@ export async function createInternalProjectVideo(input: {
 
 export async function updateInternalProjectVideo(
   id: string,
-  input: { name: string; url: string }
+  input: { name: string; description?: string | null; url: string }
 ): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
   if ("error" in ctx) return { error: ctx.error };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (ctx.supabase as any)
     .from("internal_project_video")
-    .update({ name: input.name, url: input.url })
+    .update({ name: input.name, description: input.description ?? null, url: input.url })
     .eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/chat");
@@ -1712,7 +1716,7 @@ export async function getInternalProjectDailyFeedbacks(internalProjectId: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (ctx.supabase as any)
     .from("internal_project_work_feedback")
-    .select("id, internal_project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, created_by, created_at, updated_at")
+    .select("id, internal_project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, emails, created_by, created_at, updated_at")
     .eq("internal_project_id", internalProjectId)
     .order("date", { ascending: false });
   return (data ?? []) as unknown as InternalProjectDailyFeedback[];
@@ -1757,16 +1761,19 @@ export async function createInternalProjectDailyFeedback(input: {
   next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
+  emails?: string[];
 }): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
   if ("error" in ctx) return { error: ctx.error };
-  const { internalProjectId, ...rest } = input;
+  const { internalProjectId, emails: rawEmails, ...rest } = input;
+  const emails = (rawEmails ?? []).map((e) => e.trim()).filter(Boolean);
   // Legacy NOT NULL `date` mirrors the work-period start.
   const legacyDate = input.start_date ?? new Date().toISOString().slice(0, 10);
+  const messageHtml = buildInternalFeedbackMessage({ ...input, date: legacyDate });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (ctx.supabase as any)
     .from("internal_project_work_feedback")
-    .insert({ internal_project_id: internalProjectId, created_by: ctx.userId, date: legacyDate, ...rest })
+    .insert({ internal_project_id: internalProjectId, created_by: ctx.userId, date: legacyDate, emails, ...rest })
     .select("id")
     .single();
   if (error) return { error: error.message };
@@ -1781,7 +1788,7 @@ export async function createInternalProjectDailyFeedback(input: {
         internal_project_id: internalProjectId,
         created_by:          ctx.userId,
         author_type:         "user",
-        message:             buildInternalFeedbackMessage({ ...input, date: legacyDate }),
+        message:             messageHtml,
         attachments:         [],
         links:               [],
       })
@@ -1795,6 +1802,15 @@ export async function createInternalProjectDailyFeedback(input: {
         .eq("id", data.id);
     }
   }
+
+  // Notify the chosen recipients by email (best-effort; never fails the save).
+  await sendFeedbackEmails(
+    emails,
+    messageHtml,
+    input.start_date && input.end_date
+      ? `${input.start_date} → ${input.end_date}`
+      : input.start_date ?? legacyDate
+  );
 
   revalidatePath("/chat");
   return {};
@@ -1810,12 +1826,18 @@ export async function updateInternalProjectDailyFeedback(
     next_work: string | null;
     blockers: string | null;
     video_and_links: string | null;
+    emails?: string[];
   }
 ): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
   if ("error" in ctx) return { error: ctx.error };
+  const emails = input.emails !== undefined
+    ? input.emails.map((e) => e.trim()).filter(Boolean)
+    : undefined;
   // Keep the legacy `date` column aligned with the work-period start.
   const updates: Record<string, unknown> = { ...input };
+  if (emails !== undefined) updates.emails = emails;
+  else delete updates.emails;
   if (input.start_date) updates.date = input.start_date;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (ctx.supabase as any)
@@ -1831,13 +1853,25 @@ export async function updateInternalProjectDailyFeedback(
     .select("date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, conversation_internal_project_message_id")
     .eq("id", id)
     .single();
-  if (fb?.conversation_internal_project_message_id) {
+  const messageHtml = fb ? buildInternalFeedbackMessage(fb) : null;
+  if (fb?.conversation_internal_project_message_id && messageHtml) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const svc = createServiceClient() as any;
     await svc
       .from("conversation_internal_project_message")
-      .update({ message: buildInternalFeedbackMessage(fb) })
+      .update({ message: messageHtml })
       .eq("id", fb.conversation_internal_project_message_id);
+  }
+
+  // Notify the chosen recipients by email (best-effort; never fails the save).
+  if (emails && emails.length > 0 && messageHtml) {
+    await sendFeedbackEmails(
+      emails,
+      messageHtml,
+      fb.start_date && fb.end_date
+        ? `${fb.start_date} → ${fb.end_date}`
+        : fb.start_date ?? fb.date
+    );
   }
 
   revalidatePath("/chat");

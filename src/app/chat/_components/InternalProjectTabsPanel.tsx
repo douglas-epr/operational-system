@@ -12,6 +12,32 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { RichTextEditor, type RichTextEditorHandle } from "@/components/editor/RichTextEditor";
 import DatePicker from "@/components/DatePicker";
+import EmailMultiInput from "@/components/ui/EmailMultiInput";
+
+/** Default recipient pre-filled when creating a new work feedback entry. */
+const DEFAULT_FEEDBACK_EMAIL = "rich@move37.fun";
+
+/** Shared compact textarea for the optional resource description field. */
+function DescriptionField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-text-secondary mb-1">Description</label>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        rows={2}
+        placeholder="What is this about? (optional)"
+        className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+      />
+    </div>
+  );
+}
 import type { ChatTab } from "@/types/chat";
 import type {
   DocsAttachment,
@@ -158,6 +184,7 @@ function FileModal({
 }) {
   const isEdit = file !== null;
   const [name, setName] = useState(file?.name ?? "");
+  const [description, setDescription] = useState(file?.description ?? "");
   const [attachments, setAttachments] = useState<DocsAttachment[]>(file?.attachments ?? []);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -206,9 +233,10 @@ function FileModal({
     if (!attachments.length) { alert("Please upload at least one file."); return; }
     setSaving(true);
     try {
+      const d = description.trim() || null;
       const res = isEdit
-        ? await updateInternalProjectFile(file!.id, { name: n, attachments })
-        : await createInternalProjectFile({ internalProjectId, name: n, attachments });
+        ? await updateInternalProjectFile(file!.id, { name: n, description: d, attachments })
+        : await createInternalProjectFile({ internalProjectId, name: n, description: d, attachments });
       if (res.error) { alert(res.error); return; }
       onClose();
       onSaved();
@@ -230,6 +258,7 @@ function FileModal({
             className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
           />
         </div>
+        <DescriptionField value={description} onChange={setDescription} />
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1">Files</label>
           <div className="flex flex-col gap-2">
@@ -327,6 +356,9 @@ function FilesContent({
                         {f.attachments.length} {f.attachments.length === 1 ? "file" : "files"} ·{" "}
                         {ownerName(profiles, f.created_by)} · {new Date(f.updated_at).toLocaleDateString()}
                       </p>
+                      {f.description && (
+                        <p className="text-xs text-text-secondary mt-0.5 whitespace-pre-wrap">{f.description}</p>
+                      )}
                     </div>
                     {canEdit && (
                       <div className="flex items-center gap-1 shrink-0">
@@ -385,6 +417,7 @@ function LinkModal({
 }) {
   const isEdit = link !== null;
   const [name, setName] = useState(link?.name ?? "");
+  const [description, setDescription] = useState(link?.description ?? "");
   const [url, setUrl] = useState(link?.url ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -395,9 +428,10 @@ function LinkModal({
     if (!u) { alert("Please enter a URL."); return; }
     setSaving(true);
     try {
+      const d = description.trim() || null;
       const res = isEdit
-        ? await updateInternalProjectLink(link!.id, { name: n, url: u })
-        : await createInternalProjectLink({ internalProjectId, name: n, url: u });
+        ? await updateInternalProjectLink(link!.id, { name: n, description: d, url: u })
+        : await createInternalProjectLink({ internalProjectId, name: n, description: d, url: u });
       if (res.error) { alert(res.error); return; }
       onClose();
       onSaved();
@@ -419,6 +453,7 @@ function LinkModal({
             className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
           />
         </div>
+        <DescriptionField value={description} onChange={setDescription} />
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1">URL</label>
           <input
@@ -485,6 +520,9 @@ function LinksContent({
                     <a href={l.url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-accent hover:underline truncate block">
                       {l.url}
                     </a>
+                    {l.description && (
+                      <p className="text-xs text-text-secondary mt-0.5 whitespace-pre-wrap">{l.description}</p>
+                    )}
                     <p className="text-[11px] text-text-muted truncate">
                       {ownerName(profiles, l.created_by)} · {new Date(l.updated_at).toLocaleDateString()}
                     </p>
@@ -540,6 +578,7 @@ function VideoModal({
 }) {
   const isEdit = video !== null;
   const [name, setName] = useState(video?.name ?? "");
+  const [description, setDescription] = useState(video?.description ?? "");
   const [url, setUrl] = useState(video?.url ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -550,9 +589,10 @@ function VideoModal({
     if (!u) { alert("Please enter a URL."); return; }
     setSaving(true);
     try {
+      const d = description.trim() || null;
       const res = isEdit
-        ? await updateInternalProjectVideo(video!.id, { name: n, url: u })
-        : await createInternalProjectVideo({ internalProjectId, name: n, url: u });
+        ? await updateInternalProjectVideo(video!.id, { name: n, description: d, url: u })
+        : await createInternalProjectVideo({ internalProjectId, name: n, description: d, url: u });
       if (res.error) { alert(res.error); return; }
       onClose();
       onSaved();
@@ -574,6 +614,7 @@ function VideoModal({
             className="w-full bg-muted border border-border rounded-md px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
           />
         </div>
+        <DescriptionField value={description} onChange={setDescription} />
         <div>
           <label className="block text-xs font-medium text-text-secondary mb-1">URL</label>
           <input
@@ -641,6 +682,9 @@ function VideosContent({
                       <a href={v.url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-accent hover:underline truncate block">
                         {v.url}
                       </a>
+                    )}
+                    {v.description && (
+                      <p className="text-xs text-text-secondary mt-0.5 whitespace-pre-wrap">{v.description}</p>
                     )}
                     <p className="text-[11px] text-text-muted truncate">
                       {ownerName(profiles, v.created_by)} · {new Date(v.updated_at).toLocaleDateString()}
@@ -718,6 +762,8 @@ function FeedbackModal({
   const [startDate, setStartDate] = useState(feedback?.start_date ?? feedback?.date ?? new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState(feedback?.end_date ?? feedback?.date ?? new Date().toISOString().slice(0, 10));
   const [totalTime, setTotalTime] = useState<string>(feedback?.total_time != null ? String(feedback.total_time) : "");
+  // Default a recipient when creating; restore saved recipients when editing.
+  const [emails, setEmails] = useState<string[]>(isEdit ? (feedback?.emails ?? []) : [DEFAULT_FEEDBACK_EMAIL]);
   const todayRef = useRef<RichTextEditorHandle>(null);
   const tomorrowRef = useRef<RichTextEditorHandle>(null);
   const blockersRef = useRef<RichTextEditorHandle>(null);
@@ -738,6 +784,7 @@ function FeedbackModal({
       next_work: tomorrowRef.current?.getHTML() ?? null,
       blockers: blockersRef.current?.getHTML() ?? null,
       video_and_links: linksRef.current?.getHTML() ?? null,
+      emails,
     };
     startSave(async () => {
       const res = isEdit
@@ -781,6 +828,12 @@ function FeedbackModal({
             />
           </div>
         </div>
+        <EmailMultiInput
+          label="Notify by email"
+          helpText="Recipients get this feedback by email when you save. Leave empty to skip."
+          value={emails}
+          onChange={setEmails}
+        />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {fields.map(({ label, ref, html }) => (
             <div key={label} className="flex flex-col gap-1">

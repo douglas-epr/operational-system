@@ -12,6 +12,7 @@ import type { IdeaFull } from "@/types/idea-refiner";
 import { loadIdeaFull } from "@/app/ideas-refiner/_lib/loadIdeaFull";
 import { resolveAiConfig } from "@/lib/api/ai-config";
 import { generateAiTextResponse } from "@/lib/api/ai-dispatcher";
+import { sendFeedbackEmails } from "@/lib/notifications/feedbackEmail";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -434,6 +435,7 @@ function escapeHtml(s: string): string {
 export async function createProjectFile(input: {
   projectId: string;
   name: string;
+  description?: string | null;
   attachments: DocsAttachment[];
 }): Promise<{ error?: string; file?: { id: string } }> {
   const { user, supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
@@ -444,6 +446,7 @@ export async function createProjectFile(input: {
     .insert({
       project_id:  input.projectId,
       name:        input.name,
+      description: input.description ?? null,
       attachments: input.attachments as unknown as Json,
       created_by:  user!.id,
       updated_at:  new Date().toISOString(),
@@ -458,11 +461,12 @@ export async function createProjectFile(input: {
 
 export async function updateProjectFile(
   id: string,
-  patch: { name?: string; attachments?: DocsAttachment[] }
+  patch: { name?: string; description?: string | null; attachments?: DocsAttachment[] }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.name !== undefined) updates.name = patch.name;
+  if (patch.description !== undefined) updates.description = patch.description;
   if (patch.attachments !== undefined) updates.attachments = patch.attachments as unknown as Json;
   const { error } = await supabase
     .from("project_file")
@@ -486,6 +490,7 @@ export async function deleteProjectFile(id: string): Promise<{ error?: string }>
 export async function createProjectLink(input: {
   projectId: string;
   name: string;
+  description?: string | null;
   url: string;
 }): Promise<{ error?: string; link?: { id: string } }> {
   const { user, supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
@@ -496,6 +501,7 @@ export async function createProjectLink(input: {
     .insert({
       project_id: input.projectId,
       name:       input.name,
+      description: input.description ?? null,
       url:        input.url,
       created_by: user!.id,
       updated_at: new Date().toISOString(),
@@ -510,11 +516,12 @@ export async function createProjectLink(input: {
 
 export async function updateProjectLink(
   id: string,
-  patch: { name?: string; url?: string }
+  patch: { name?: string; description?: string | null; url?: string }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.name !== undefined) updates.name = patch.name;
+  if (patch.description !== undefined) updates.description = patch.description;
   if (patch.url !== undefined) updates.url = patch.url;
   const { error } = await supabase
     .from("project_link")
@@ -538,6 +545,7 @@ export async function deleteProjectLink(id: string): Promise<{ error?: string }>
 export async function createProjectVideo(input: {
   projectId: string;
   name: string;
+  description?: string | null;
   url: string;
 }): Promise<{ error?: string; video?: { id: string } }> {
   const { user, supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
@@ -548,6 +556,7 @@ export async function createProjectVideo(input: {
     .insert({
       project_id: input.projectId,
       name:       input.name,
+      description: input.description ?? null,
       url:        input.url,
       created_by: user!.id,
       updated_at: new Date().toISOString(),
@@ -562,11 +571,12 @@ export async function createProjectVideo(input: {
 
 export async function updateProjectVideo(
   id: string,
-  patch: { name?: string; url?: string }
+  patch: { name?: string; description?: string | null; url?: string }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.name !== undefined) updates.name = patch.name;
+  if (patch.description !== undefined) updates.description = patch.description;
   if (patch.url !== undefined) updates.url = patch.url;
   const { error } = await supabase
     .from("project_video")
@@ -635,6 +645,7 @@ export async function createDailyFeedback(input: {
   next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
+  emails?: string[];
 }): Promise<{ error?: string; feedback?: { id: string } }> {
   const { user, supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
   if (authErr) return { error: authErr };
@@ -642,6 +653,8 @@ export async function createDailyFeedback(input: {
   // The legacy NOT NULL `date` column mirrors the work-period start so existing
   // ordering/queries keep working.
   const legacyDate = input.start_date ?? new Date().toISOString().slice(0, 10);
+  const emails = (input.emails ?? []).map((e) => e.trim()).filter(Boolean);
+  const messageHtml = buildFeedbackMessage({ ...input, date: legacyDate });
 
   const { data, error } = await supabase
     .from("project_work_feedback")
@@ -655,6 +668,7 @@ export async function createDailyFeedback(input: {
       next_work:       input.next_work,
       blockers:        input.blockers,
       video_and_links: input.video_and_links,
+      emails,
       created_by:      user!.id,
       updated_at:      new Date().toISOString(),
     })
@@ -673,7 +687,7 @@ export async function createDailyFeedback(input: {
         project_id:  input.projectId,
         created_by:  user!.id,
         author_type: "user",
-        message:     buildFeedbackMessage({ ...input, date: legacyDate }),
+        message:     messageHtml,
         attachments: [],
         links:       [],
       })
@@ -687,6 +701,13 @@ export async function createDailyFeedback(input: {
         .eq("id", data.id);
     }
   }
+
+  // Notify the chosen recipients by email (best-effort; never fails the save).
+  await sendFeedbackEmails(
+    emails,
+    messageHtml,
+    formatFeedbackPeriod(input.start_date, input.end_date, legacyDate)
+  );
 
   revalidatePath("/docs");
   return { feedback: data };
@@ -702,13 +723,18 @@ export async function updateDailyFeedback(
     next_work?: string | null;
     blockers?: string | null;
     video_and_links?: string | null;
+    emails?: string[];
   }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
+  const emails = patch.emails !== undefined
+    ? patch.emails.map((e) => e.trim()).filter(Boolean)
+    : undefined;
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const [k, v] of Object.entries(patch)) {
     if (v !== undefined) updates[k] = v;
   }
+  if (emails !== undefined) updates.emails = emails;
   // Keep the legacy `date` column aligned with the work-period start.
   if (patch.start_date !== undefined && patch.start_date) {
     updates.date = patch.start_date;
@@ -726,13 +752,23 @@ export async function updateDailyFeedback(
     .select("date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, conversation_project_external_message_id")
     .eq("id", id)
     .single();
-  if (fb?.conversation_project_external_message_id) {
+  const messageHtml = fb ? buildFeedbackMessage(fb) : null;
+  if (fb?.conversation_project_external_message_id && messageHtml) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const svc = createServiceClient() as any;
     await svc
       .from("conversation_project_external_message")
-      .update({ message: buildFeedbackMessage(fb) })
+      .update({ message: messageHtml })
       .eq("id", fb.conversation_project_external_message_id);
+  }
+
+  // Notify the chosen recipients by email (best-effort; never fails the save).
+  if (emails && emails.length > 0 && messageHtml) {
+    await sendFeedbackEmails(
+      emails,
+      messageHtml,
+      formatFeedbackPeriod(fb.start_date, fb.end_date, fb.date)
+    );
   }
 
   revalidatePath("/docs");

@@ -234,6 +234,14 @@ export async function sendBlankTemplateEmail(
 // Used by the Marketing Validation Engine outreach worker. Sends arbitrary
 // subject/body without a Brevo template. Falls back to BREVO_FROM_* env vars.
 
+/** A file attachment for a transactional email (base64 content + filename). */
+export interface BrevoAttachment {
+  /** Base64-encoded file content (no `data:` URI prefix). */
+  content: string;
+  /** Filename shown to the recipient, e.g. "invoice-INV-001.pdf". */
+  name: string;
+}
+
 export interface RawEmailParams {
   to: BrevoRecipient;
   subject: string;
@@ -244,6 +252,8 @@ export interface RawEmailParams {
   replyTo?: BrevoRecipient;
   /** Brevo "tags" for filtering events in the dashboard / webhooks. */
   tags?: string[];
+  /** Optional file attachments (e.g. an invoice PDF). */
+  attachments?: BrevoAttachment[];
 }
 
 export async function sendRawEmail(params: RawEmailParams): Promise<BrevoResponse> {
@@ -260,6 +270,9 @@ export async function sendRawEmail(params: RawEmailParams): Promise<BrevoRespons
     textContent: params.textContent ?? params.htmlContent.replace(/<[^>]+>/g, " "),
     ...(params.replyTo ? { replyTo: params.replyTo } : {}),
     ...(params.tags ? { tags: params.tags } : {}),
+    ...(params.attachments && params.attachments.length > 0
+      ? { attachment: params.attachments }
+      : {}),
   });
 }
 

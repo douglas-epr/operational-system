@@ -3,6 +3,28 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-19] — Ideas Refiner: drop misleading timeout alert; clear loading overlay on AI error
+
+- **No more timeout alert** (`useAiWithTimeout.ts`): The client-side 4-minute timeout no longer shows the "AI response timed out / took longer than 4 minutes" toast, and no longer surfaces a timeout as an error. A slow call usually means the server-side generation is still running (it resolves later via Realtime), so the alert was misleading. On timeout the helper now resolves with a non-error marker (`{ _timedOut: true }`) — the loading overlay keeps tracking real server state. Removed `showTimeoutToast` and the now-dead `TIMEOUT_TOAST_ID`. An alert (`showErrorToast`) now appears ONLY when the AI API genuinely returns an error.
+- **Overlay clears on AI error** (`useRegenerate.ts`): When a step's generation returns a genuine error, the hook now force-clears the loading overlay — it calls `clearAiWorking(ideaId)` and `router.refresh()` so `isAiWorking` recomputes to `false` even if the server's own flag-clear or the Realtime event lagged. Previously the "AI is working…" spinner could linger after an error. Removed the stale timeout-toast dismiss.
+- **Live test**: Forced a deterministic OpenAI error (temporarily set a bogus model, then restored `gpt-4.1-mini`). Regenerating Location & Legislation showed the "AI generation failed" alert and the "AI is working…" overlay disappeared immediately; existing step data was preserved (error path does not overwrite). TypeScript clean. All work local-only (no commit / no prod Supabase push / no Vercel deploy).
+
+## [2026-06-19] — Build Project from idea: inherit authorized_users; fix dropped-stage link bug
+
+- **`buildProjectFromIdea`** (`ideas-refiner/actions.ts`): The new project now inherits the idea's `authorized_users` (unioned with the creator so the builder keeps access), so the same people who could see the idea can see the project. Selects `authorized_users` from the idea and sets it on the project insert.
+- **Bug fix (same function)**: The idea-link update referenced the `stage` column, which was dropped in migration `20260617000000_drop_idea_stage` — so the `update({ stage, project_id })` failed on the non-existent column, leaving the project orphaned (idea never linked) and returning an error. Removed the dropped `stage` field; the update now sets only `project_id` and the cast hack (`supabase as any`) is gone.
+- **Live test**: Built a project from a seeded idea (members A+B). New project got `authorized_users = {A, B, creator}` and the idea correctly linked via `project_id`. TypeScript clean. All work local-only (no commit / no prod Supabase push / no Vercel deploy).
+
+## [2026-06-19] — Email notifications on work feedback & invoices; descriptions on files/links/videos
+
+Three additions across the chat tab panels and the invoices page. DB migration `20260619000020` (additive `ADD COLUMN IF NOT EXISTS`) applied to **prod** (`bcarzmfdamsozmfjgnpv`, explicitly authorized). Apply to the local dev stack with `supabase migration up` before testing against local.
+
+- **Work-feedback email notifications** (Feature 1 — `project_work_feedback.emails[]`, `internal_project_work_feedback.emails[]`): the New/Edit work-feedback modals (chat Projects + Internal Projects) gain a "Notify by email" multi-email chip input (`EmailMultiInput`). Default `rich@move37.fun` when creating, empty when editing. On save, each recipient is emailed the same HTML the entry posts to the project/internal chat (`buildFeedbackMessage`), via Brevo `sendRawEmail`. Best-effort — a delivery failure never fails the save. The submitted list is persisted to the new `emails[]` column. (`docs/actions.ts`, `chat/actions.ts`, `lib/notifications/feedbackEmail.ts`.)
+- **Invoice email with PDF** (Feature 2 — `invoice.emails[]`): the New/Edit invoice modal gains a "Send by email" multi-email input (default `rich@move37.fun` on create, empty on edit). On save, the invoice is rendered to a PDF **client-side** (inline-hex-styled doc → html2canvas → jsPDF, in `_lib/invoiceDocument.ts` + `_lib/invoicePdf.ts`; hex styles avoid Tailwind v4 `oklch()` which html2canvas can't parse), then `sendInvoiceEmail` attaches it to a Brevo email. `sendRawEmail` extended with attachment support.
+- **Descriptions on files / links / videos** (Feature 3 — `description` on `project_file`/`project_link`/`project_video` + internal equivalents): the New/Edit file/link/video modals (chat Projects + Internal Projects) gain an optional Description textarea; the value shows on each card. Shared `createProjectFile`/`updateProjectLink`/etc. and the internal chat actions + select queries now carry `description`.
+- **Security**: AI/rich-text HTML re-sanitized (script/iframe/on*/js:/data: stripped) both server-side at write and client-side before the offscreen PDF render.
+- Code is local-only (no git push / no Vercel deploy). Only the additive DB migration was applied to prod, as authorized.
+
 ## [2026-06-19] — Ideas Refiner: debate quality, editable experiments, verdict consistency, brief & description polish
 
 Improvements to the Risk & Validation and Report steps, grounded in the Devil's Advocate methodology.
