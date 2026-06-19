@@ -1229,7 +1229,7 @@ export async function getProjectDailyFeedbacks(
   const { data } = await ctx.supabase
     .from("project_work_feedback")
     .select(
-      "id, project_id, date, start_date, end_date, total_time, today_work, tomorrow_work, blockers, video_and_links, created_by, created_at, updated_at"
+      "id, project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, created_by, created_at, updated_at"
     )
     .eq("project_id", projectId)
     .order("date", { ascending: false });
@@ -1712,7 +1712,7 @@ export async function getInternalProjectDailyFeedbacks(internalProjectId: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (ctx.supabase as any)
     .from("internal_project_work_feedback")
-    .select("id, internal_project_id, date, start_date, end_date, total_time, today_work, tomorrow_work, blockers, video_and_links, created_by, created_at, updated_at")
+    .select("id, internal_project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, created_by, created_at, updated_at")
     .eq("internal_project_id", internalProjectId)
     .order("date", { ascending: false });
   return (data ?? []) as unknown as InternalProjectDailyFeedback[];
@@ -1723,8 +1723,8 @@ function buildInternalFeedbackMessage(fields: {
   start_date: string | null;
   end_date: string | null;
   total_time: number | null;
-  today_work: string | null;
-  tomorrow_work: string | null;
+  current_work: string | null;
+  next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
 }): string {
@@ -1741,8 +1741,8 @@ function buildInternalFeedbackMessage(fields: {
   return [
     `<p><strong>📋 Work Feedback – ${period}</strong></p>`,
     totalLine,
-    s("What I worked on", fields.today_work),
-    s("What I will work on next", fields.tomorrow_work),
+    s("What I worked on this period", fields.current_work),
+    s("What I will work on next", fields.next_work),
     s("Blockers", fields.blockers),
     s("Video &amp; Links", fields.video_and_links),
   ].join("");
@@ -1753,8 +1753,8 @@ export async function createInternalProjectDailyFeedback(input: {
   start_date: string | null;
   end_date: string | null;
   total_time: number | null;
-  today_work: string | null;
-  tomorrow_work: string | null;
+  current_work: string | null;
+  next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
 }): Promise<{ error?: string }> {
@@ -1806,8 +1806,8 @@ export async function updateInternalProjectDailyFeedback(
     start_date: string | null;
     end_date: string | null;
     total_time: number | null;
-    today_work: string | null;
-    tomorrow_work: string | null;
+    current_work: string | null;
+    next_work: string | null;
     blockers: string | null;
     video_and_links: string | null;
   }
@@ -1828,7 +1828,7 @@ export async function updateInternalProjectDailyFeedback(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: fb } = await (ctx.supabase as any)
     .from("internal_project_work_feedback")
-    .select("date, start_date, end_date, total_time, today_work, tomorrow_work, blockers, video_and_links, conversation_internal_project_message_id")
+    .select("date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, conversation_internal_project_message_id")
     .eq("id", id)
     .single();
   if (fb?.conversation_internal_project_message_id) {

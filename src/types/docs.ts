@@ -180,8 +180,8 @@ export interface ProjectDailyFeedback {
   start_date: string | null;  // ISO yyyy-mm-dd — work period start
   end_date: string | null;    // ISO yyyy-mm-dd — work period end
   total_time: number | null;  // total hours worked in the interval
-  today_work: string | null;
-  tomorrow_work: string | null;
+  current_work: string | null;
+  next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
   created_by: string;
@@ -227,8 +227,8 @@ export interface InternalProjectDailyFeedback {
   start_date: string | null;  // ISO yyyy-mm-dd — work period start
   end_date: string | null;    // ISO yyyy-mm-dd — work period end
   total_time: number | null;  // total hours worked in the interval
-  today_work: string | null;
-  tomorrow_work: string | null;
+  current_work: string | null;
+  next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
   created_by: string;
@@ -251,6 +251,7 @@ export interface Invoice {
   service_title: string | null;
   service_description: string | null;
   account_details: string | null;    // free-form bank/payment details (replaces swift+iban)
+  currency: string | null;           // currency symbol e.g. "$", "€", "£"
   start_date: string | null;         // ISO yyyy-mm-dd — work period start
   end_date: string | null;           // ISO yyyy-mm-dd — work period end
   total_time: number | null;         // total hours worked in the interval

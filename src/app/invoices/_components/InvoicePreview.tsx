@@ -44,6 +44,10 @@ export default function InvoicePreview({ invoice, onClose }: Props) {
       onClick={onClose}
     >
       <style jsx global>{`
+        .invoice-rich-desc p { margin-bottom: 0.25rem; }
+        .invoice-rich-desc ul { list-style: disc; padding-left: 1.25rem; margin-bottom: 0.25rem; }
+        .invoice-rich-desc li { margin-bottom: 0.125rem; }
+        .invoice-rich-desc strong { font-weight: 600; }
         @media print {
           body * { visibility: hidden !important; }
           .invoice-printable, .invoice-printable * { visibility: visible !important; }
@@ -108,7 +112,7 @@ export default function InvoicePreview({ invoice, onClose }: Props) {
             <div className="grid grid-cols-3 gap-6 mt-8">
               <InfoBlock label="Issue Date" value={issueDate} />
               <InfoBlock label="Due Date" value={formatDate(invoice.due_date)} />
-              <InfoBlock label="Amount Payable" value={`$ ${formatMoney(invoice.service_price)}`} emphasized />
+              <InfoBlock label="Amount Payable" value={`${invoice.currency ?? "$"} ${formatMoney(invoice.service_price)}`} emphasized />
             </div>
 
             <div className="mt-10">
@@ -128,14 +132,17 @@ export default function InvoicePreview({ invoice, onClose }: Props) {
                       </p>
                     )}
                     {invoice.service_description && (
-                      <p className="text-xs text-neutral-600 mt-1 whitespace-pre-line">{invoice.service_description}</p>
+                      <div
+                        className="text-xs text-neutral-600 mt-1 invoice-rich-desc"
+                        dangerouslySetInnerHTML={{ __html: invoice.service_description }}
+                      />
                     )}
                   </div>
-                  <p className="text-sm text-neutral-900 text-right">$ {formatMoney(invoice.service_price)}</p>
+                  <p className="text-sm text-neutral-900 text-right">{invoice.currency ?? "$"} {formatMoney(invoice.service_price)}</p>
                 </div>
                 <div className="px-4 py-3 border-t border-neutral-200 grid grid-cols-[1fr_140px] bg-neutral-50">
                   <span className="text-xs uppercase tracking-widest text-neutral-600">Total</span>
-                  <span className="text-sm font-bold text-neutral-900 text-right">$ {formatMoney(invoice.service_price)}</span>
+                  <span className="text-sm font-bold text-neutral-900 text-right">{invoice.currency ?? "$"} {formatMoney(invoice.service_price)}</span>
                 </div>
               </div>
             </div>

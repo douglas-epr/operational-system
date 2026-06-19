@@ -734,8 +734,8 @@ function FeedbackModal({
       start_date: startDate,
       end_date: endDate,
       total_time: parsedTotal,
-      today_work: todayRef.current?.getHTML() ?? null,
-      tomorrow_work: tomorrowRef.current?.getHTML() ?? null,
+      current_work: todayRef.current?.getHTML() ?? null,
+      next_work: tomorrowRef.current?.getHTML() ?? null,
       blockers: blockersRef.current?.getHTML() ?? null,
       video_and_links: linksRef.current?.getHTML() ?? null,
     };
@@ -750,8 +750,8 @@ function FeedbackModal({
   }
 
   const fields: Array<{ label: string; ref: React.RefObject<RichTextEditorHandle | null>; html: string }> = [
-    { label: "What I worked on today", ref: todayRef, html: feedback?.today_work ?? "" },
-    { label: "What I will work on tomorrow", ref: tomorrowRef, html: feedback?.tomorrow_work ?? "" },
+    { label: "What I worked on this period", ref: todayRef, html: feedback?.current_work ?? "" },
+    { label: "What I will work on next", ref: tomorrowRef, html: feedback?.next_work ?? "" },
     { label: "Blockers", ref: blockersRef, html: feedback?.blockers ?? "" },
     { label: "Video & Links", ref: linksRef, html: feedback?.video_and_links ?? "" },
   ];
@@ -886,8 +886,8 @@ function FeedbackContent({
                     )}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
-                    <FeedbackBlock label="What I worked on today" html={f.today_work} />
-                    <FeedbackBlock label="What I will work on tomorrow" html={f.tomorrow_work} />
+                    <FeedbackBlock label="What I worked on this period" html={f.current_work} />
+                    <FeedbackBlock label="What I will work on next" html={f.next_work} />
                     <FeedbackBlock label="Blockers" html={f.blockers} />
                     <FeedbackBlock label="Video & Links" html={f.video_and_links} />
                   </div>

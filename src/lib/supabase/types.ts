@@ -1964,13 +1964,13 @@ export type Database = {
           blockers: string | null
           created_at: string
           created_by: string
+          current_work: string | null
           date: string
           end_date: string | null
           id: string
           internal_project_id: string
+          next_work: string | null
           start_date: string | null
-          today_work: string | null
-          tomorrow_work: string | null
           total_time: number | null
           updated_at: string
           video_and_links: string | null
@@ -1979,13 +1979,13 @@ export type Database = {
           blockers?: string | null
           created_at?: string
           created_by: string
+          current_work?: string | null
           date: string
           end_date?: string | null
           id?: string
           internal_project_id: string
+          next_work?: string | null
           start_date?: string | null
-          today_work?: string | null
-          tomorrow_work?: string | null
           total_time?: number | null
           updated_at?: string
           video_and_links?: string | null
@@ -1994,13 +1994,13 @@ export type Database = {
           blockers?: string | null
           created_at?: string
           created_by?: string
+          current_work?: string | null
           date?: string
           end_date?: string | null
           id?: string
           internal_project_id?: string
+          next_work?: string | null
           start_date?: string | null
-          today_work?: string | null
-          tomorrow_work?: string | null
           total_time?: number | null
           updated_at?: string
           video_and_links?: string | null
@@ -2387,6 +2387,7 @@ export type Database = {
           address: string | null
           client_name: string | null
           code: string
+          currency: string | null
           company_or_user_name: string | null
           created_at: string
           created_by: string
@@ -2413,6 +2414,7 @@ export type Database = {
           company_or_user_name?: string | null
           created_at?: string
           created_by: string
+          currency?: string | null
           document_number?: string | null
           due_date?: string | null
           email?: string | null
@@ -2436,6 +2438,7 @@ export type Database = {
           company_or_user_name?: string | null
           created_at?: string
           created_by?: string
+          currency?: string | null
           document_number?: string | null
           due_date?: string | null
           email?: string | null
@@ -3596,13 +3599,13 @@ export type Database = {
           blockers: string | null
           created_at: string
           created_by: string
+          current_work: string | null
           date: string
           end_date: string | null
           id: string
+          next_work: string | null
           project_id: string | null
           start_date: string | null
-          today_work: string | null
-          tomorrow_work: string | null
           total_time: number | null
           updated_at: string
           video_and_links: string | null
@@ -3611,13 +3614,13 @@ export type Database = {
           blockers?: string | null
           created_at?: string
           created_by: string
+          current_work?: string | null
           date: string
           end_date?: string | null
           id?: string
+          next_work?: string | null
           project_id?: string | null
           start_date?: string | null
-          today_work?: string | null
-          tomorrow_work?: string | null
           total_time?: number | null
           updated_at: string
           video_and_links?: string | null
@@ -3626,13 +3629,13 @@ export type Database = {
           blockers?: string | null
           created_at?: string
           created_by?: string
+          current_work?: string | null
           date?: string
           end_date?: string | null
           id?: string
+          next_work?: string | null
           project_id?: string | null
           start_date?: string | null
-          today_work?: string | null
-          tomorrow_work?: string | null
           total_time?: number | null
           updated_at?: string
           video_and_links?: string | null

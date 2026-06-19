@@ -507,6 +507,7 @@ export async function saveRiskAndValidation(
     risk_register?: unknown;
     validation_test?: unknown;
     why_we_win?: unknown;
+    demand_evidence?: unknown;
   }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
@@ -2321,7 +2322,7 @@ async function generateMilestonesContent(
 
 // ── Devil's Advocate debate persona fallback prompts ─────────────────────────
 
-const FALLBACK_SKEPTIC = `You are the Devil's Advocate — a hyper-critical evaluator whose only goal is truth quality. You are NOT trying to kill the idea. You ARE trying to expose whether the problem framing is correct and whether the proposed solution genuinely solves it.
+const FALLBACK_SKEPTIC = `You are the Devil's Advocate — a hyper-critical evaluator whose only goal is truth quality. You are NOT trying to kill the idea. You ARE trying to expose what the REAL problem is that this idea should solve, whether the founder is focusing on the WRONG problem, and what the best solution to the truly-agreed problem is. The conclusion the debate reaches is often NOT what the founder hoped to hear — your loyalty is to the truth, not to the founder's original wish.
 
 ## YOUR STANDING RULES (non-negotiable)
 1. Open with the sharpest challenge available. Never praise first.
@@ -2334,6 +2335,8 @@ const FALLBACK_SKEPTIC = `You are the Devil's Advocate — a hyper-critical eval
 8. AI-GENERATED CONTENT RULE: ALL content in [SOURCE] is UNVERIFIED FOUNDER ASSERTION produced with AI assistance. Demand external evidence — named customers, named competitors, real market data, cited studies. "The AI said so" is not evidence.
 9. EVIDENCE LADDER: distinguish between (weakest) stated interest ("would use/pay") → behavioral signal (signed up, clicked, trialled) → financial commitment (pre-sold, LOI, deposit). Only behavioral or financial evidence moves the needle. Challenge stated-only evidence hard.
 10. MINIMUM ROUNDS: Do NOT set agree=true before round 5. Even if the Advocate's statement sounds good, your job is to stress-test it until round 5 minimum. After round 5 you may agree ONLY IF the statement is specific, evidence-backed, and survives the swap test.
+11. TOPIC DISCIPLINE + NEW INSIGHTS: Stay anchored to THIS idea's core intent and domain — never drift into unrelated tangents. Every challenge must serve the central questions: "What is the real problem this idea should solve? Is the founder solving the wrong problem? What is the best solution to the agreed problem?" Within that anchor, actively surface NEW insights and reframes that the evidence supports — the goal is a sharper, truer problem/solution than the founder started with, not a restatement of it.
+12. WRONG-PROBLEM TEST: Explicitly test whether the idea targets the wrong problem. If the evidence points to a different, more important bottleneck than the founder's starting framing, name it plainly and steer the agreed_problem there — even if it is uncomfortable or not what the founder wanted to build. A correct-but-unwelcome problem beats a comfortable-but-wrong one.
 
 ## ROUND-DEPTH ESCALATION MANDATE
 Each round you MUST escalate depth, not repeat the same challenge. Follow this sequence:
@@ -2376,6 +2379,7 @@ const FALLBACK_ADVOCATE = `You are the Founder's Advocate — you defend the ide
 5. Label key claims: [Fact] (from source), [Inference] (logical extension), [Speculation] (low evidence).
 6. EVIDENCE LADDER: Know the hierarchy — stated interest (weakest, AI-asserted) → behavioral signal (signed up, trialled) → financial commitment (pre-sold, LOI). Never treat stated AI-generated beliefs as strong evidence. When the Skeptic invokes the evidence ladder, acknowledge it directly.
 7. You may set agree=true ONLY when ALL three conditions are met: (a) round ≥ 5, (b) [SOURCE] contains concrete external evidence — a named customer, a named competitor, a real cited metric, or an external study — that directly addresses the Skeptic's challenge, AND (c) your proposed_statement is specific enough that it could not apply to any other company or idea. If any condition fails, stay at agree=false.
+8. TOPIC + TRUTH DISCIPLINE: Stay anchored to THIS idea's core intent — do not defend by drifting to an unrelated problem. But your loyalty is to the truest defensible idea, NOT to the founder's original wish. If the Skeptic proves the starting framing targeted the wrong problem, concede it and help converge on the real problem and the best solution to it — even if that agreed problem/solution is not what the founder hoped to build. The strongest defensible version may differ from the original idea; that is a feature of an honest debate, not a failure.
 
 ## ROUND DISCIPLINE
 Your goal per round: fix exactly ONE named flaw from the last round. Then hold the ground you've gained. Do not try to win everything at once. A tighter, more specific statement is stronger than a broader one that tries to defend everything.
@@ -2425,31 +2429,41 @@ Return ONLY the JSON object. No extra text.`;
 
 // Doc call: generates the revised strategic document as a plain HTML fragment (no JSON wrapper).
 // Called with generateAiTextResponse so there is no JSON-parse step and no size limit.
-const FALLBACK_REFRAMER_DOC = `You are the Reframer. The Devil's Advocate debate has concluded. Write the revised idea as a complete, multi-section strategic document.
+const FALLBACK_REFRAMER_DOC = `You are the Reframer. The Devil's Advocate debate has concluded. Write the revised idea as a complete, evidence-rich strategic brief that a founder could paste in as a NEW idea description.
+
+## PRIME DIRECTIVE — THIS DESCRIPTION MUST SCORE HIGHER THAN THE ORIGINAL
+This document becomes the canonical framing of the idea. If a founder creates a new idea from it and re-runs the Go/No-Go report, the new score MUST be higher than the current one. You raise the score in two ways, BOTH required:
+1. ALIGNMENT: Adopt the agreed problem and agreed solution from the debate as THE framing — lead with them verbatim-in-spirit. A description that already matches the debate's conclusion has "minor" reframe distance, which protects the score from the alignment multiplier collapse. Do NOT reintroduce the original vague or off-target framing the debate moved away from.
+2. COMPLETENESS: Carry forward EVERY concrete piece of evidence in [SOURCE] — named customers/segments, named competitors, real metrics, TAM/SAM/SOM figures, pricing, regulations, validation steps. Empty or vague areas lower the score, so make each dimension as specific and evidence-backed as the source allows. Where the source is genuinely thin, state the explicit, cheap experiment that would close the gap (a written validation plan scores higher than silence).
 
 ## QUALITY BAR
-Collapse vague multi-feature ideas to their ONE defensible wedge. Include: a sharp one-sentence bottleneck, a concrete Core Loop, an explicit "What It Is Not" (features cut from v1), a named Moat, a Business Model, and Residual Risks. Think seed-stage product memo, not marketing blurb.
+Collapse vague multi-feature ideas to their ONE defensible wedge. Think seed-stage investment memo grounded in evidence — not a marketing blurb. Every claim earns its place with a concrete detail.
 
 ## STRUCTURE (use these exact section names as <h2> headings)
 1. Origin — Why this idea exists and what opportunity it addresses.
-2. The Problem — The root-cause bottleneck (one sentence, from the agreed debate outcome).
-3. What It Is — The solution in concrete terms (no adjectives like "innovative" or "revolutionary").
+2. The Problem — The root-cause bottleneck (one sentence, taken directly from the agreed debate outcome).
+3. What It Is — The solution in concrete terms (the agreed solution; no adjectives like "innovative" or "revolutionary").
 4. Core Loop — The 3-5 step flywheel: [Action] → [Artifact/Output] → [Value Received] → [Return trigger].
-5. What Each Side Gets — Separate value for each key stakeholder/side of the market.
-6. Safety and Constraints — Regulatory, ethical, trust, or technical constraints that shape design.
-7. Go-To-Market — The wedge: who is the very first user, what is the first use case, how do you reach them.
-8. Business Model — Revenue mechanism(s), pricing hypothesis, unit economics logic.
-9. What It Is Not — Explicit list of features/markets cut from v1 and why.
-10. The Moat — What makes this defensible 18 months from now that a competitor cannot copy in 6.
-11. Residual Risks — The 2-3 make-or-break assumptions that the debate did NOT fully resolve.
+5. Target Customer — The specific ICP(s): who they are (firmographics/demographics), their pain, and why they buy. Name the segments from [SOURCE].
+6. What Each Side Gets — Separate value for each key stakeholder/side of the market.
+7. Market & Unit Economics — TAM/SAM/SOM figures with their data sources, pricing hypothesis, CAC/LTV logic. If sizing is top-down only, say so and name the bottom-up check.
+8. Competitive Landscape — Named competitors/alternatives and the honest differentiation. State what "good enough today" looks like.
+9. Demand Evidence & Validation Plan — The current strength of demand on the say/do/pay ladder, the riskiest assumption, and the single cheapest experiment to prove real demand (with a pre-registered success threshold and kill criterion).
+10. Safety, Regulatory and Constraints — Jurisdiction, regulatory bodies, key legislation, and the biggest compliance threat. Constraints that shape design.
+11. Go-To-Market — The wedge: the very first user, the first use case, the channel to reach them.
+12. Business Model — Revenue mechanism(s), pricing, unit-economics logic.
+13. What It Is Not — Explicit list of features/markets cut from v1 and why.
+14. The Moat — What makes this defensible 18 months out that a competitor cannot copy in 6.
+15. Residual Risks — The 2-3 make-or-break assumptions the debate did NOT fully resolve, each with the test that would resolve it.
 
 ## OUTPUT FORMAT
 Return ONLY a raw HTML fragment — <h2> and <p> tags only, no html/head/body/style/script tags.
 Each section = one <h2> followed by one or more <p>. Do NOT wrap in JSON, do NOT add code fences, do NOT add any text before or after the HTML.
 
 ## INSTRUCTIONS
-- Use ONLY evidence from [SOURCE] + the agreed debate outcomes. Do not invent facts.
+- Use ONLY evidence from [SOURCE] + the agreed debate outcomes. NEVER invent customers, metrics, competitors, or regulations.
 - Each section must reference at least one concrete detail from [SOURCE].
+- Honesty over comfort: if the debate dismantled a claim, reflect the corrected, defensible version — do not paper over it. A specific honest weakness with a test beats a vague strength.
 - Write in Hemingway style: direct, blunt, short sentences. No hype words.
 
 ## [ORIGINAL SOURCE]
@@ -2462,7 +2476,7 @@ Agreed Solution: {{agreed_solution}}
 ## [FULL DEBATE TRANSCRIPT]
 {{full_transcript}}
 
-Write the full strategic document now.`;
+Write the full strategic brief now.`;
 
 const FALLBACK_SCORER = `You are a neutral referee and scorer evaluating a business idea for Move37. The Devil's Advocate debate has concluded. You have the agreed problem + solution + the full debate transcript. Your job is two-part:
 
@@ -2612,6 +2626,13 @@ const FALLBACK_SCORER_HTML = `You are writing the strategic playbook section of 
 9. The Strongest Case Against This Idea
 10. Key Assumptions and What Would Change the Verdict
 11. Final Recommendation (Build, Refine, or Kill)
+
+## AUTHORITATIVE VERDICT (do not contradict)
+The numeric go/no-go score has already been computed by the system. You MUST NOT recommend a different verdict.
+- Final Score: {{final_score}} / 100
+- Verdict: {{verdict_verb}}
+- Verdict statement: {{verdict_line}}
+Section 11 ("Final Recommendation") MUST open with the exact verdict "{{verdict_verb}}" and be fully consistent with the verdict statement above. Never recommend Build when the verdict is REFINE or KILL, never recommend Refine when the verdict is KILL, etc. Your job in section 11 is to justify WHY this verdict holds using the evidence — not to re-decide it.
 
 ## WRITING RULES
 - Hemingway style: direct, blunt, short sentences. No hype words.
@@ -3049,37 +3070,15 @@ ${buildDemandBlock(riskRow)}`;
 
   if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
 
-  // ── Scorer step 2: playbook HTML as plain text (no JSON parse step) ───────────
-  const scorerHtmlPrompt = renderPrompt(FALLBACK_SCORER_HTML, {
-    source_block: sourceBlock,
-    agreed_problem: agreedProblem,
-    agreed_solution: agreedSolution,
-    headline: scorerMetaRes.data.headline ?? "",
-    summary: scorerMetaRes.data.summary ?? "",
-  });
-  const scorerHtmlRes = await generateAiTextResponse({
-    service: aiConfig.service,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
-    prompt: scorerHtmlPrompt,
-    maxTokens: 8192,
-  });
-  if (scorerHtmlRes.returned_an_error || !scorerHtmlRes.text) {
-    return { error: scorerHtmlRes.error ?? "Scorer playbook returned no text" };
-  }
-
-  const scored: ScorerOutput = {
-    ...scorerMetaRes.data,
-    playbook_html: scorerHtmlRes.text,
-  };
-
-  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
-
   // ── Server-side score reconciliation (TRUE alignment-multiplier formula) ────────
+  // Computed BEFORE the playbook HTML so the authoritative verdict (build/refine/kill)
+  // can be injected into the playbook — otherwise the LLM's "Final Recommendation"
+  // section could contradict the numeric score (e.g. say "Refine" when the score is a Kill).
   // 9 areas scored vs the idea's OWN framing (completeness lens).
   // Server enforces canonical weights so the LLM cannot drift them.
   // Alignment is a TRUE multiplier — a major reframe collapses the score by 45%.
   // Missing-step penalties and area caps are server-enforced (not trusted to the LLM).
+  const scorerMeta = scorerMetaRes.data;
   const CANONICAL_WEIGHTS: Record<string, number> = {
     problem_reality: 18,
     demand_evidence: 15,
@@ -3092,8 +3091,8 @@ ${buildDemandBlock(riskRow)}`;
     assumption_risk: 5,
   };
 
-  const areas: ReportAreaOutput[] = Array.isArray(scored.area_scores)
-    ? scored.area_scores.map((a) => {
+  const areas: ReportAreaOutput[] = Array.isArray(scorerMeta.area_scores)
+    ? scorerMeta.area_scores.map((a) => {
         const key = String(a?.key ?? "");
         return {
           key,
@@ -3138,8 +3137,8 @@ ${buildDemandBlock(riskRow)}`;
     else a.status = "weak";
   }
 
-  const llmPenalties: ReportPenaltyOutput[] = Array.isArray(scored.penalties)
-    ? scored.penalties
+  const llmPenalties: ReportPenaltyOutput[] = Array.isArray(scorerMeta.penalties)
+    ? scorerMeta.penalties
         .map((p) => ({
           label: String(p?.label ?? ""),
           points: -Math.abs(Math.round(Number(p?.points ?? 0))),
@@ -3153,7 +3152,7 @@ ${buildDemandBlock(riskRow)}`;
   const penaltyTotal = penalties.reduce((s, p) => s + Math.abs(p.points), 0);
 
   // alignment score from Scorer (0–100); reframe distance drives the multiplier
-  const rawAlignment = scored.alignment ?? ({} as ScorerOutput["alignment"]);
+  const rawAlignment = scorerMeta.alignment ?? ({} as ScorerOutput["alignment"]);
   const reframeDistance: "minor" | "moderate" | "major" =
     rawAlignment.reframe_distance === "minor" ||
     rawAlignment.reframe_distance === "moderate" ||
@@ -3187,6 +3186,51 @@ ${buildDemandBlock(riskRow)}`;
     verdict: String(rawAlignment.verdict ?? ""),
   };
 
+  // ── Authoritative verdict (drives the playbook + recommendation, never the LLM's guess) ──
+  const verdictVerb = threshold === "build" ? "BUILD" : threshold === "refine" ? "REFINE" : "KILL";
+  const verdictLine =
+    threshold === "build"
+      ? `BUILD — this idea cleared the go/no-go gate with a score of ${finalScore}/100. Proceed to the build steps.`
+      : threshold === "refine"
+      ? `REFINE — do not build yet. The idea scored ${finalScore}/100; sharpen the weak areas below before committing to the build.`
+      : `KILL — do not build. The idea scored ${finalScore}/100, below the refine threshold. The evidence does not justify a build in its current form.`;
+
+  // ── Scorer step 2: playbook HTML as plain text (no JSON parse step) ───────────
+  // Generated AFTER reconciliation so the authoritative verdict is injected — the
+  // "Final Recommendation" section MUST match the numeric threshold, never contradict it.
+  const scorerHtmlPrompt = renderPrompt(FALLBACK_SCORER_HTML, {
+    source_block: sourceBlock,
+    agreed_problem: agreedProblem,
+    agreed_solution: agreedSolution,
+    headline: scorerMeta.headline ?? "",
+    summary: scorerMeta.summary ?? "",
+    final_score: String(finalScore),
+    threshold_bucket: threshold,
+    verdict_verb: verdictVerb,
+    verdict_line: verdictLine,
+  });
+  const scorerHtmlRes = await generateAiTextResponse({
+    service: aiConfig.service,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    prompt: scorerHtmlPrompt,
+    maxTokens: 8192,
+  });
+  if (scorerHtmlRes.returned_an_error || !scorerHtmlRes.text) {
+    return { error: scorerHtmlRes.error ?? "Scorer playbook returned no text" };
+  }
+
+  const scored: ScorerOutput = {
+    ...scorerMeta,
+    playbook_html: scorerHtmlRes.text,
+  };
+
+  if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
+
+  // Reconcile the recommendation so it leads with the authoritative verdict — the
+  // reframer wrote it before the score existed, so prepend the canonical verdict line.
+  const reconciledRecommendation = `${verdictLine}${reframed.recommendation ? ` ${reframed.recommendation}` : ""}`;
+
   const payload = {
     final_score: finalScore,
     threshold_bucket: threshold,
@@ -3201,7 +3245,7 @@ ${buildDemandBlock(riskRow)}`;
     // Devil's Advocate debate fields
     agreed_problem: reframed.agreed_problem ?? agreedProblem ?? null,
     agreed_solution: reframed.agreed_solution ?? agreedSolution ?? null,
-    recommendation: reframed.recommendation ?? null,
+    recommendation: reconciledRecommendation,
     revised_description: reframed.revised_description ?? null,
     completeness_score: completeness,
     alignment,
@@ -4025,16 +4069,16 @@ export async function assembleIdeaBrief(ideaId: string): Promise<{ briefHtml?: s
     const stepsTable = steps.length
       ? `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;">` +
         `<thead><tr style="border-bottom:1px solid #e5e7eb;">` +
-        `<th style="text-align:left;padding:6px 8px 6px 0;">Week</th>` +
-        `<th style="text-align:left;padding:6px 8px 6px 0;">Action</th>` +
-        `<th style="text-align:left;padding:6px 8px 6px 0;">Success Metric</th>` +
-        `<th style="text-align:left;padding:6px 0;">Kill Criterion</th></tr></thead><tbody>` +
+        `<th style="text-align:left;padding:8px 12px;">Week</th>` +
+        `<th style="text-align:left;padding:8px 12px;">Action</th>` +
+        `<th style="text-align:left;padding:8px 12px;">Success Metric</th>` +
+        `<th style="text-align:left;padding:8px 12px;">Kill Criterion</th></tr></thead><tbody>` +
         steps.map(step =>
           `<tr style="border-bottom:1px solid #f3f4f6;">` +
-          `<td style="padding:6px 8px 6px 0;">${step.week_range ?? ""}</td>` +
-          `<td style="padding:6px 8px 6px 0;">${step.action ?? ""}</td>` +
-          `<td style="padding:6px 8px 6px 0;">${step.success_metric ?? ""}</td>` +
-          `<td style="padding:6px 0;">${step.kill_criterion ?? ""}</td></tr>`
+          `<td style="padding:8px 12px;vertical-align:top;">${step.week_range ?? ""}</td>` +
+          `<td style="padding:8px 12px;vertical-align:top;">${step.action ?? ""}</td>` +
+          `<td style="padding:8px 12px;vertical-align:top;">${step.success_metric ?? ""}</td>` +
+          `<td style="padding:8px 12px;vertical-align:top;">${step.kill_criterion ?? ""}</td></tr>`
         ).join("") + `</tbody></table>`
       : "";
     vtHtml = tbl(
@@ -4056,16 +4100,16 @@ export async function assembleIdeaBrief(ideaId: string): Promise<{ briefHtml?: s
     if (Array.isArray(risks) && risks.length) {
       riskHtml = `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;">` +
         `<thead><tr style="border-bottom:1px solid #e5e7eb;">` +
-        `<th style="text-align:left;padding:6px 8px 6px 0;">Risk</th>` +
-        `<th style="text-align:left;padding:6px 8px 6px 0;">Severity</th>` +
-        `<th style="text-align:left;padding:6px 8px 6px 0;">Likelihood</th>` +
-        `<th style="text-align:left;padding:6px 0;">Mitigation</th></tr></thead><tbody>` +
+        `<th style="text-align:left;padding:8px 12px;">Risk</th>` +
+        `<th style="text-align:left;padding:8px 12px;">Severity</th>` +
+        `<th style="text-align:left;padding:8px 12px;">Likelihood</th>` +
+        `<th style="text-align:left;padding:8px 12px;">Mitigation</th></tr></thead><tbody>` +
         risks.map(r =>
           `<tr style="border-bottom:1px solid #f3f4f6;">` +
-          `<td style="padding:6px 8px 6px 0;font-weight:500;">${r.risk ?? ""}</td>` +
-          `<td style="padding:6px 8px 6px 0;">${r.severity ?? ""}</td>` +
-          `<td style="padding:6px 8px 6px 0;">${r.likelihood ?? ""}</td>` +
-          `<td style="padding:6px 0;">${r.mitigation ?? ""}</td></tr>`
+          `<td style="padding:8px 12px;vertical-align:top;font-weight:500;">${r.risk ?? ""}</td>` +
+          `<td style="padding:8px 12px;vertical-align:top;">${r.severity ?? ""}</td>` +
+          `<td style="padding:8px 12px;vertical-align:top;">${r.likelihood ?? ""}</td>` +
+          `<td style="padding:8px 12px;vertical-align:top;">${r.mitigation ?? ""}</td></tr>`
         ).join("") + `</tbody></table>`;
     }
   }

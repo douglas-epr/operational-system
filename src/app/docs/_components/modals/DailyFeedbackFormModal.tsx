@@ -57,8 +57,8 @@ export default function DailyFeedbackFormModal({
       start_date:      startDate,
       end_date:        endDate,
       total_time:      parsedTotal,
-      today_work:      todayRef.current?.getHTML() ?? null,
-      tomorrow_work:   tomorrowRef.current?.getHTML() ?? null,
+      current_work:    todayRef.current?.getHTML() ?? null,
+      next_work:       tomorrowRef.current?.getHTML() ?? null,
       blockers:        blockersRef.current?.getHTML() ?? null,
       video_and_links: linksRef.current?.getHTML() ?? null,
     };
@@ -128,14 +128,14 @@ export default function DailyFeedbackFormModal({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FieldBlock
-              label="What I worked on today"
+              label="What I worked on this period"
               editorRef={todayRef}
-              initialHtml={feedback?.today_work ?? ""}
+              initialHtml={feedback?.current_work ?? ""}
             />
             <FieldBlock
-              label="What I will work on tomorrow"
+              label="What I will work on next"
               editorRef={tomorrowRef}
-              initialHtml={feedback?.tomorrow_work ?? ""}
+              initialHtml={feedback?.next_work ?? ""}
             />
             <FieldBlock
               label="Blockers"

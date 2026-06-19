@@ -604,8 +604,8 @@ function buildFeedbackMessage(fields: {
   start_date: string | null;
   end_date: string | null;
   total_time: number | null;
-  today_work: string | null;
-  tomorrow_work: string | null;
+  current_work: string | null;
+  next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
 }): string {
@@ -619,8 +619,8 @@ function buildFeedbackMessage(fields: {
   return [
     `<p><strong>📋 Work Feedback – ${period}</strong></p>`,
     totalLine,
-    s("What I worked on", fields.today_work),
-    s("What I will work on next", fields.tomorrow_work),
+    s("What I worked on this period", fields.current_work),
+    s("What I will work on next", fields.next_work),
     s("Blockers", fields.blockers),
     s("Video &amp; Links", fields.video_and_links),
   ].join("");
@@ -631,8 +631,8 @@ export async function createDailyFeedback(input: {
   start_date: string | null;
   end_date: string | null;
   total_time: number | null;
-  today_work: string | null;
-  tomorrow_work: string | null;
+  current_work: string | null;
+  next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
 }): Promise<{ error?: string; feedback?: { id: string } }> {
@@ -651,8 +651,8 @@ export async function createDailyFeedback(input: {
       start_date:      input.start_date,
       end_date:        input.end_date,
       total_time:      input.total_time,
-      today_work:      input.today_work,
-      tomorrow_work:   input.tomorrow_work,
+      current_work:    input.current_work,
+      next_work:       input.next_work,
       blockers:        input.blockers,
       video_and_links: input.video_and_links,
       created_by:      user!.id,
@@ -698,8 +698,8 @@ export async function updateDailyFeedback(
     start_date?: string | null;
     end_date?: string | null;
     total_time?: number | null;
-    today_work?: string | null;
-    tomorrow_work?: string | null;
+    current_work?: string | null;
+    next_work?: string | null;
     blockers?: string | null;
     video_and_links?: string | null;
   }
@@ -723,7 +723,7 @@ export async function updateDailyFeedback(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: fb } = await (supabase as any)
     .from("project_work_feedback")
-    .select("date, start_date, end_date, total_time, today_work, tomorrow_work, blockers, video_and_links, conversation_project_external_message_id")
+    .select("date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, conversation_project_external_message_id")
     .eq("id", id)
     .single();
   if (fb?.conversation_project_external_message_id) {

@@ -52,9 +52,10 @@ export default function InvoicesList({ invoices, currentUserId }: Props) {
           <ul className="p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {invoices.map((i) => {
               const canEdit = i.created_by === currentUserId;
+              const symbol = i.currency ?? "$";
               const priceLabel =
                 i.service_price !== null
-                  ? i.service_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                  ? i.service_price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                   : "—";
 
               return (
@@ -66,7 +67,7 @@ export default function InvoicesList({ invoices, currentUserId }: Props) {
 
                   <div className="px-4 py-3 flex flex-col gap-2 flex-1">
                     <Row label="Client" value={i.client_name ?? i.company_or_user_name ?? "—"} />
-                    <Row label="Amount" value={`$ ${priceLabel}`} />
+                    <Row label="Amount" value={`${symbol} ${priceLabel}`} />
                     <Row
                       label="Due date"
                       value={i.due_date ? new Date(`${i.due_date}T00:00:00`).toLocaleDateString() : "—"}
@@ -109,6 +110,7 @@ export default function InvoicesList({ invoices, currentUserId }: Props) {
       {formOpen && (
         <InvoiceFormModal
           invoice={editing}
+          lastInvoice={invoices[0] ?? null}
           onClose={() => { setFormOpen(false); setEditing(null); }}
         />
       )}

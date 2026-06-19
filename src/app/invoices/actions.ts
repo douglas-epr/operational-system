@@ -21,9 +21,25 @@ export interface InvoicePayload {
   service_title: string | null;
   service_description: string | null;
   account_details: string | null;
+  currency: string | null;
   start_date: string | null;
   end_date: string | null;
   total_time: number | null;
+}
+
+/**
+ * Strip XSS vectors from HTML before storing invoice service descriptions.
+ * Removes script/iframe blocks, event handler attributes, and javascript:/data: URLs.
+ * TipTap's editor schema already constrains user input, but AI-generated strings
+ * arrive as raw text and must be sanitized before persistence.
+ */
+function sanitizeInvoiceHtml(html: string | null): string | null {
+  if (!html) return html;
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
+    .replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, "")
+    .replace(/\s+(?:href|src|action)\s*=\s*["']?\s*(?:javascript|data):[^"'\s>]*/gi, "");
 }
 
 export async function createInvoice(
@@ -33,9 +49,11 @@ export async function createInvoice(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
+  const sanitized = { ...data, service_description: sanitizeInvoiceHtml(data.service_description) };
+
   const { data: row, error } = await supabase
     .from("invoice")
-    .insert({ ...data, created_by: user.id, updated_at: new Date().toISOString() })
+    .insert({ ...sanitized, created_by: user.id, updated_at: new Date().toISOString() })
     .select("id")
     .single();
 
@@ -51,7 +69,9 @@ export async function updateInvoice(
   const supabase: AnySupabase = await createClient();
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const [k, v] of Object.entries(patch)) {
-    if (v !== undefined) updates[k] = v;
+    if (v !== undefined) {
+      updates[k] = k === "service_description" ? sanitizeInvoiceHtml(v as string | null) : v;
+    }
   }
   const { error } = await supabase.from("invoice").update(updates).eq("id", id);
   if (error) return { error: error.message };
@@ -104,17 +124,17 @@ export async function aiFillInvoiceFromFeedback(input: {
 
   // `date` mirrors the work-period start, so filtering on it selects feedback
   // logged for work within the invoice window (and covers legacy rows).
-  const selectCols = "today_work, total_time, start_date, end_date, date";
+  // Each table only owns its own FK column, so use separate select strings.
   const [proj, intl] = await Promise.all([
     supabase
       .from("project_work_feedback")
-      .select(selectCols)
+      .select("current_work, total_time, start_date, end_date, date, project_id")
       .eq("created_by", user.id)
       .gte("date", startDate)
       .lte("date", endDate),
     supabase
       .from("internal_project_work_feedback")
-      .select(selectCols)
+      .select("current_work, total_time, start_date, end_date, date, internal_project_id")
       .eq("created_by", user.id)
       .gte("date", startDate)
       .lte("date", endDate),
@@ -131,22 +151,40 @@ export async function aiFillInvoiceFromFeedback(input: {
     0
   );
 
-  // Collect the "what I worked on" entries as plain text, tagged by period.
-  const entries = rows
-    .map((r) => {
-      const text = stripHtml(r.today_work);
-      if (!text) return null;
-      const period =
-        r.start_date && r.end_date
-          ? `${r.start_date} → ${r.end_date}`
-          : r.start_date ?? r.date;
-      return `- (${period}) ${text}`;
-    })
-    .filter(Boolean)
-    .join("\n");
+  // Resolve project names so the AI and the invoice description use readable names.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const projIds = [...new Set((proj.data ?? []).map((r: any) => r.project_id).filter(Boolean))];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const intlIds = [...new Set((intl.data ?? []).map((r: any) => r.internal_project_id).filter(Boolean))];
+  const [projNameRows, intlNameRows] = await Promise.all([
+    projIds.length > 0
+      ? supabase.from("project").select("id, name").in("id", projIds)
+      : { data: [] },
+    intlIds.length > 0
+      ? supabase.from("internal_project").select("id, name").in("id", intlIds)
+      : { data: [] },
+  ]);
+  const nameById: Record<string, string> = {};
+  for (const p of (projNameRows.data ?? [])) nameById[p.id] = p.name;
+  for (const p of (intlNameRows.data ?? [])) nameById[p.id] = p.name;
 
-  if (!entries) {
-    // Hours still useful even with no descriptive content.
+  // Group entries by project name for bullet-point-per-project output.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const byProject: Record<string, string[]> = {};
+  for (const r of rows) {
+    const text = stripHtml(r.current_work);
+    if (!text) continue;
+    const id = r.project_id ?? r.internal_project_id ?? null;
+    const projectName = (id && nameById[id]) ? nameById[id] : "General";
+    if (!byProject[projectName]) byProject[projectName] = [];
+    byProject[projectName].push(text);
+  }
+
+  const projectEntries = Object.entries(byProject)
+    .map(([name, items]) => `Project ${name}:\n${items.map((t) => `  - ${t}`).join("\n")}`)
+    .join("\n\n");
+
+  if (!projectEntries) {
     return { totalTime };
   }
 
@@ -155,15 +193,23 @@ export async function aiFillInvoiceFromFeedback(input: {
     return { totalTime, error: "No AI service configured — filled hours only." };
   }
 
+  const multiProject = Object.keys(byProject).length > 1;
   const prompt = [
     "You are writing the 'Service description' section of a professional invoice.",
-    `Summarize the following work-log entries into a concise, client-facing description of the work performed between ${startDate} and ${endDate}.`,
-    "Write 2-4 short sentences or a few bullet points. Be specific but professional. Do NOT invent work that is not present in the entries. Do NOT include hours, dates, or internal jargon.",
+    `Create a client-facing description of the work performed between ${startDate} and ${endDate}.`,
+    "Rules:",
+    "- Use ONLY the information provided in the work log below. Do NOT invent, assume, or add anything not present in the entries.",
+    "- Output valid HTML with no markdown, no code fences, and no prose outside the HTML.",
+    multiProject
+      ? "- For each project, write a heading <p><strong>Project Name</strong></p> followed by a bullet list <ul><li>task 1</li><li>task 2</li></ul>."
+      : "- Output a single bullet list <ul><li>task 1</li><li>task 2</li></ul> with one item per deliverable.",
+    "- Each bullet should be one concise, professional sentence describing a deliverable or area of work.",
+    "- Do NOT include hours, dates, UUIDs, or internal jargon.",
     "",
-    "WORK LOG ENTRIES:",
-    entries,
+    "WORK LOG (grouped by project):",
+    projectEntries,
     "",
-    'Respond ONLY with JSON of the exact shape: { "service_description": string }',
+    'Respond ONLY with JSON of the exact shape: { "service_description": "<html string>" }',
   ].join("\n");
 
   const res = await generateAiJsonResponse<{ service_description: string }>({
@@ -178,5 +224,6 @@ export async function aiFillInvoiceFromFeedback(input: {
     return { totalTime, error: res.error ?? "AI summary failed — filled hours only." };
   }
 
-  return { totalTime, serviceDescription: res.data.service_description };
+  const serviceDescription = sanitizeInvoiceHtml(res.data.service_description) ?? undefined;
+  return { totalTime, serviceDescription };
 }

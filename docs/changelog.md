@@ -3,6 +3,18 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-19] — Ideas Refiner: debate quality, editable experiments, verdict consistency, brief & description polish
+
+Improvements to the Risk & Validation and Report steps, grounded in the Devil's Advocate methodology.
+
+- **Debate prompts** (`FALLBACK_SKEPTIC` / `FALLBACK_ADVOCATE`): Added topic-discipline + new-insight rules (stay anchored to the idea's core intent, surface novel reframes the evidence supports, never drift), an explicit wrong-problem test (steer the agreed problem to the real bottleneck even when uncomfortable), and an honesty-over-comfort mandate (the agreed problem/solution is the truth, not the founder's original wish). Live regen produced a sharper, on-topic agreed problem.
+- **Editable Validation Experiments** (`RiskAndValidationStep.tsx` + `saveRiskAndValidation`): The "Validation Experiments (cheapest → strongest)" cards are now fully editable (method, why, budget/sample, pass threshold, kill criterion). Edits merge back into `demand_evidence.experiments` on Save and feed the next Report score. `saveRiskAndValidation` now accepts `demand_evidence`. Verified: edit → Save → DB persist.
+- **Go/No-Go recommendation consistency** (`generateReport` + `FALLBACK_SCORER_HTML`): FIXED the reported bug where the Final Recommendation said "Refine" when the score was a Kill. Root cause — the recommendation and playbook HTML were generated *before* the authoritative score. Moved score reconciliation above the playbook generation, inject the authoritative verdict (`final_score`/`threshold_bucket`/`verdict_verb`/`verdict_line`) into the playbook prompt, reconcile the stored `recommendation` to lead with the verdict, and added a hard "do not contradict the verdict" rule to the scorer-HTML prompt. Verified live: score 56 → bucket=kill → recommendation, playbook §11, score badge, and brief subtitle ALL say "KILL — do not build."
+- **Revised Idea Description scores higher** (`FALLBACK_REFRAMER_DOC`): Rewrote with a prime directive to raise the re-score via (1) alignment — adopt the agreed framing so reframe distance stays "minor" (avoids the 0.55 multiplier collapse) and (2) completeness — 15 Brief-grade sections (target customer, market & unit economics, competitive landscape, demand evidence & validation plan, regulatory, moat, etc.) carrying forward all source evidence. Verified: 15 sections, "minor reframe · 0.88" multiplier.
+- **Brief table padding** (`assembleIdeaBrief`): The validation-steps and risk-register tables used cramped `padding:6px 0` (zero edge padding); standardized all cells to `padding:8px 12px` with `vertical-align:top`. Verified: assembled brief has 98 padded cells, 0 cramped; tables render cleanly.
+- **Report uses Risk & Validation data**: Confirmed `generateReport` feeds risk_register, validation_test, why_we_win, full demand_evidence, and the debate transcript/agreed framing into the scorer via `buildRiskBlock`/`buildDemandBlock`.
+- TypeScript clean. All work local-only (no commit / no prod Supabase push / no Vercel deploy).
+
 ## [2026-06-19] — "Daily Feedback" → "Work Feedback": date ranges, total hours, invoice AI Fill
 
 Feedback is no longer daily — users pick a Start/End date and log total hours worked for the interval. Invoices gain the same work-period fields and an AI-assisted fill from feedback.

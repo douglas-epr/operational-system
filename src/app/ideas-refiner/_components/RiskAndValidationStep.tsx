@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { IdeaFull, RiskItem, ValidationTestStep, WhyWeWinItem, DemandEvidence, IdeaReportDebateTurn } from "@/types/idea-refiner";
+import type { IdeaFull, RiskItem, ValidationTestStep, WhyWeWinItem, DemandEvidence, DemandExperiment, IdeaReportDebateTurn } from "@/types/idea-refiner";
 import { triggerAiGeneration, saveRiskAndValidation } from "../actions";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import { useRegenerate } from "../_hooks/useRegenerate";
@@ -42,12 +42,15 @@ export default function RiskAndValidationStep({ ideaFull }: RiskAndValidationSte
   const [editRisk, setEditRisk] = useState<RiskItem[]>([]);
   const [editValidation, setEditValidation] = useState<Record<string, unknown>>({});
   const [editWhyWeWin, setEditWhyWeWin] = useState<WhyWeWinItem[]>([]);
+  const [editExperiments, setEditExperiments] = useState<DemandExperiment[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setEditRisk(Array.isArray(riskAndValidation?.risk_register) ? [...(riskAndValidation.risk_register as RiskItem[])] : []);
     setEditValidation((riskAndValidation?.validation_test as Record<string, unknown>) ?? {});
     setEditWhyWeWin(Array.isArray(riskAndValidation?.why_we_win) ? [...(riskAndValidation.why_we_win as WhyWeWinItem[])] : []);
+    const exps = (riskAndValidation?.demand_evidence as DemandEvidence | null)?.experiments;
+    setEditExperiments(Array.isArray(exps) ? [...exps].sort((a, b) => a.sequence_order - b.sequence_order) : []);
     setError(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [riskAndValidation]);
@@ -61,13 +64,24 @@ export default function RiskAndValidationStep({ ideaFull }: RiskAndValidationSte
   async function handleSave() {
     setIsSaving(true);
     setError(null);
+    // Merge edited experiments back into the existing demand_evidence object so the
+    // rest of the AI-generated demand analysis (hypothesis, verdict, signals) is preserved.
+    const existingDemand = (riskAndValidation?.demand_evidence as DemandEvidence | null) ?? null;
+    const mergedDemand = existingDemand
+      ? { ...existingDemand, experiments: editExperiments }
+      : undefined;
     const result = await saveRiskAndValidation(idea.id, {
       risk_register: editRisk,
       validation_test: editValidation,
       why_we_win: editWhyWeWin,
+      ...(mergedDemand ? { demand_evidence: mergedDemand } : {}),
     });
     setIsSaving(false);
     if (result.error) setError(result.error);
+  }
+
+  function updateExperiment(index: number, field: keyof DemandExperiment, value: string) {
+    setEditExperiments(prev => prev.map((e, i) => i === index ? { ...e, [field]: value } : e));
   }
 
   function updateRiskItem(index: number, field: keyof RiskItem, value: string) {
@@ -215,9 +229,13 @@ export default function RiskAndValidationStep({ ideaFull }: RiskAndValidationSte
         </div>
       )}
 
-      {/* Demand Validation — read-only (AI-generated structured output) */}
+      {/* Demand Validation — Validation Experiments are editable; the rest is AI-generated read-only output */}
       {demand_evidence && (
-        <DemandValidationSection demand={demand_evidence as DemandEvidence} />
+        <DemandValidationSection
+          demand={demand_evidence as DemandEvidence}
+          experiments={editExperiments}
+          onChangeExperiment={updateExperiment}
+        />
       )}
 
       {/* Risk Register — editable */}
@@ -472,8 +490,16 @@ const STATUS_STYLES: Record<string, string> = {
   proven: "text-green-400",
 };
 
-function DemandValidationSection({ demand }: { demand: DemandEvidence }) {
-  const { hypothesis, riskiest_assumptions, experiments, signals_to_watch, debate_insights, verdict } = demand;
+function DemandValidationSection({
+  demand,
+  experiments,
+  onChangeExperiment,
+}: {
+  demand: DemandEvidence;
+  experiments: DemandExperiment[];
+  onChangeExperiment: (index: number, field: keyof DemandExperiment, value: string) => void;
+}) {
+  const { hypothesis, riskiest_assumptions, signals_to_watch, debate_insights, verdict } = demand;
 
   return (
     <section>
@@ -542,32 +568,59 @@ function DemandValidationSection({ demand }: { demand: DemandEvidence }) {
         </div>
       )}
 
-      {/* Ordered Experiments */}
+      {/* Validation Experiments — editable */}
       {experiments && experiments.length > 0 && (
         <div className="mb-6">
           <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">Validation Experiments (cheapest → strongest)</h3>
           <div className="space-y-3">
-            {[...experiments].sort((a, b) => a.sequence_order - b.sequence_order).map((e, i) => (
+            {experiments.map((e, i) => (
               <div key={i} className="rounded-lg border border-border bg-surface px-4 py-3">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="flex-shrink-0 w-5 h-5 rounded-full bg-accent/20 text-accent text-xs font-bold flex items-center justify-center">
                     {e.sequence_order}
                   </span>
-                  <span className="text-sm font-semibold text-text-primary">{e.method}</span>
+                  <input
+                    type="text"
+                    value={e.method ?? ""}
+                    onChange={(ev) => onChangeExperiment(i, "method", ev.target.value)}
+                    placeholder="Method (e.g. Smoke test, Pre-sale / LOI)"
+                    className="flex-1 bg-transparent text-sm font-semibold text-text-primary focus:outline-none focus:ring-1 focus:ring-accent/50 rounded p-1"
+                  />
                 </div>
-                <p className="text-sm text-text-secondary mb-2">{e.why_this_method}</p>
+                <textarea
+                  value={e.why_this_method ?? ""}
+                  onChange={(ev) => onChangeExperiment(i, "why_this_method", ev.target.value)}
+                  placeholder="Why this method"
+                  rows={2}
+                  className="w-full bg-transparent text-sm text-text-secondary mb-2 resize-none focus:outline-none focus:ring-1 focus:ring-accent/50 rounded p-1"
+                />
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="rounded border border-border/60 bg-muted/40 px-2 py-1.5">
                     <p className="text-xs text-text-muted mb-0.5">Budget / Sample</p>
-                    <p className="text-xs font-medium text-text-primary">{e.sample_or_budget}</p>
+                    <textarea
+                      value={e.sample_or_budget ?? ""}
+                      onChange={(ev) => onChangeExperiment(i, "sample_or_budget", ev.target.value)}
+                      rows={2}
+                      className="w-full bg-transparent text-xs font-medium text-text-primary resize-none focus:outline-none focus:ring-1 focus:ring-accent/50 rounded"
+                    />
                   </div>
                   <div className="rounded border border-green-500/20 bg-green-500/5 px-2 py-1.5">
                     <p className="text-xs text-green-400 mb-0.5">Pass threshold</p>
-                    <p className="text-xs font-medium text-text-primary">{e.success_threshold}</p>
+                    <textarea
+                      value={e.success_threshold ?? ""}
+                      onChange={(ev) => onChangeExperiment(i, "success_threshold", ev.target.value)}
+                      rows={2}
+                      className="w-full bg-transparent text-xs font-medium text-text-primary resize-none focus:outline-none focus:ring-1 focus:ring-accent/50 rounded"
+                    />
                   </div>
                   <div className="rounded border border-red-500/20 bg-red-500/5 px-2 py-1.5">
                     <p className="text-xs text-red-400 mb-0.5">Kill criterion</p>
-                    <p className="text-xs font-medium text-text-primary">{e.kill_criterion}</p>
+                    <textarea
+                      value={e.kill_criterion ?? ""}
+                      onChange={(ev) => onChangeExperiment(i, "kill_criterion", ev.target.value)}
+                      rows={2}
+                      className="w-full bg-transparent text-xs font-medium text-text-primary resize-none focus:outline-none focus:ring-1 focus:ring-accent/50 rounded"
+                    />
                   </div>
                 </div>
               </div>
