@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-20] — Chat tabs: stop server-action polling flood (slow UI + lost saves)
+
+- **Symptom**: On `/chat` Files/Links/Videos/Work-Feedback tabs (both `internal_projects` and `projects`), the page became very slow and feedback often failed to save. Network trace showed a continuous flood of POSTs to the page route (server actions), some aborting.
+- **Root cause** (`InternalProjectTabsPanel.tsx`, `ProjectTabsPanel.tsx`): each panel polls every 2s via `setInterval`, and every cycle fans out to **5 server actions** (`Promise.all`). Server actions share one client-side queue; with no overlap guard, once a cycle ran longer than 2s (cold Vercel functions) the next tick enqueued another batch, piling up unbounded and starving the user's *save* action → "slow" + "not saving".
+- **Fix**: added an in-flight `loadingRef` guard so a new poll is skipped while the previous one is still running (caps concurrency at one batch), and the interval now only fires while `document.visibilityState === "visible"` (no background-tab flooding). No change to the data shape, server actions, or DB.
+- TypeScript clean. No DB migration needed.
+
 ## [2026-06-20] — Work Feedback: fix email notifications not being delivered
 
 - **Root cause**: `DailyFeedbackFormModal.tsx` never collected email recipients from the user, so `createDailyFeedback()` received `emails: undefined`, and `sendFeedbackEmails()` exited early (empty recipient list). The Brevo integration, `project_work_feedback.emails` column, `ProjectDailyFeedback` type, and both server actions were already complete and correct.

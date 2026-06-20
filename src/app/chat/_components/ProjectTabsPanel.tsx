@@ -952,6 +952,10 @@ export default function ProjectTabsPanel({
 }) {
   const [state, setState] = useState<PanelState | null>(null);
   const [tick, setTick] = useState(0);
+  // Guards against overlapping polls. Each load() fans out to several server
+  // actions, which share one client-side queue; without this guard a slow cycle
+  // lets ticks pile up unbounded and starve the user's save action.
+  const loadingRef = useRef(false);
 
   function refresh() {
     setTick((t) => t + 1);
@@ -961,27 +965,36 @@ export default function ProjectTabsPanel({
     let cancelled = false;
 
     async function load() {
-      const [meta, files, links, videos, feedbacks] = await Promise.all([
-        getProjectForTabs(projectId),
-        getProjectFiles(projectId),
-        getProjectLinks(projectId),
-        getProjectVideos(projectId),
-        getProjectDailyFeedbacks(projectId),
-      ]);
-      if (cancelled) return;
-      setState({
-        profiles: (meta.profiles as unknown as Profile[]),
-        currentUserId: meta.currentUserId,
-        isAdminOrManager: meta.isAdminOrManager,
-        files,
-        links,
-        videos,
-        feedbacks,
-      });
+      if (loadingRef.current) return; // a previous poll is still in flight — skip
+      loadingRef.current = true;
+      try {
+        const [meta, files, links, videos, feedbacks] = await Promise.all([
+          getProjectForTabs(projectId),
+          getProjectFiles(projectId),
+          getProjectLinks(projectId),
+          getProjectVideos(projectId),
+          getProjectDailyFeedbacks(projectId),
+        ]);
+        if (cancelled) return;
+        setState({
+          profiles: (meta.profiles as unknown as Profile[]),
+          currentUserId: meta.currentUserId,
+          isAdminOrManager: meta.isAdminOrManager,
+          files,
+          links,
+          videos,
+          feedbacks,
+        });
+      } finally {
+        loadingRef.current = false;
+      }
     }
 
     void load();
-    const id = window.setInterval(() => void load(), POLL_MS);
+    const id = window.setInterval(() => {
+      // Don't poll while the tab is hidden — avoids flooding when backgrounded.
+      if (document.visibilityState === "visible") void load();
+    }, POLL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(id);
