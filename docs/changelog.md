@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-20] — Work Feedback: fix email notifications not being delivered
+
+- **Root cause**: `DailyFeedbackFormModal.tsx` never collected email recipients from the user, so `createDailyFeedback()` received `emails: undefined`, and `sendFeedbackEmails()` exited early (empty recipient list). The Brevo integration, `project_work_feedback.emails` column, `ProjectDailyFeedback` type, and both server actions were already complete and correct.
+- **Fix** (`DailyFeedbackFormModal.tsx`): Added `emails` state (pre-populated from `feedback?.emails ?? []` on edit), imported the existing `EmailMultiInput` chip component, and rendered a **Notify by email** field above the modal footer. Both `createDailyFeedback` and `updateDailyFeedback` calls now pass `emails`.
+- **Logging** (`feedbackEmail.ts`): The `Promise.allSettled` results are now inspected — rejected individual sends log `[feedbackEmail] Failed to send to <address> <reason>` via `console.error`. An outer catch logs unexpected errors. The save is still never broken by delivery failures.
+- TypeScript clean. No DB migration needed. All work local-only (no commit / no prod Supabase push / no Vercel deploy).
+
 ## [2026-06-19] — Ideas Refiner: drop misleading timeout alert; clear loading overlay on AI error
 
 - **No more timeout alert** (`useAiWithTimeout.ts`): The client-side 4-minute timeout no longer shows the "AI response timed out / took longer than 4 minutes" toast, and no longer surfaces a timeout as an error. A slow call usually means the server-side generation is still running (it resolves later via Realtime), so the alert was misleading. On timeout the helper now resolves with a non-error marker (`{ _timedOut: true }`) — the loading overlay keeps tracking real server state. Removed `showTimeoutToast` and the now-dead `TIMEOUT_TOAST_ID`. An alert (`showErrorToast`) now appears ONLY when the AI API genuinely returns an error.

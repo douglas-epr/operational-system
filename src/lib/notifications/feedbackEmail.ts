@@ -26,7 +26,7 @@ export async function sendFeedbackEmails(
   const htmlContent = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#1d2939;">${messageHtml}</div>`;
 
   try {
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       recipients.map((email) =>
         sendRawEmail({
           to: { email, name: email },
@@ -36,7 +36,12 @@ export async function sendFeedbackEmails(
         })
       )
     );
-  } catch {
-    // Never let notification delivery break the save.
+    results.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.error("[feedbackEmail] Failed to send to", recipients[i], r.reason);
+      }
+    });
+  } catch (err) {
+    console.error("[feedbackEmail] Unexpected error sending feedback emails:", err);
   }
 }
