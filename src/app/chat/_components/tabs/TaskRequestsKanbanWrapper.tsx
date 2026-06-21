@@ -46,27 +46,39 @@ export default function TaskRequestsKanbanWrapper({
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
+    let inFlight = false;
 
     async function load() {
-      const bundle = await getProjectTabBundle(projectId);
-      if (cancelled) return;
-      const newState: State = {
-        tasks: bundle.tasks as unknown as Task[],
-        profiles: bundle.profiles as unknown as UserProfile[],
-        authorizedUserIds: bundle.authorizedUserIds,
-        unreadByTaskId: bundle.unreadByTaskId,
-      };
-      setState(newState);
-      if (onCountsRef.current) {
-        const filtered = newState.tasks.filter((t) => t.type === type);
-        const blue = filtered.filter((t) => t.status === "not_started").length;
-        const red = filtered.reduce((s, t) => s + (newState.unreadByTaskId[t.id] ?? 0), 0);
-        onCountsRef.current(blue, red);
+      // Skip if a previous poll is still running — otherwise slow responses
+      // stack up and flood the shared server-action queue, starving user saves.
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const bundle = await getProjectTabBundle(projectId);
+        if (cancelled) return;
+        const newState: State = {
+          tasks: bundle.tasks as unknown as Task[],
+          profiles: bundle.profiles as unknown as UserProfile[],
+          authorizedUserIds: bundle.authorizedUserIds,
+          unreadByTaskId: bundle.unreadByTaskId,
+        };
+        setState(newState);
+        if (onCountsRef.current) {
+          const filtered = newState.tasks.filter((t) => t.type === type);
+          const blue = filtered.filter((t) => t.status === "not_started").length;
+          const red = filtered.reduce((s, t) => s + (newState.unreadByTaskId[t.id] ?? 0), 0);
+          onCountsRef.current(blue, red);
+        }
+      } finally {
+        inFlight = false;
       }
     }
 
     void load();
-    timer = setInterval(load, POLL_MS);
+    // Only poll while the tab is visible to avoid background-tab flooding.
+    timer = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, POLL_MS);
     return () => {
       cancelled = true;
       if (timer) clearInterval(timer);

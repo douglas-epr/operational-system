@@ -18,7 +18,7 @@ export default async function FeedbackPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, first_name, last_name, picture, type, signature")
+    .select("id, first_name, last_name, picture, type")
     .eq("id", userId)
     .single();
 
@@ -28,7 +28,7 @@ export default async function FeedbackPage() {
   // Profiles map — to render avatar + name on each card.
   const { data: profilesData } = await supabase
     .from("profiles")
-    .select("id, first_name, last_name, picture, type, signature");
+    .select("id, first_name, last_name, picture, type");
   const profiles = (profilesData ?? []) as unknown as UserProfile[];
 
   // Projects the user is allowed to pick when creating feedback.

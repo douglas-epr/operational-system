@@ -18,7 +18,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 function verifySignature(rawBody: string, header: string | null): boolean {
   const secret = process.env.CALCOM_WEBHOOK_SECRET;
-  if (!secret) return true; // skip verification if no secret configured (dev)
+  // Fail CLOSED in production: a missing secret must reject, not bypass auth.
+  if (!secret) return process.env.NODE_ENV !== "production";
   if (!header) return false;
   const expected = `sha256=${createHmac("sha256", secret).update(rawBody).digest("hex")}`;
   if (expected.length !== header.length) return false;

@@ -95,10 +95,13 @@ export async function generateClaudeResponse(
   params: ClaudeRequestParams
 ): Promise<ClaudeResult> {
   const apiKey = params.apiKey ?? process.env.CLAUDE_API_KEY;
-  if (!apiKey)
-    throw new Error(
-      "Missing Claude API key: provide apiKey param or set CLAUDE_API_KEY env var"
-    );
+  if (!apiKey) {
+    return {
+      returned_an_error: true,
+      status_code: 0,
+      status_message: "Missing Claude API key: provide apiKey param or set CLAUDE_API_KEY env var",
+    };
+  }
 
   const { input, instructions, maxTokens = 8192 } = params;
   const model = resolveClaudeModel(params.model);

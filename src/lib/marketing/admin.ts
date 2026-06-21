@@ -27,11 +27,19 @@ export async function getIdeaContext(
 ): Promise<IdeaContext | null> {
   const supabase = await createClient();
 
-  const { data: idea } = await supabase
-    .from("idea")
-    .select("id, name, project_id, project:project_id(id, name)")
-    .eq("id", ideaId)
-    .maybeSingle();
+  // Independent queries — run them in parallel (one round-trip instead of two).
+  const [{ data: idea }, { data: validation }] = await Promise.all([
+    supabase
+      .from("idea")
+      .select("id, name, project_id, project:project_id(id, name)")
+      .eq("id", ideaId)
+      .maybeSingle(),
+    supabase
+      .from("mkt_validation" as never)
+      .select("*")
+      .eq("idea_id", ideaId)
+      .maybeSingle(),
+  ]);
 
   if (!idea) return null;
 
@@ -42,12 +50,6 @@ export async function getIdeaContext(
     project: { id: string; name: string | null } | null;
   };
   const row = idea as unknown as IdeaRow;
-
-  const { data: validation } = await supabase
-    .from("mkt_validation" as never)
-    .select("*")
-    .eq("idea_id", ideaId)
-    .maybeSingle();
 
   return {
     ideaId,

@@ -5,6 +5,8 @@
  */
 
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
+// 45s — invoice sends attach a multi-MB base64 PDF; allow slow uploads.
+const BREVO_TIMEOUT_MS = 45_000;
 
 // Template IDs as documented in Bubble API connector
 const TEMPLATE_IDS = {
@@ -45,6 +47,7 @@ async function sendEmail(body: Record<string, unknown>): Promise<BrevoResponse> 
       Accept: "application/json",
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(BREVO_TIMEOUT_MS),
   });
 
   if (!res.ok) {
@@ -105,10 +108,12 @@ export async function sendBulkEmailViaTemplate(
   params: BulkEmailParams
 ): Promise<BrevoResponse> {
   const { from, to, templateId, parameters_JSON } = params;
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) throw new Error("Missing env: BREVO_API_KEY");
   const res = await fetch(BREVO_API_URL, {
     method: "POST",
     headers: {
-      "api-key": process.env.BREVO_API_KEY!,
+      "api-key": apiKey,
       "Content-Type": "application/json",
       Accept: "application/json",
     },
@@ -118,6 +123,7 @@ export async function sendBulkEmailViaTemplate(
       templateId,
       params: parameters_JSON,
     }),
+    signal: AbortSignal.timeout(BREVO_TIMEOUT_MS),
   });
 
   if (!res.ok) {

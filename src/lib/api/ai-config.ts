@@ -8,7 +8,6 @@
  */
 
 import type { AiService } from "@/types/settings";
-import { createServiceClient } from "@/lib/supabase/server";
 
 export interface AiConfig {
   service: AiService;
@@ -108,10 +107,6 @@ export async function resolveImageKeys(
     .eq("owner_id", userId)
     .maybeSingle();
   const personal = (userData ?? null) as { gemini_api_key: string | null; openai_api_key: string | null } | null;
-
-  // Require the service-role client to be importable (unused now but kept for
-  // consistency with the module's other service-role helpers).
-  void createServiceClient;
 
   return {
     gemini: personal?.gemini_api_key ?? process.env.GEMINI_API_KEY ?? null,

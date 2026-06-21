@@ -79,7 +79,13 @@ export async function generateOpenAIResponse(
   params: OpenAIRequestParams
 ): Promise<OpenAIResult> {
   const apiKey = params.apiKey ?? process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("Missing OpenAI API key: provide apiKey param or set OPENAI_API_KEY env var");
+  if (!apiKey) {
+    return {
+      returned_an_error: true,
+      status_code: 0,
+      status_message: "Missing OpenAI API key: provide apiKey param or set OPENAI_API_KEY env var",
+    };
+  }
 
   const { model, input, format = "text", instructions, maxTokens } = params;
 

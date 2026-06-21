@@ -34,9 +34,12 @@ export async function createProject(data: ProjectInput): Promise<{ error?: strin
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
+  // Always set the creator and ensure they are a member — otherwise project
+  // visibility RLS locks the creating manager out of their own project.
+  const authorized_users = Array.from(new Set([...(data.authorized_users ?? []), user.id]));
   const { data: row, error } = await supabase
     .from("project")
-    .insert(data)
+    .insert({ ...data, authorized_users, created_by: user.id })
     .select("id")
     .single();
   if (error) return { error: error.message };

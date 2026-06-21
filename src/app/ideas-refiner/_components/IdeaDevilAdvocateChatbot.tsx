@@ -8,6 +8,7 @@
  */
 "use client";
 
+import { sanitizeHtml } from "@/lib/sanitize";
 import {
   useCallback,
   useEffect,
@@ -262,7 +263,7 @@ function MessageBubble({ m }: { m: IdeaChatbotMessage }) {
         ) : (
           <div
             className="prose prose-sm prose-invert max-w-none break-words"
-            dangerouslySetInnerHTML={{ __html: m.message }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.message) }}
           />
         )}
       </div>

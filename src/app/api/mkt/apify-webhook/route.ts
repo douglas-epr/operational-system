@@ -11,6 +11,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { importSourceRun } from "@/lib/marketing/sourcing";
+import { secretEquals } from "@/lib/auth/secretCompare";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,8 +21,8 @@ export async function POST(req: NextRequest) {
   const sourceRunId = searchParams.get("sourceRunId");
   const token       = searchParams.get("token");
 
-  const secret = process.env.CRON_SECRET;
-  if (!secret || token !== secret) {
+  // Constant-time compare to avoid leaking the secret via timing.
+  if (!secretEquals(token, process.env.CRON_SECRET)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   if (!sourceRunId) {

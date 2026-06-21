@@ -1395,17 +1395,23 @@ export async function triggerAiGeneration(
         break;
     }
 
-    // Mark step as completed — but only if we are still the active request.
+    // Clear the updating flags — but only if we are still the active request.
     // If a newer run overwrote `current_ai_request_id`, it now owns the final
-    // clear and we must not touch these fields.
+    // clear and we must not touch these fields. On a generation/write error we
+    // clear the spinner state but do NOT advance `current_block_ended`, so the
+    // step is not falsely recorded as completed with no content.
     if (await isRequestActive(supabase, ideaId, requestId)) {
       await supabase
         .from("idea")
-        .update({
-          current_blocks_updating: null,
-          current_block_ended: step as never,
-          current_ai_request_id: null,
-        })
+        .update(
+          result?.error
+            ? { current_blocks_updating: null, current_ai_request_id: null }
+            : {
+                current_blocks_updating: null,
+                current_block_ended: step as never,
+                current_ai_request_id: null,
+              }
+        )
         .eq("id", ideaId);
     }
 
@@ -1690,14 +1696,16 @@ async function generateStructureAlign(
   };
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("idea_structure_and_align")
       .update(payload)
       .eq("id", existing.id);
+    if (updateError) return { error: updateError.message };
   } else {
-    await supabase
+    const { error: insertError } = await supabase
       .from("idea_structure_and_align")
       .insert({ idea_id: ideaId, ...payload });
+    if (insertError) return { error: insertError.message };
   }
 
   return {};
@@ -1749,7 +1757,8 @@ async function generateRefiningIcp(
   }));
 
   if (rows.length > 0) {
-    await supabase.from("idea_icp").insert(rows);
+    const { error: insertError } = await supabase.from("idea_icp").insert(rows);
+    if (insertError) return { error: insertError.message };
   }
 
   return {};
@@ -1809,14 +1818,16 @@ async function generateProductDefinition(
   };
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("idea_product_definition_and_flows")
       .update(payload)
       .eq("id", existing.id);
+    if (updateError) return { error: updateError.message };
   } else {
-    await supabase
+    const { error: insertError } = await supabase
       .from("idea_product_definition_and_flows")
       .insert({ idea_id: ideaId, created_by: user?.id ?? null, ...payload });
+    if (insertError) return { error: insertError.message };
   }
 
   return {};
@@ -1895,9 +1906,10 @@ async function generateStrategicFrameworks(
     const suggestions = framework.optimization_suggestions;
     if (suggestions && suggestions.length > 0) {
       await supabase.from("idea_optimization_suggestion").delete().eq("icp_id", icp.id);
-      await supabase.from("idea_optimization_suggestion").insert(
+      const { error: insertError } = await supabase.from("idea_optimization_suggestion").insert(
         suggestions.map((s) => ({ idea_id: ideaId, icp_id: icp.id, name: s.name, description: s.description }))
       );
+      if (insertError) return { error: insertError.message };
     }
   }
 
@@ -1954,14 +1966,16 @@ async function generateBenchmarking(
   };
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("idea_benchmarking" as never)
       .update(payload as never)
       .eq("id", (existing as { id: string }).id);
+    if (updateError) return { error: updateError.message };
   } else {
-    await supabase
+    const { error: insertError } = await supabase
       .from("idea_benchmarking" as never)
       .insert({ idea_id: ideaId, ...payload } as never);
+    if (insertError) return { error: insertError.message };
   }
 
   return {};
@@ -2067,14 +2081,16 @@ async function generatePrdContent(
   };
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("idea_prd" as never)
       .update(payload as never)
       .eq("id", (existing as { id: string }).id);
+    if (updateError) return { error: updateError.message };
   } else {
-    await supabase
+    const { error: insertError } = await supabase
       .from("idea_prd" as never)
       .insert({ idea_id: ideaId, ...payload } as never);
+    if (insertError) return { error: insertError.message };
   }
 
   return {};
@@ -2147,14 +2163,16 @@ async function generateDatabaseContent(
   };
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("idea_database" as never)
       .update(payload as never)
       .eq("id", (existing as { id: string }).id);
+    if (updateError) return { error: updateError.message };
   } else {
-    await supabase
+    const { error: insertError } = await supabase
       .from("idea_database" as never)
       .insert({ idea_id: ideaId, ...payload } as never);
+    if (insertError) return { error: insertError.message };
   }
 
   return {};
@@ -2235,14 +2253,16 @@ async function generateVisualStylesContent(
   };
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("idea_styles" as never)
       .update(payload as never)
       .eq("id", (existing as { id: string }).id);
+    if (updateError) return { error: updateError.message };
   } else {
-    await supabase
+    const { error: insertError } = await supabase
       .from("idea_styles" as never)
       .insert({ idea_id: ideaId, ...payload } as never);
+    if (insertError) return { error: insertError.message };
   }
 
   return {};
@@ -2314,14 +2334,16 @@ async function generateMilestonesContent(
   };
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("idea_milestones_and_tasks" as never)
       .update(payload as never)
       .eq("id", (existing as { id: string }).id);
+    if (updateError) return { error: updateError.message };
   } else {
-    await supabase
+    const { error: insertError } = await supabase
       .from("idea_milestones_and_tasks" as never)
       .insert({ idea_id: ideaId, ...payload } as never);
+    if (insertError) return { error: insertError.message };
   }
 
   return {};
@@ -4439,14 +4461,16 @@ async function generateLocationLegislation(
   };
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("idea_location_legislation" as never)
       .update(payload as never)
       .eq("id", (existing as { id: string }).id);
+    if (updateError) return { error: updateError.message };
   } else {
-    await supabase
+    const { error: insertError } = await supabase
       .from("idea_location_legislation" as never)
       .insert({ idea_id: ideaId, ...payload } as never);
+    if (insertError) return { error: insertError.message };
   }
 
   return {};
@@ -4533,14 +4557,16 @@ async function generateMarketOpportunity(
   };
 
   if (existing) {
-    await supabase
+    const { error: updateError } = await supabase
       .from("idea_market_opportunity" as never)
       .update(payload as never)
       .eq("id", (existing as { id: string }).id);
+    if (updateError) return { error: updateError.message };
   } else {
-    await supabase
+    const { error: insertError } = await supabase
       .from("idea_market_opportunity" as never)
       .insert({ idea_id: ideaId, ...payload } as never);
+    if (insertError) return { error: insertError.message };
   }
 
   return {};

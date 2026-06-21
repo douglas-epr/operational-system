@@ -19,6 +19,7 @@ import type { BufferChannel } from "./buffer-labels";
 export type { BufferChannel };
 
 const GRAPHQL = "https://api.buffer.com/graphql";
+const BUFFER_TIMEOUT_MS = 20_000;
 
 function apiKey(): string {
   const k = process.env.BUFFER_API_KEY;
@@ -37,6 +38,7 @@ async function gql<T = unknown>(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(BUFFER_TIMEOUT_MS),
   });
   const json = (await res.json()) as { data?: T; errors?: { message: string }[] };
   if (json.errors?.length) {
@@ -271,6 +273,7 @@ async function restGet<T>(path: string): Promise<T> {
   const res = await fetch(`${REST_BASE}${path}`, {
     headers: { Authorization: `Bearer ${apiKey()}` },
     cache: "no-store",
+    signal: AbortSignal.timeout(BUFFER_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`Buffer REST API ${res.status}: ${res.statusText}`);
   return res.json() as Promise<T>;
@@ -315,7 +318,8 @@ export async function getBufferProfiles(): Promise<BufferRestProfile[]> {
   try {
     const profiles = await restGet<BufferRestProfile[]>("/profiles.json");
     return Array.isArray(profiles) ? profiles : [];
-  } catch {
+  } catch (e) {
+    console.error("[buffer] getBufferProfiles failed:", e);
     return [];
   }
 }
@@ -330,7 +334,8 @@ export async function getPostedAnalytics(
       `/profiles/${profileId}/updates/sent.json?count=${count}&page=1`
     );
     return data.data ?? [];
-  } catch {
+  } catch (e) {
+    console.error("[buffer] getPostedAnalytics failed:", e);
     return [];
   }
 }

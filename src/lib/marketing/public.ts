@@ -64,6 +64,30 @@ export async function getPublishedLanding(
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Field caps for anonymous public writes — these endpoints are unauthenticated
+// and (currently) unthrottled, so bound every persisted field to prevent a
+// single submission from bloating the row / DB.
+const MAX_NAME = 200;
+const MAX_SESSION_ID = 128;
+const MAX_UTM_VALUE = 256;
+const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"] as const;
+
+function capStr(v: string | null | undefined, max: number): string | null {
+  const s = v?.trim();
+  return s ? s.slice(0, max) : null;
+}
+
+/** Whitelist UTM to the five known keys and cap each value. */
+function sanitizeUtm(utm: Record<string, unknown> | undefined): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!utm) return out;
+  for (const k of UTM_KEYS) {
+    const v = utm[k];
+    if (typeof v === "string" && v.trim()) out[k] = v.slice(0, MAX_UTM_VALUE);
+  }
+  return out;
+}
+
 export interface RecordSignalInput {
   slug: string;
   type: MktSignalType;
@@ -124,6 +148,11 @@ export async function recordSignal(
   // answers but get icp_fit = null (unknown) — they can't count as ICP evidence.
   const schema = (landing.quiz_schema ?? []) as QuizQuestion[];
   const rawAnswers = input.quizAnswers ?? {};
+  // Schema-less landings accept free-form answers — bound the payload so an
+  // anonymous submitter can't store an arbitrarily large blob.
+  if (JSON.stringify(rawAnswers).length > 8192) {
+    return { error: "Submission payload too large." };
+  }
   let icpFit: boolean | null = null;
 
   if (schema.length > 0 && Object.keys(rawAnswers).length > 0) {
@@ -159,10 +188,10 @@ export async function recordSignal(
       landing_id: landing.id,
       type,
       email,
-      name: input.name?.trim() || null,
+      name: capStr(input.name, MAX_NAME),
       quiz_answers: rawAnswers,
       icp_fit: icpFit,
-      utm: input.utm ?? {},
+      utm: sanitizeUtm(input.utm),
     } as never)
     .select("id")
     .single();
@@ -212,8 +241,8 @@ export async function recordEvent(
       idea_id: landing.idea_id,
       landing_id: landing.id,
       type: input.type.slice(0, 40),
-      session_id: input.sessionId ?? null,
-      utm: input.utm ?? {},
+      session_id: capStr(input.sessionId, MAX_SESSION_ID),
+      utm: sanitizeUtm(input.utm),
     } as never);
 
     return { ok: true };

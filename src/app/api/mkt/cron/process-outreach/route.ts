@@ -6,15 +6,14 @@
  */
 import { NextResponse } from "next/server";
 import { processDueOutreach } from "@/lib/marketing/outreach";
+import { hasBearerSecret } from "@/lib/auth/secretCompare";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 function authorized(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false; // refuse to run unguarded
-  const header = req.headers.get("authorization");
-  return header === `Bearer ${secret}`;
+  // Refuses to run unguarded; constant-time secret compare.
+  return hasBearerSecret(req, process.env.CRON_SECRET);
 }
 
 async function handle(req: Request) {

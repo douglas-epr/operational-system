@@ -51,7 +51,11 @@ export function prospectVars(p: MktProspect): Record<string, string> {
 // ── Suppression + unsubscribe tokens ────────────────────────────────────────────
 
 function secret(): string {
-  return process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || "dev";
+  // No hardcoded fallback — a predictable "dev" key would let anyone forge
+  // unsubscribe tokens for any (idea, email) pair and mass-suppress prospects.
+  const s = process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!s) throw new Error("Missing env: CRON_SECRET or SUPABASE_SERVICE_ROLE_KEY (required to sign unsubscribe tokens)");
+  return s;
 }
 
 /** Deterministic, non-guessable token tying an email to a project. */

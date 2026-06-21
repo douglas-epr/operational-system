@@ -1,6 +1,6 @@
 ﻿# Architecture — Move37 Operational System
 
-Last updated: 2026-05-01
+Last updated: 2026-06-21
 
 ---
 
@@ -50,7 +50,8 @@ Every HTTP request passes through the Next.js proxy before reaching any page:
 1. Calls `supabase.auth.getUser()` to refresh the session cookie — required by Supabase SSR.
 2. Redirects unauthenticated requests to `/signin` (except `/signin`, `/reset_pw`, `/_next/*`, `/api/*`).
 3. Redirects already-authenticated requests from `/signin` to `/projects`.
-4. **Clamps `referrer` users** to `REFERRER_ALLOW_PREFIXES` — any other path redirects to `/recommended-projects`.
+4. **Clamps `referrer` users** to `REFERRER_ALLOW_PREFIXES` (`/projects`, `/feedback`, `/profile`, `/signin`, `/reset_pw`, `/auth`, `/api`) — any other path redirects to `/projects`.
+5. Leaves the public `/m/[slug]` landing zone open so anonymous prospects can load published landing pages.
 
 ### 2. Server Component (page.tsx)
 
@@ -101,19 +102,20 @@ operational  → /internal-projects
 developer    → /projects
 client       → /projects
 qa           → /projects
-referrer     → /recommended-projects
-lead         → /sandbox-planner
+referrer     → /projects
+lead         → /ideas-refiner
 ```
 
 ### RLS helper functions
 
-Defined in the initial schema migration and usable in all policies:
+Defined in the baseline schema migration and usable in all policies:
 
 ```sql
-public.get_user_type()        -- RETURNS TEXT — current user's profiles.type
-public.is_admin_or_manager()  -- RETURNS BOOLEAN
-public.is_operational_user()  -- RETURNS BOOLEAN
-auth.uid()                    -- RETURNS UUID — Supabase built-in
+public.get_user_type()        -- TEXT  — current user's profiles.type
+public.is_admin_or_manager()  -- BOOL  — admin | manager
+public.is_staff_role()        -- BOOL  — admin | manager | operational
+public.is_operational_user()  -- BOOL  — developer | client | qa (project-member tier; name is historical)
+auth.uid()                    -- UUID  — Supabase built-in
 ```
 
 ### Standard three-tier RLS model
@@ -141,27 +143,62 @@ The `project_task` table has an expanded model to support self-service by client
 
 ### Migration strategy
 
-- 45+ migrations in `supabase/migrations/`, named `YYYYMMDDNNNNNN_description.sql`
+- 28 migrations in `supabase/migrations/`, from `20260101000000_production_baseline.sql` onward, named `YYYYMMDDNNNNNN_description.sql`
 - **Append-only** — existing migration files are never edited
-- Each migration ends with `NOTIFY pgrst, 'reload schema';` to hot-reload PostgREST
+- Migrations are idempotent (`IF NOT EXISTS` guards) and end with `NOTIFY pgrst, 'reload schema';` to hot-reload PostgREST
+- The local dev stack runs Supabase at `127.0.0.1:54321`; apply with `npm run db:reset` / `supabase migration up`
 
-### Core tables
+### Core tables (by domain)
+
+**Projects & internal**
 
 | Table | Purpose |
 |---|---|
-| `profiles` | One row per auth user — extends Supabase `auth.users` with `type`, `first_name`, `last_name`, `picture`, `signature`, etc. |
+| `profiles` | One row per auth user — `type`, `first_name`, `last_name`, `picture`, `signature`, etc. |
 | `project` | Client projects. `authorized_users: UUID[]` controls membership |
 | `project_task` | All task types (`developer_tasks`, `client_requests`, `qa_requests`, `stages_checking`, `internal_checklist`). Hierarchical via `parent_task_id`, level 1–4 |
 | `project_task_comment` | Task comments with `viewed_by: UUID[]` for unread tracking |
-| `idea` | Sandbox planner ideas. `created_by` links to creator, `project_id` optionally links to a project |
-| `idea_styles` | Design system per idea — legacy rich-text fields + 13 structured JSONB/TEXT columns |
-| `prompt` | AI prompt templates editable by admins |
-| `agency` | Single-row agency config |
-| `agency_ai_settings` | Agency-level AI provider keys (read via service-role only) |
+| `project_file` / `project_link` / `project_video` | Project resources (each has a `description`) |
+| `project_work_feedback` | Work-period feedback (renamed from `project_daily_feedback`); `start_date`, `end_date`, `total_time`, `emails[]` |
+| `internal_project` + `internal_project_*` | Internal company projects, assignees, resources, work-feedback |
+| `invoice` | Invoices: `currency`, `account_details`, work period, `total_time`, `emails[]` |
+
+**Ideas Refiner** (`idea` + 17 sub-tables)
+
+| Table | Purpose |
+|---|---|
+| `idea` | Refiner ideas; `created_by`, `authorized_users: UUID[]`, optional `project_id` |
+| `idea_structure_and_align`, `idea_icp`, `idea_product_definition_and_flows` | Discovery steps |
+| `idea_location_legislation`, `idea_market_opportunity` | Regulatory + TAM/SAM/SOM & unit economics |
+| `idea_benchmarking`, `idea_risk_and_validation` | Competitor analysis + risk register / demand evidence / debate |
+| `idea_report` | Go/no-go report: scores, alignment, debate, Build Brief HTML |
+| `idea_prd`, `idea_database`, `idea_styles`, `idea_milestones_and_tasks` | Build-phase artifacts |
+| `idea_chatbot`, `idea_chatbot_devil_advocate` | Per-idea chatbots |
+| `idea_playbook_version` (+ comments) | Build playbook versioning |
+
+**Marketing Validation Engine** (`mkt_*`, ~17 tables)
+
+| Table | Purpose |
+|---|---|
+| `mkt_validation` | Per-idea funnel mode, status, decision contract, positioning, booking URL |
+| `mkt_prospect`, `mkt_source_run` | Sourced leads + Apify run state |
+| `mkt_campaign`, `mkt_sequence_step`, `mkt_outreach`, `mkt_suppression` | Email outreach engine |
+| `mkt_content`, `mkt_landing` | Scheduled social content + landing page config |
+| `mkt_signal`, `mkt_event` | Captured demand signals + page events |
+| `mkt_interview`, `mkt_ad_campaign`, `mkt_decision_log`, `mkt_research_cache` | Interview intelligence, paid traffic, decisions |
+| `mkt_seo_keyword`, `mkt_seo_rank_history` | SEO keyword rank tracking |
+
+**Shared / AI**
+
+| Table | Purpose |
+|---|---|
+| `prompt` | AI prompt templates editable by admins/managers |
 | `user_ai_settings` | Per-user AI provider keys and model overrides |
-| `feedback` | Feedback entries; visibility scoped by `get_user_type()` |
-| `internal_project` | Internal company projects |
-| `talent` | Talent pool entries with skills, levels, and share tokens |
+| `agency` | Single-row agency config (its AI half — `agency_ai_settings` — was dropped 2026-06-14) |
+| `feedback` | Feedback wall entries; visibility scoped by `get_user_type()` |
+| `sop` / `sop_version` | Documents / SOPs with versioning |
+
+> **Dropped 2026-06-14:** `talent*`, `client`, `company`, and related enums (the talent-pool / leads / recommended-projects features were removed).
 
 ### Key JSONB columns
 
@@ -173,7 +210,7 @@ The `project_task` table has an expanded model to support self-service by client
 | `idea_styles.border_radius` | `BorderRadiusSystem` | `{sm, md, lg, xl, full}` |
 | `idea_styles.shadows` | `ShadowToken[]` | `{name, css_value, usage}` |
 
-### Enums (PostgreSQL `os_*` types)
+### Enums (`os_*` operational, `mkt_*` marketing)
 
 | Enum | Values |
 |---|---|
@@ -181,7 +218,14 @@ The `project_task` table has an expanded model to support self-service by client
 | `os_task_type` | internal_checklist, stages_checking, developer_tasks, client_requests, qa_requests |
 | `os_task_status` | not_started, in_progress, ready_for_qa, done, blocked |
 | `os_project_status` | prospecting, not_started, in_progress, done, blocked, archived, lost_deal |
-| `os_idea_block` | ideas, structure_align, refining_icp, product_definition_flows, benchmarking, strategic_frameworks, prd, database, visual_styles, milestones_and_tasks, report |
+| `os_ai_service` | gemini, claude, openai |
+| `os_idea_block` | ideas, structure_align, refining_icp, product_definition_flows, location_legislation, market_opportunity, benchmarking, strategic_frameworks, risk_and_validation, report, prd, database, visual_styles, milestones_and_tasks, playbook |
+| `mkt_funnel_mode` | b2b_outreach, consumer_capture, hybrid |
+| `mkt_validation_status` | validating, killed, doubling_down |
+| `mkt_channel` | email, linkedin, google_maps, instagram, facebook, reddit, x, social_discovery |
+| `mkt_signal_type` | quiz, waitlist, preorder |
+| `mkt_outreach_status` | queued, sent, opened, replied, bounced, unsub |
+| `mkt_content_status` | draft, scheduled, posted, failed |
 
 ---
 
@@ -232,37 +276,63 @@ The `project_task` table has an expanded model to support self-service by client
 - Per-block refresh ticks avoid re-fetching all lists on conversation select
 - Tab badge counts flow: `TaskRequestsKanbanWrapper`/`QARequestsTab` → `onCounts(blue, red)` → `ConversationPane` state → `TabMenu` props
 
-### Sandbox Planner
+### Ideas Refiner
+
+The canonical step order lives in `IDEA_BLOCKS_ORDERED` (`src/types/idea-refiner.ts`) — 15 steps:
 
 ```
-/sandbox-planner
+1  Ideas                        9  Risk & Validation (Devil's-Advocate debate)
+2  Structure & Align           10  Report  ← go/no-go gate (before any build step)
+3  Refining ICP                11  PRD
+4  Product Definition & Flows  12  Database
+5  Location & Legislation      13  Design System (visual_styles)
+6  Market Opportunity          14  Project Milestones & Tasks
+7  Benchmarking                15  Playbook
+8  Strategic Frameworks
+```
+
+```
+/ideas-refiner
   page.tsx (RSC)
-    → <SandboxPlannerShell> (client component)
-        → <IdeasGrid>
-        → <StructureAlignStep>
-        → <RefiningIcpStep>
-        → <ProductDefinitionStep>
-        → <BenchmarkingStep>
-        → <StrategicFrameworksStep>
-        → <PrdStep>
-        → <DatabaseStep>
-        → <VisualStylesStep>        # 6-section design system UI
-        → <MilestonesAndTasksStep>
-        → <ReportStep>
+    → <IdeasRefinerShell> (client component)
+        → <IdeasGrid> + one step component per block above
+        → idea chatbot + Devil's-Advocate chatbot panels
   actions.ts
-    → triggerAiGeneration(ideaId, step)
-    → generateVisualStylesContent()
-    → saveStyles(), saveStructureAlign(), ...
+    → triggerAiGeneration(ideaId, step) / generate<Step>Content()
+    → save<Step>(), buildProjectFromIdea()
 ```
 
-AI generation flow:
-1. Set `idea.current_blocks_updating = step`
-2. Record `requestId = crypto.randomUUID()` in `idea.current_ai_request_id`
-3. Build prompt from DB template (or fallback constant)
-4. Call `generateAiJsonResponse<T>()` — dispatches to OpenAI / Gemini / Claude based on `resolveAiConfig`
-5. Before each DB write, call `isRequestActive(supabase, ideaId, requestId)` — skip if a newer request has taken over
-6. Write to the `idea_*` sub-table
-7. Clear `current_blocks_updating`
+**Report is a pre-build gate** (step 10, before PRD/Database/Visual/Milestones). It scores ONLY discovery evidence (steps 1–9) via a two-gate Skeptic↔Advocate debate, then a Reframer + Scorer synthesis. Verdict buckets: `build` (≥75) | `refine` (≥60) | `kill` (<60). It also emits a 10-section investor-grade **Build Brief**.
+
+AI generation flow (every step):
+1. Set `idea.current_blocks_updating = step` and `current_ai_request_id = crypto.randomUUID()`
+2. Build prompt from DB `prompt` row (or the action's `FALLBACK_*` constant)
+3. `generateAiJsonResponse<T>()` / `generateAiTextResponse()` — dispatches to OpenAI / Gemini / Claude via `resolveAiConfig`. Multi-field rich-HTML steps pass `maxTokens: 16384`
+4. Before each DB write, call `isRequestActive(supabase, ideaId, requestId)` — skip if a newer request superseded this one (and always check the write `error`)
+5. Write to the `idea_*` sub-table; clear `current_blocks_updating`
+6. The client overlay clears via a Realtime update on the `idea` row (or a stuck-timer fallback)
+
+### Marketing Validation Engine
+
+A greenfield demand-validation pipeline attached to any `idea` (not a Bubble port). Admin/manager only; the public capture zone is anonymous.
+
+```
+/marketing                      → portfolio of ideas with validation + funnel rollup
+/marketing/[ideaId]             → per-idea dashboard (funnel + decision contract)
+/marketing/[ideaId]/positioning → brand DNA, decision contract, funnel mode
+                /sourcing       → Apify runs → mkt_prospect (Google Maps / B2B / social discovery)
+                /outreach       → Brevo email sequences (+ /[campaignId] editor)
+                /interviews     → Mom-Test interview analysis + synthesis
+                /content        → Buffer/Postiz multi-channel scheduler
+                /landing        → HTML landing builder → publishes to /m/[slug]
+                /signals        → weighted demand scoring, ICP split, Wilson-CI conversion
+                /traffic        → ad campaigns (UTM) + SEO keyword rank tracker
+
+/m/[slug]                       → public SSR landing (service-role); CaptureForm + ViewBeacon
+/api/m/*, /api/webhooks/*, /api/mkt/cron/*  → capture, brevo/cal.com/tally webhooks, cron workers
+```
+
+Background workers (`/api/mkt/cron/*`, guarded by `CRON_SECRET`) process due outreach steps and publish scheduled content. Public landing reads/writes use the **service-role** client server-side — no anon RLS is exposed.
 
 ### Dashboard
 
@@ -296,13 +366,14 @@ All three functions return `ConvertResult<T>` with `{ data?, returned_an_error, 
 ```
 resolveAiConfig(supabase, userId)
   1. Read user_ai_settings + profiles.type
-  2. referrer/lead → personal config only (no agency, no env fallback)
+  2. referrer/lead → personal key only (no env fallback)
   3. Other roles:
-     a. use_agency_settings=false + personal keys present → personal
-     b. Agency keys (service-role read) → agency config
-     c. OPENAI_API_KEY env → env fallback
-     d. null → no AI available
+     a. Personal key present → personal config
+     b. OPENAI_API_KEY / GEMINI_API_KEY env → env fallback
+     c. null → no AI available
 ```
+
+> There is no agency-key tier — `agency_ai_settings` was dropped on 2026-06-14. `resolveImageKeys()` follows the same personal→env order for Gemini/OpenAI image generation.
 
 ### Prompt management
 
@@ -315,13 +386,22 @@ resolveAiConfig(supabase, userId)
 
 ## Real-time & Polling
 
-The app does not use Supabase Realtime subscriptions. Instead, it uses **interval polling** via `setInterval` in client components:
+The app uses a **hybrid** model — Supabase Realtime for a few high-value signals, interval polling elsewhere:
+
+**Realtime subscriptions**
+- Emoji reactions (added to the Realtime publication in `20260618000000_emoji_realtime_publication.sql`)
+- Ideas Refiner generation completion — the client overlay watches the `idea` row and clears when `current_blocks_updating` is nulled server-side (a long AI call resolves via Realtime, not a client timeout)
+
+**Interval polling** via `setInterval` in client components:
 
 | Component | Poll interval | Pattern |
 |---|---|---|
 | Chat list (`ProjectsList`, etc.) | 30s | Per-block refresh tick; `hasFetched` ref for silent refresh |
+| Chat tab panels (`ProjectTabsPanel`, `InternalProjectTabsPanel`) | 2s | In-flight `loadingRef` guard (skip overlapping polls); only while tab is visible |
 | Task kanban wrappers (chat) | 2s | `hasFetched` ref; emit `onCounts(blue, red)` after each load |
 | Conversation mark-viewed | On select | Bumps only the active block's tick (not all blocks) |
+
+> The 2s tab-panel polls previously fanned out 5 server actions per tick with no overlap guard, flooding the server-action queue and starving user saves (fixed 2026-06-20 with `loadingRef` + visibility gating).
 
 **Per-block refresh tick pattern** (prevents over-fetching in chat):
 
@@ -408,13 +488,16 @@ TabMenu
 
 ## File & Storage
 
-Supabase Storage is used for:
-- Task comment attachments (uploaded via the chat comment composer)
-- User profile pictures
-- Talent profile pictures
-- Document files (project docs tabs)
+Four public Supabase Storage buckets (created in `20260619000000_storage_buckets.sql` and `20260621000000_chat_file_storage_buckets.sql`):
 
-File URLs are stored as `TEXT` in the relevant tables. The Supabase Storage bucket policies mirror the table RLS — only authorized users can access files for their projects.
+| Bucket | Max size | Contents |
+|---|---|---|
+| `avatars` | 5 MB | User profile pictures (images only) |
+| `user-signatures` | 2 MB | Digital signature images (path-scoped to `users/{userId}/*`) |
+| `project-files` | 50 MB | Project / internal-project Files-tab attachments (any type) |
+| `chat-attachments` | 25 MB | Inline chat message attachments (any type) |
+
+Buckets allow public read via direct URL but require authentication for upload/update/delete. File URLs are stored as `TEXT` in the relevant tables.
 
 ---
 
@@ -443,29 +526,35 @@ src/
 │       └── ...                  # Shared primitives
 ├── lib/
 │   ├── api/
-│   │   ├── ai-config.ts        # resolveAiConfig — provider resolution
-│   │   ├── ai-dispatcher.ts    # generateAiJsonResponse — routes to provider
-│   │   ├── claude.ts           # Anthropic Claude API client
-│   │   ├── gemini.ts           # Google Gemini API client
-│   │   ├── openai.ts           # OpenAI API client
-│   │   ├── json-converters.ts  # Output type interfaces + parseJson helpers
-│   │   └── brevo.ts            # Transactional email via Brevo
+│   │   ├── ai-config.ts        # resolveAiConfig / resolveImageKeys — provider resolution
+│   │   ├── ai-dispatcher.ts    # generateAiJsonResponse / generateAiTextResponse
+│   │   ├── claude.ts           # Anthropic Claude client (retry + backoff)
+│   │   ├── gemini.ts           # Google Gemini client (text + image)
+│   │   ├── openai.ts           # OpenAI Responses API (text + gpt-image-1)
+│   │   ├── json-converters.ts  # AI output type interfaces + parse helpers
+│   │   ├── brevo.ts            # Transactional/bulk email (+ attachments)
+│   │   ├── apify.ts            # Lead-sourcing actors (Google Maps / B2B / social)
+│   │   ├── buffer.ts           # Buffer social scheduling + analytics
+│   │   ├── postiz.ts           # Postiz social scheduling
+│   │   └── image-search.ts     # Pexels stock-image search
 │   ├── auth/
 │   │   └── page-gate.ts        # requirePageAccess + ROLE_FALLBACK
 │   ├── data/
 │   │   └── ideaPicker.ts       # Shared idea data fetchers
+│   ├── marketing/             # Validation-engine domain logic (sourcing, outreach, public, admin)
+│   ├── notifications/        # Work-feedback / invoice email builders
 │   └── supabase/
 │       ├── client.ts           # Browser Supabase client
-│       ├── server.ts           # Server Supabase client (+ service client)
+│       ├── server.ts           # Server client + createServiceClient() (service-role)
 │       └── types.ts            # Generated + manually maintained DB types
 ├── types/
 │   ├── projects.ts             # Task, Project, UserType, TabKey, ...
 │   ├── chat.ts                 # ChatBlock, ChatTab, conversation types
-│   ├── sandbox-planner.ts      # IdeaBlock, IdeaStyles, design token interfaces
-│   ├── settings.ts             # AiService
-│   ├── feedback.ts
-│   ├── leads.ts
-│   ├── talent.ts
+│   ├── idea-refiner.ts         # IdeaBlock (15), IdeaStyles, design token interfaces
+│   ├── marketing.ts            # mkt_* enums, validation/contract/funnel types
+│   ├── docs.ts                 # Invoice, PlaybookVersion, ProjectFile/Link/Video
+│   ├── internal-projects.ts    # InternalProject, InternalTask, time tracking
+│   ├── okrs.ts · sops.ts · feedback.ts · settings.ts
 │   └── ...
 └── proxy.ts                    # Next.js 16 session middleware
 ```
@@ -491,7 +580,7 @@ src/
 4. RSC re-fetches tasks → UI updates
 ```
 
-### AI generation (Sandbox Planner step)
+### AI generation (Ideas Refiner step)
 
 ```
 1. User clicks "Generate" on a step

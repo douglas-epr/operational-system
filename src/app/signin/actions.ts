@@ -26,27 +26,9 @@ export async function signIn(
     return { error: authError };
   }
 
-  // Determine where to route based on user type (profiles.type)
-  // Bubble signin workflow: referrer → referrer-dashboard, everyone else → projects
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  let destination = "/projects";
-
-  if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("type")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profile?.type === "referrer") {
-      destination = "/referrer-dashboard";
-    }
-  }
-
-  redirect(destination);
+  // All roles land on /projects after sign-in; the middleware + page gate then
+  // route each role to its allowed home (referrer is clamped to /projects).
+  redirect("/projects");
 }
 
 // ── Send Password Reset Email ─────────────────────────────────────────────────

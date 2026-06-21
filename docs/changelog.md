@@ -3,6 +3,49 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-21] — Full security, code-quality, and performance audit (skills: /tlc-spec-driven, /code-quality-reviewer, /code-review, /performance-optimization, /security-review, /security-best-practices, /supabase, /supabase-postgres-best-practices)
+
+### CRITICAL security fix
+- **Privilege escalation via `profiles.type` self-promotion** (`profiles: update own` policy had no `WITH CHECK`; any authenticated user could `PATCH {type:"admin"}`). Fixed with a `BEFORE UPDATE` trigger (`profiles_guard_type_change`) that blocks type changes from regular users; added `WITH CHECK (id = auth.uid())` to the policy. Migration: `20260628000000_security_profiles_type_guard.sql`.
+- **`is_staff_role()` SECURITY DEFINER** missing `SET search_path` — pinned to `'public'` in the same migration.
+
+### HIGH security fixes
+- **Webhooks failed open**: Tally and Cal.com handlers returned `true` when `WEBHOOK_SECRET` env var was unset. Now fail closed in production. UUID validation + 32KB size cap added to the Tally `mkt_signal` IDOR sink.
+- **Timing-leak secret comparisons**: All 5 cron + webhook routes switched to `timingSafeEqual` via new `src/lib/auth/secretCompare.ts` helper (was plain `===`).
+- **Hardcoded `"dev"` HMAC fallback** in `marketing/outreach.ts` removed (unsubscribe tokens were forgeable in local/staging environments).
+- **Unbounded public write payloads** in `marketing/public.ts` (`recordSignal`/`recordEvent`): field caps, UTM allowlist, 8KB quiz payload cap added.
+- **XSS via unsanitized AI HTML**: ideas-refiner chatbots (`IdeaChatbot`, `IdeaDevilAdvocateChatbot`) rendered `m.message` raw in `dangerouslySetInnerHTML`. Wrapped with `sanitizeHtml`.
+- **Security headers** added to `next.config.ts`: `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`.
+
+### Code quality fixes
+- `projects/actions.ts`: `createProject` now unions creator into `authorized_users` (was possible to lock yourself out of your own project); added `WITH CHECK` to the insert guard.
+- `signin/actions.ts`: removed dead `/referrer-dashboard` redirect route (dropped table).
+- `api/ai-config.ts`: removed dead `import { createServiceClient }` stub.
+- `api/json-converters.ts`: deleted dead `verifyTalent`/`verifyClient` stubs (talent tables dropped).
+- All AI provider helpers (`openai.ts`, `gemini.ts`, `claude.ts`): missing-key changed from `throw` to `return { returned_an_error: true }` — consistent with all other error paths, never crashes server actions.
+- `api/gemini.ts`: API key moved from query string (`?key=`) to `x-goog-api-key` header (credential exposure fix).
+- `ideas-refiner/actions.ts`: 11 AI generate* functions now capture write errors and early-return; `triggerAiGeneration` completion block skips `current_block_ended` when a generation error occurred (prevents false "step completed" state).
+- `invoices/actions.ts`: `sendInvoiceEmail` error check now correctly catches resolved-with-error responses (not just Promise rejections); `maxTokens` raised to 16384 for AI fill.
+
+### Performance fixes
+- `chat/_components/tabs/TaskRequestsKanbanWrapper.tsx` + `InternalProjectTasksTab.tsx`: added in-flight `inFlight` guard + `document.visibilityState` check to 2s poll loops (prevents server-action queue flood).
+- `marketing/admin.ts` (`getIdeaContext`): sequential DB fetches replaced with `Promise.all`.
+- `feedback/page.tsx`: `profiles` select drops unused `signature` column.
+- `okrs/_components/KeyResultModal.tsx`: `KeyResultsTracker` lazy-loaded with `dynamic(..., { ssr: false })`.
+- New migration `20260627000000_mkt_funnel_indexes.sql`: indexes on `mkt_event(idea_id, type)`, `mkt_event(idea_id, session_id)`, `mkt_signal(idea_id, type)`.
+
+### Documentation sync (`/tlc-spec-driven`)
+- `README.md`, `architecture.md`, `RULES.md`, `CLAUDE.md`, `docs/project_status.md` updated to reflect current app state (15-step Ideas Refiner canonical order, 2-tier AI config, dropped talent/agency tables, marketing domain, is_staff_role, correct RLS helpers, port 4000, 28+ migrations).
+- `.specs/` workspace created: `project/PROJECT.md`, `ROADMAP.md`, `STATE.md`; `codebase/STACK.md`, `ARCHITECTURE.md`, `CONVENTIONS.md`, `STRUCTURE.md`, `TESTING.md`, `INTEGRATIONS.md`, `CONCERNS.md`.
+
+### Pending (requires explicit authorization or larger migration scope)
+- RLS `(select auth.uid())` wrapper pass (409 calls unwrapped — 5-100× perf).
+- Next.js 16.2.x upgrade (CVE in middleware/proxy-bypass, ws high).
+- Rate limiting on `/api/m/event`, `/api/m/[slug]/capture`, webhooks.
+- Full CSP with per-request nonces.
+- Brevo webhook HMAC signature verification.
+
+
 ## [2026-06-20] — Chat tabs: stop server-action polling flood (slow UI + lost saves)
 
 - **Symptom**: On `/chat` Files/Links/Videos/Work-Feedback tabs (both `internal_projects` and `projects`), the page became very slow and feedback often failed to save. Network trace showed a continuous flood of POSTs to the page route (server actions), some aborting.

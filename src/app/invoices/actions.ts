@@ -219,7 +219,8 @@ export async function aiFillInvoiceFromFeedback(input: {
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     prompt,
-    maxTokens: 2048,
+    // Rich-HTML output — use the high ceiling so the JSON isn't truncated mid-tag.
+    maxTokens: 16384,
   });
 
   if (res.returned_an_error || !res.data?.service_description) {
@@ -272,20 +273,26 @@ export async function sendInvoiceEmail(input: {
   </div>`;
   const fileName = `invoice-${input.code.replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`;
 
-  try {
-    await Promise.allSettled(
-      recipients.map((email) =>
-        sendRawEmail({
-          to: { email, name: email },
-          subject,
-          htmlContent,
-          attachments: [{ content: input.pdfBase64, name: fileName }],
-          tags: ["invoice"],
-        })
-      )
-    );
-  } catch {
-    return { error: "Invoice saved, but the email could not be sent." };
+  const results = await Promise.allSettled(
+    recipients.map((email) =>
+      sendRawEmail({
+        to: { email, name: email },
+        subject,
+        htmlContent,
+        attachments: [{ content: input.pdfBase64, name: fileName }],
+        tags: ["invoice"],
+      })
+    )
+  );
+  // sendRawEmail RESOLVES with { returned_an_error: true } on a non-OK Brevo
+  // response (it does not throw), so a fulfilled result can still be a failure.
+  const failed = results.filter(
+    (r) => r.status === "rejected" || (r.status === "fulfilled" && r.value.returned_an_error)
+  ).length;
+  if (failed > 0) {
+    return {
+      error: `Invoice saved, but ${failed}/${recipients.length} email(s) could not be sent.`,
+    };
   }
   return {};
 }

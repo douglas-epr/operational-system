@@ -1,6 +1,7 @@
 "use client";
 
 import type { Invoice } from "@/types/docs";
+import { sanitizeHtml } from "@/lib/sanitize";
 
 interface Props {
   invoice: Invoice;
@@ -134,7 +135,7 @@ export default function InvoicePreview({ invoice, onClose }: Props) {
                     {invoice.service_description && (
                       <div
                         className="text-xs text-neutral-600 mt-1 invoice-rich-desc"
-                        dangerouslySetInnerHTML={{ __html: invoice.service_description }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeHtml(invoice.service_description) }}
                       />
                     )}
                   </div>

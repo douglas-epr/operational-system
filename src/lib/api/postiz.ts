@@ -19,9 +19,12 @@ function apiKey(): string {
   return k;
 }
 
+const POSTIZ_TIMEOUT_MS = 20_000;
+
 async function postizFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(`${BASE}${path}`, {
     ...init,
+    signal: init?.signal ?? AbortSignal.timeout(POSTIZ_TIMEOUT_MS),
     headers: {
       Authorization: apiKey(), // raw key, no Bearer
       "Content-Type": "application/json",

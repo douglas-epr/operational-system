@@ -19,6 +19,14 @@ function token(): string {
   return t;
 }
 
+/** Auth via header (never the query string — query strings leak into logs/APM). */
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  return { Authorization: `Bearer ${token()}`, ...(extra ?? {}) };
+}
+
+/** Default timeout for short Apify control-plane calls (start/poll/fetch). */
+const APIFY_API_TIMEOUT_MS = 30_000;
+
 /** Non-throwing token accessor for capability checks. */
 function tokenOrNull(): string | null {
   return process.env.APIFY_TOKEN ?? null;
@@ -35,10 +43,11 @@ export async function startActorRun(
   actorId: string,
   input: Record<string, unknown>
 ): Promise<ApifyRun> {
-  const res = await fetch(`${BASE}/acts/${actorId}/runs?token=${token()}`, {
+  const res = await fetch(`${BASE}/acts/${actorId}/runs`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input),
+    signal: AbortSignal.timeout(APIFY_API_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new Error(`Apify start failed: ${res.status} ${await res.text().catch(() => "")}`);
@@ -51,7 +60,10 @@ export async function startActorRun(
 
 /** Poll a run's status. */
 export async function getRun(runId: string): Promise<ApifyRun> {
-  const res = await fetch(`${BASE}/actor-runs/${runId}?token=${token()}`);
+  const res = await fetch(`${BASE}/actor-runs/${runId}`, {
+    headers: authHeaders(),
+    signal: AbortSignal.timeout(APIFY_API_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`Apify getRun failed: ${res.status}`);
   const j = (await res.json()) as {
     data: { id: string; status: string; defaultDatasetId?: string };
@@ -65,9 +77,13 @@ export async function getDatasetItems(
   limit = 1000
 ): Promise<Record<string, unknown>[]> {
   const res = await fetch(
-    `${BASE}/datasets/${datasetId}/items?clean=true&format=json&limit=${limit}&token=${token()}`
+    `${BASE}/datasets/${datasetId}/items?clean=true&format=json&limit=${limit}`,
+    { headers: authHeaders(), signal: AbortSignal.timeout(APIFY_API_TIMEOUT_MS) }
   );
-  if (!res.ok) return [];
+  if (!res.ok) {
+    console.error(`[apify] getDatasetItems ${datasetId} failed: ${res.status}`);
+    return [];
+  }
   return (await res.json().catch(() => [])) as Record<string, unknown>[];
 }
 
@@ -444,10 +460,10 @@ async function runActorSync<T = Record<string, unknown>>(
   input: Record<string, unknown>
 ): Promise<T[]> {
   const path = actorId.replace("/", "~"); // "user/name" → "user~name"
-  const url = `${BASE}/acts/${path}/run-sync-get-dataset-items?token=${token()}`;
+  const url = `${BASE}/acts/${path}/run-sync-get-dataset-items`;
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input),
     signal: AbortSignal.timeout(RESEARCH_RUN_TIMEOUT_MS),
   });
@@ -567,9 +583,10 @@ export function apifyConfigured(): boolean {
  */
 export async function registerRunWebhook(runId: string, callbackUrl: string): Promise<void> {
   try {
-    const res = await fetch(`${BASE}/actor-runs/${runId}/webhooks?token=${token()}`, {
+    const res = await fetch(`${BASE}/actor-runs/${runId}/webhooks`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      signal: AbortSignal.timeout(APIFY_API_TIMEOUT_MS),
       body: JSON.stringify({
         eventTypes: [
           "ACTOR.RUN.SUCCEEDED",

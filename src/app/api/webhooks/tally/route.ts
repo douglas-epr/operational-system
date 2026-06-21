@@ -37,9 +37,14 @@ interface TallyPayload {
   };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_ANSWERS_BYTES = 32_768;
+
 function verifySignature(rawBody: string, header: string | null): boolean {
   const secret = process.env.TALLY_WEBHOOK_SECRET;
-  if (!secret) return true; // skip in dev
+  // Fail CLOSED in production: a missing secret must reject, not bypass auth.
+  // Only skip verification outside production (local testing).
+  if (!secret) return process.env.NODE_ENV !== "production";
   if (!header) return false;
   const expected = `sha256=${createHmac("sha256", secret).update(rawBody).digest("hex")}`;
   if (expected.length !== header.length) return false;
@@ -90,8 +95,17 @@ export async function POST(req: NextRequest) {
   if (!signalId) {
     return Response.json({ ok: true, skipped: true, reason: "no_signal_id" });
   }
+  // The signalId arrives via a user-prefillable hidden field — validate its
+  // shape so a tampered value can't reach the DB as an arbitrary identifier.
+  if (!UUID_RE.test(signalId)) {
+    return Response.json({ error: "Invalid signalId" }, { status: 400 });
+  }
 
   const answers = answersMap(fields);
+  // Cap the persisted payload so a single submission can't bloat the row.
+  if (JSON.stringify(answers).length > MAX_ANSWERS_BYTES) {
+    return Response.json({ error: "Payload too large" }, { status: 413 });
+  }
   const sb = createServiceClient();
 
   const { error } = await sb

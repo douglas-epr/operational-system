@@ -2,7 +2,9 @@
 
 ## Project Goal
 
-Replicate the studio's legacy Bubble.io application (documented in `docs/reference_docs/`) as a modern, type-safe Next.js + Supabase web app. Every feature must trace back to a documented Bubble element, page, workflow, or data type.
+Replicate the studio's legacy Bubble.io application (documented in `docs/reference_docs/`) as a modern, type-safe Next.js + Supabase web app. Every **ported** feature must trace back to a documented Bubble element, page, workflow, or data type.
+
+**Exception:** the **Market Validation Engine** (`/marketing`, `/m`, `mkt_*`, `src/lib/marketing/`) is a greenfield domain with no Bubble ancestor — its source of truth is `docs/marketing/`, not `reference_docs/`.
 
 ---
 
@@ -32,8 +34,10 @@ Replicate the studio's legacy Bubble.io application (documented in `docs/referen
 | Styling | Tailwind CSS v4, CSS custom properties |
 | Rich Text | TipTap v3 |
 | Charts | Recharts v3 |
-| AI | OpenAI GPT-4.1 · Gemini 2.5 Flash · Claude Sonnet |
-| Deployment | Vercel (auto-deploy on push to `master`) |
+| AI | OpenAI GPT-4.1 · Gemini 2.5 Flash · Claude Sonnet 4 |
+| Integrations | Brevo (email) · Apify (sourcing) · Buffer/Postiz (social) · Pexels (images) |
+| Export | jsPDF + html2canvas · html-docx-js |
+| Deployment | Vercel (auto-deploy on push to `master`); dev port 4000, prod 30003 |
 
 ---
 
@@ -74,8 +78,8 @@ const { supabase, userId, role } = await requirePageAccess(["admin", "manager"])
 
 Middleware (`src/proxy.ts`) runs on every request to:
 1. Refresh the Supabase session cookie
-2. Redirect unauthenticated users to `/signin`
-3. Hard-clamp `referrer` users to `/recommended-projects`
+2. Redirect unauthenticated users to `/signin` (public zone: `/signin`, `/reset_pw`, `/m/*`, `/api/*`)
+3. Hard-clamp `referrer` users to `/projects`, `/feedback`, `/profile` (allow-list); else redirect to `/projects`
 
 **Never** do auth checking in client components. All auth is server-side.
 
@@ -88,7 +92,8 @@ Middleware (`src/proxy.ts`) runs on every request to:
 ```sql
 public.get_user_type()           -- current user's profiles.type
 public.is_admin_or_manager()     -- true for admin | manager
-public.is_operational_user()     -- true for operational
+public.is_staff_role()           -- true for admin | manager | operational
+public.is_operational_user()     -- true for developer | client | qa (project-member tier; name is historical)
 auth.uid()                       -- current user's UUID
 ```
 
@@ -167,7 +172,7 @@ const res = await generateAiJsonResponse<MyOutputType>({
 });
 ```
 
-Resolution order: personal key → agency key (service-role read) → `OPENAI_API_KEY` env → `null`.
+Resolution order: personal key (`user_ai_settings`) → `OPENAI_API_KEY` / `GEMINI_API_KEY` env → `null`. **No agency-key tier** (`agency_ai_settings` dropped 2026-06-14). `referrer`/`lead` are personal-key-only (no env fallback). Multi-field rich-HTML generations must pass `maxTokens: 16384`.
 
 ---
 
@@ -214,17 +219,33 @@ Import from `@/components/ui/icons` — never write inline `<svg>` in component 
 
 ### Chat
 
-- Block types: `projects`, `projects_internal`, `internal_projects`, `private`, `chatbot`
+- `ChatBlock` types: `projects`, `internal_projects`, `private`, `chatbot`
 - Use **per-block** refresh ticks, not a global tick (avoids re-fetching all lists on conversation select)
 - Use `hasFetched` ref pattern: show loading spinner only on first fetch, not on background polls
+- Tab panels (`ProjectTabsPanel`, `InternalProjectTabsPanel`) poll every 2s — guard with an in-flight `loadingRef` (skip overlapping polls) and only poll while the tab is visible, or the server-action queue floods and user saves are starved
+- Emoji reactions use Supabase Realtime (not polling)
 
-### Idea Refiner
+### Ideas Refiner
 
-- 11 steps: ideas → structure_align → refining_icp → product_definition_flows → benchmarking → strategic_frameworks → report → prd → database → visual_styles → milestones_and_tasks
-- **Report is a pre-build go/no-go gate** (Step 7, before PRD). It scores ONLY discovery-phase evidence (idea, structure, ICPs, product definition, benchmarking, strategic frameworks) — never PRD/Database/Visual/Milestones, which come after it. Verdict buckets: `build` (≥75) | `refine` (≥60) | `kill` (<60). Uses Critical Thought Partner / Devil's Advocate methodology.
-- Guard stale AI writes with `isRequestActive(supabase, ideaId, requestId)` before every DB write inside a generation function
+- **15 steps** (canonical order in `IDEA_BLOCKS_ORDERED`, `src/types/idea-refiner.ts`): ideas → structure_align → refining_icp → product_definition_flows → location_legislation → market_opportunity → benchmarking → strategic_frameworks → risk_and_validation → **report** → prd → database → visual_styles → milestones_and_tasks → playbook
+- **Report is a pre-build go/no-go gate** (step 10, before PRD/Database/Visual/Milestones). It scores ONLY discovery evidence (steps 1–9) via a two-gate Skeptic↔Advocate debate + Reframer/Scorer synthesis. Verdict buckets: `build` (≥75) | `refine` (≥60) | `kill` (<60). It also emits a 10-section investor-grade **Build Brief**. The Devil's-Advocate debate now lives in **Risk & Validation** (step 9), not Report.
+- Guard stale AI writes with `isRequestActive(supabase, ideaId, requestId)` before every DB write inside a generation function — **and always check the write `error`** (a swallowed insert error on a missing column reads as a silent 4-min timeout)
+- `buildProjectFromIdea` inherits the idea's `authorized_users` and links the project via `idea.project_id`
 - `idea_styles` JSONB columns: `color_tokens`, `typography`, `spacing`, `border_radius`, `shadows`
 - `idea_styles` narrative columns: `brand_voice`, `iconography_style`, `motion_principles` (plus legacy `logo_branding`, `color_palette`, `product_feeling`)
+
+### Market Validation Engine (greenfield)
+
+- Per-**idea** validation workspace (migrated from project-level): `/marketing/[ideaId]/{positioning,sourcing,outreach,interviews,content,landing,signals,traffic}`
+- Public landing pages at `/m/[slug]` — anonymous, written via the **service-role** client; no anon RLS exposed
+- Cron workers at `/api/mkt/cron/*` (guarded by `CRON_SECRET`) send due outreach (Brevo) and publish scheduled content (Buffer/Postiz)
+- Lead sourcing via Apify actors (Google Maps, B2B leads, 6-platform social discovery)
+- Signals scoring is weighted by commitment level with Wilson-CI conversion and ICP-fit split
+
+### Invoices & Work Feedback
+
+- "Daily feedback" → **Work Feedback**: `project_work_feedback` / `internal_project_work_feedback` with `start_date`, `end_date`, `total_time`, `emails[]` (the internal tab key/URL stays `daily_feedback`)
+- Invoices: `currency`, `account_details` (merged SWIFT/IBAN), work period, `total_time`, `emails[]`; **AI Fill** sums `total_time` deterministically and AI-summarizes `current_work` into the service description; client-side PDF (hex styles, not Tailwind `oklch()`, so html2canvas can parse) emailed via Brevo
 
 ---
 

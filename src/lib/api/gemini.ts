@@ -1,7 +1,8 @@
 /**
  * Gemini (Google Generative AI) Utility
  * Source: docs/reference_docs/api-connectors.md — Gemini connector
- * Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key=API_KEY
+ * Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+ * Auth: x-goog-api-key header (not the ?key= query param — keeps the key out of logs)
  * Model used in Bubble: gemini-2.5-flash
  */
 
@@ -78,11 +79,17 @@ export async function generateGeminiContent(
   params: GeminiRequestParams
 ): Promise<GeminiResult> {
   const apiKey = params.apiKey ?? process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("Missing Gemini API key: provide apiKey param or set GEMINI_API_KEY env var");
+  if (!apiKey) {
+    return {
+      returned_an_error: true,
+      status_code: 0,
+      status_message: "Missing Gemini API key: provide apiKey param or set GEMINI_API_KEY env var",
+    };
+  }
 
   const { model = "gemini-2.5-flash", contents, generationConfig } = params;
 
-  const url = `${GEMINI_BASE_URL}/${model}:generateContent?key=${apiKey}`;
+  const url = `${GEMINI_BASE_URL}/${model}:generateContent`;
 
   const body: Record<string, unknown> = { contents };
   if (generationConfig) body.generationConfig = generationConfig;
@@ -91,7 +98,7 @@ export async function generateGeminiContent(
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(AI_FETCH_TIMEOUT_MS),
     });
@@ -229,12 +236,12 @@ async function tryGeminiImageModel(
   prompt: string,
   key: string
 ): Promise<{ image?: GeneratedImage; error?: string }> {
-  const url = `${GEMINI_BASE_URL}/${model}:generateContent?key=${key}`;
+  const url = `${GEMINI_BASE_URL}/${model}:generateContent`;
   let res: Response;
   try {
     res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { responseModalities: ["TEXT", "IMAGE"] },

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   RichTextEditor,
@@ -17,7 +18,12 @@ import {
   type InternalKeyResultTrack,
 } from "@/types/okrs";
 import { updateKeyResult } from "../actions";
-import KeyResultsTracker from "./KeyResultsTracker";
+// Recharts is heavy and only needed once this modal opens — load it lazily
+// so it stays out of the initial OKRs page bundle.
+const KeyResultsTracker = dynamic(() => import("./KeyResultsTracker"), {
+  ssr: false,
+  loading: () => <div className="h-[260px] animate-pulse rounded bg-muted" />,
+});
 import { CloseIcon, ChevronDownIcon } from "@/components/ui/icons";
 
 interface Props {

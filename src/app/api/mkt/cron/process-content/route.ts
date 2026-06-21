@@ -4,14 +4,13 @@
  */
 import { NextResponse } from "next/server";
 import { processDueContent } from "@/lib/marketing/content";
+import { hasBearerSecret } from "@/lib/auth/secretCompare";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 function authorized(req: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  return req.headers.get("authorization") === `Bearer ${secret}`;
+  return hasBearerSecret(req, process.env.CRON_SECRET);
 }
 
 async function handle(req: Request) {

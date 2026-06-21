@@ -41,22 +41,34 @@ export default function InternalProjectTasksTab({ internalProjectId, currentUser
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
+    let inFlight = false;
 
     async function load() {
-      const b = await getInternalProjectTaskBundle(internalProjectId);
-      if (cancelled || !b.project) return;
-      setState({
-        project: b.project as unknown as InternalProject,
-        tasks: b.tasks as unknown as InternalTask[],
-        profiles: b.profiles as unknown as UserProfile[],
-        projectAssignees: b.projectAssignees as unknown as InternalProjectAssignee[],
-        timeTracks: b.timeTracks as unknown as InternalTaskTimeTrack[],
-        keyResults: b.keyResults as unknown as InternalKeyResultRef[],
-      });
+      // Skip overlapping polls — this bundle is large (6 collections); stacked
+      // requests flood the shared server-action queue and starve user saves.
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const b = await getInternalProjectTaskBundle(internalProjectId);
+        if (cancelled || !b.project) return;
+        setState({
+          project: b.project as unknown as InternalProject,
+          tasks: b.tasks as unknown as InternalTask[],
+          profiles: b.profiles as unknown as UserProfile[],
+          projectAssignees: b.projectAssignees as unknown as InternalProjectAssignee[],
+          timeTracks: b.timeTracks as unknown as InternalTaskTimeTrack[],
+          keyResults: b.keyResults as unknown as InternalKeyResultRef[],
+        });
+      } finally {
+        inFlight = false;
+      }
     }
 
     void load();
-    timer = setInterval(load, POLL_MS);
+    // Only poll while the tab is visible to avoid background-tab flooding.
+    timer = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, POLL_MS);
     return () => {
       cancelled = true;
       if (timer) clearInterval(timer);

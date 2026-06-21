@@ -34,7 +34,9 @@
 | An external API call | `docs/reference_docs/api-connectors.md` |
 | Anything above | `docs/reference_docs/blurapps-41815--2--documentacao-completa-2026-03-04.md` (master export) |
 
-**Why:** The codebase is a direct port of the studio's Bubble.io application. Behaviour that is not documented in the reference docs does not belong in this codebase.
+**Why:** The operational core (projects, chat, OKRs, SOPs, invoices, ideas) is a direct port of the studio's Bubble.io application. Behaviour that is not documented in the reference docs does not belong in those features.
+
+**Exception — greenfield domains.** The **Market Validation Engine** (`/marketing`, `/m`, `mkt_*` tables, `src/lib/marketing/`) has no Bubble ancestor. It is exempt from reference-first; its source of truth is `docs/marketing/`. New net-new domains must document their own design notes there before/while building.
 
 ---
 
@@ -122,7 +124,8 @@ CREATE POLICY "my_table: project member read" ON public.my_table FOR SELECT
 ```sql
 public.get_user_type()        -- TEXT: current user's profiles.type
 public.is_admin_or_manager()  -- BOOL: true for 'admin' | 'manager'
-public.is_operational_user()  -- BOOL: true for 'operational'
+public.is_staff_role()        -- BOOL: true for 'admin' | 'manager' | 'operational'
+public.is_operational_user()  -- BOOL: true for 'developer' | 'client' | 'qa' (project-member tier — name is historical)
 auth.uid()                    -- UUID: current authenticated user
 ```
 
@@ -243,7 +246,7 @@ const { supabase, userId, role } = await requirePageAccess(["admin", "manager"])
 `src/proxy.ts` runs on every request:
 1. Refreshes the Supabase session cookie
 2. Redirects unauthenticated users to `/signin`
-3. Hard-clamps `referrer` users to `/recommended-projects`
+3. Hard-clamps `referrer` users to an allow-list of prefixes (`/projects`, `/feedback`, `/profile`, `/signin`, `/reset_pw`, `/auth`, `/api`); anything else redirects to `/projects`
 
 **Never** replicate these checks inside page components — middleware handles them first.
 
@@ -259,8 +262,8 @@ operational          → internal tools only
 developer            → assigned projects + all task types
 client               → assigned projects + client_requests only
 qa                   → assigned projects + qa_requests only
-referrer             → /recommended-projects only (middleware-clamped)
-lead                 → sandbox-planner + personal settings only
+referrer             → /projects, /feedback, /profile only (middleware-clamped)
+lead                 → /ideas-refiner + /invoices + personal settings only
 ```
 
 ---
@@ -346,22 +349,23 @@ const result = await generateAiJsonResponse<MyOutputType>({
 
 ### 8.2 Config resolution order
 
-1. Personal key (user opted out of agency settings)
-2. Agency-level key (read via service-role client — key never reaches browser)
-3. `OPENAI_API_KEY` environment variable fallback
-4. `null` → surface "Configure AI in Settings" message to user
+1. Personal key from `user_ai_settings` (set in Settings)
+2. `OPENAI_API_KEY` / `GEMINI_API_KEY` environment variable fallback
+3. `null` → surface "Configure AI in Settings" message to user
+
+There is **no agency-key tier** — `agency_ai_settings` was dropped on 2026-06-14. Never reintroduce an agency key path without a migration and a doc update.
 
 ### 8.3 Referrer / Lead users
 
-`referrer` and `lead` role users are restricted to personal keys only — they must never trigger agency-paid LLM calls. Enforce this in `resolveAiConfig`.
+`referrer` and `lead` role users are restricted to personal keys only — they must never reach the env fallback. Enforce this in `resolveAiConfig`.
 
 ### 8.4 Prompts in the database
 
 AI prompts are stored in the `prompt` table and editable by admins at `/prompts`. Every AI action file must also define a `FALLBACK_*` constant used when no database prompt exists for that step. The fallback is the floor — the DB prompt is the ceiling.
 
-### 8.5 Stale-write guard (Sandbox Planner)
+### 8.5 Stale-write guard (Ideas Refiner)
 
-Inside any multi-step AI generation function, call `isRequestActive(supabase, ideaId, requestId)` before every database write to prevent stale responses from overwriting newer data when the user cancels and re-runs a step.
+Inside any multi-step AI generation function, call `isRequestActive(supabase, ideaId, requestId)` before every database write to prevent stale responses from overwriting newer data when the user cancels and re-runs a step. Always check the write `error` too — a swallowed insert error on a missing column reads as a silent 4-minute timeout with no data. Multi-field rich-HTML steps must pass `maxTokens: 16384` (the 8,192 default truncates the JSON and fails the parse).
 
 ---
 
@@ -445,7 +449,7 @@ Keep `docs/project_status.md` current. Mark features as `complete`, `in-progress
 | Import icons from `@/components/ui/icons` | Write inline `<svg>` in component files |
 | Use `PageShell` for every page layout | Build one-off sidebar/main layouts |
 | Use `resolveAiConfig` for AI calls | Hardcode AI provider keys or model strings |
-| Guard Sandbox Planner AI writes with `isRequestActive` | Write AI output to DB without stale-request check |
+| Guard Ideas Refiner AI writes with `isRequestActive` + check the write error | Write AI output to DB without a stale-request check |
 | Update `docs/changelog.md` after every session | Leave a session with no changelog entry |
 | Keep `src/types/` in sync with the DB schema | Let TypeScript types drift from the database |
 | Use per-block polling ticks in Chat | Use a single global polling tick for all chat blocks |
@@ -454,4 +458,4 @@ Keep `docs/project_status.md` current. Mark features as `complete`, `in-progress
 
 ---
 
-*Last updated: 2026-05-01*
+*Last updated: 2026-06-21*
