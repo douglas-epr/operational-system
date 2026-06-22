@@ -46,6 +46,7 @@ import {
   YAxis,
 } from "recharts";
 import KpiCard from "@/components/ui/KpiCard";
+import TeamWorkloadChart from "./TeamWorkloadChart";
 import {
   PROJECT_STATUSES,
   PROJECT_STATUS_LABELS,
@@ -98,7 +99,7 @@ const PROJECT_STATUS_HEX: Record<ProjectStatus, string> = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function DashboardOverview({ metrics, viewerName }: Props) {
-  const { ideas, ideas_trend, marketing, keyResults, kr_highlights, projects, active_hours, internalProjects } = metrics;
+  const { ideas, ideas_trend, marketing, keyResults, kr_highlights, projects, active_hours, internalProjects, member_project_hours } = metrics;
 
   const activeProjectCount = (projects.by_status.in_progress ?? 0) + (projects.by_status.prospecting ?? 0);
   const krAchievedPct      = pct(keyResults.achieved, keyResults.total);
@@ -393,6 +394,19 @@ export default function DashboardOverview({ metrics, viewerName }: Props) {
               </ResponsiveContainer>
             </div>
           )}
+        </DashCard>
+      </div>
+
+      {/* ── Row 5: Team workload (% of hours per project, per member) ─── */}
+      <div
+        className="grid grid-cols-1 gap-3 mb-4 fade-up"
+        style={{ animationDelay: "300ms" }}
+      >
+        <DashCard
+          title="Team workload · % of hours per project"
+          subtitle="From logged work feedback"
+        >
+          <TeamWorkloadChart rows={member_project_hours} />
         </DashCard>
       </div>
     </div>

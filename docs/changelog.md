@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-22] — Feat: Dashboard "Team workload" chart + first Supabase view
+
+- **New Supabase view** `public.dashboard_member_project_hours` (migration `20260622195655_…`): unions both work-feedback tables into a per-`(member, month, project)` hours rollup, joining in member + project/internal-project names. Created `WITH (security_invoker = true)` so the underlying tables' RLS applies to the querying user (views bypass RLS by default in PG15+); `GRANT SELECT … TO authenticated` only (never anon). Verified clean by `supabase db advisors` (no `security_definer_view` flag) and a live PostgREST smoke test. This is the project's first view — establishes the `security_invoker` pattern for future dashboard views.
+- **`dashboard/_lib/queries.ts`**: added `MemberProjectHoursRow` type, `loadMemberProjectHours()` loader (last 6 months, coerces numeric → number, builds `YYYY-MM` buckets), and wired it into `DashboardMetrics` + `loadAllDashboardMetrics`.
+- **`dashboard/_components/TeamWorkloadChart.tsx`** (new client component): a month selector + one 100%-stacked horizontal bar per team member showing the **% of that member's logged hours per project**. Shared project legend with stable colors (internal projects tagged `int`); members who logged feedback but no `total_time` show a "no hours recorded" note instead of a misleading sliver. Month-summary strip shows members / projects / total hours.
+- **`dashboard/_components/DashboardOverview.tsx`**: rendered the new chart as a full-width Row 5.
+- **`src/lib/supabase/types.ts`**: registered the view under `public.Views` to keep generated types in sync.
+
 ## [2026-06-22] — Fix: debate 504 timeout — reduce round cap from 10 to 6
 
 - **Confirmed via live Playwright test**: clicking Regenerate on Risk & Validation ran ~330 s then returned **HTTP 504** (Vercel Gateway Timeout). The `maxDuration = 800` page export was silently clamped to the project's 300 s ceiling (Fluid Compute not enabled), and the debate was hitting the 10-round cap on **both** gates without converging = up to 40 sequential AI calls × ~8 s = ~330 s.

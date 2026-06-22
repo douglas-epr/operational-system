@@ -78,6 +78,23 @@ export interface ProjectHoursRow {
   burn: number;
 }
 
+/**
+ * One row of the `dashboard_member_project_hours` view: hours a single team
+ * member logged against a single project in a single calendar month. Powers
+ * the "Team workload" 100%-stacked chart (% of each member's hours per project).
+ */
+export interface MemberProjectHoursRow {
+  member_id: string;
+  member_name: string;
+  /** Calendar month bucket as `YYYY-MM`. */
+  month: string;
+  project_kind: "project" | "internal";
+  project_id: string;
+  project_name: string;
+  hours: number;
+  entries: number;
+}
+
 /** Top-N most-recently active key results, surfaced on the overview. */
 export interface KeyResultHighlight {
   id: string;
@@ -96,6 +113,7 @@ export interface DashboardMetrics {
   projects: ProjectsMetrics;
   active_hours: ProjectHoursRow[];
   internalProjects: InternalProjectsMetrics;
+  member_project_hours: MemberProjectHoursRow[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -318,6 +336,57 @@ export async function loadKrHighlights(
   }));
 }
 
+/**
+ * Monthly hours per team member per project, for the last `monthsBack + 1`
+ * calendar months. Reads the `dashboard_member_project_hours` view (which
+ * unions both work-feedback tables and joins in member + project names).
+ * Percentages are derived client-side so the same rows can drive any month.
+ */
+export async function loadMemberProjectHours(
+  supabase: AnyClient,
+  now: Date = new Date(),
+  monthsBack = 5
+): Promise<MemberProjectHoursRow[]> {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack, 1));
+  const startKey = start.toISOString().slice(0, 10); // YYYY-MM-01
+
+  const { data } = await supabase
+    .from("dashboard_member_project_hours")
+    .select(
+      "member_id, first_name, last_name, month, project_kind, project_id, project_name, hours, entries"
+    )
+    .gte("month", startKey)
+    .order("month", { ascending: false });
+
+  const rows = (data ?? []) as Array<{
+    member_id: string;
+    first_name: string | null;
+    last_name: string | null;
+    month: string;
+    project_kind: "project" | "internal";
+    project_id: string;
+    project_name: string | null;
+    hours: number | string | null;
+    entries: number | string | null;
+  }>;
+
+  return rows
+    .map((r) => ({
+      member_id: r.member_id,
+      member_name:
+        [r.first_name, r.last_name].filter(Boolean).join(" ").trim() || "Unknown",
+      month: String(r.month).slice(0, 7), // 'YYYY-MM'
+      project_kind: r.project_kind,
+      project_id: r.project_id,
+      project_name: r.project_name ?? "Unknown",
+      hours: Number(r.hours ?? 0),
+      entries: Number(r.entries ?? 0),
+    }))
+    // Keep rows with logged hours; entries-only rows (no total_time) still
+    // count as activity, so retain those too.
+    .filter((r) => r.hours > 0 || r.entries > 0);
+}
+
 export async function loadAllDashboardMetrics(
   supabase: SupabaseClient | AnyClient
 ): Promise<DashboardMetrics> {
@@ -330,6 +399,7 @@ export async function loadAllDashboardMetrics(
     projects,
     active_hours,
     internalProjects,
+    member_project_hours,
   ] = await Promise.all([
     loadIdeasMetrics(supabase),
     loadIdeasTrend(supabase),
@@ -339,6 +409,7 @@ export async function loadAllDashboardMetrics(
     loadProjectsMetrics(supabase),
     loadActiveHours(supabase),
     loadInternalProjectsMetrics(supabase),
+    loadMemberProjectHours(supabase),
   ]);
   return {
     ideas,
@@ -349,5 +420,6 @@ export async function loadAllDashboardMetrics(
     projects,
     active_hours,
     internalProjects,
+    member_project_hours,
   };
 }

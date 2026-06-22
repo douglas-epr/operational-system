@@ -4343,7 +4343,20 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      dashboard_member_project_hours: {
+        Row: {
+          member_id: string | null
+          first_name: string | null
+          last_name: string | null
+          month: string | null
+          project_kind: string | null
+          project_id: string | null
+          project_name: string | null
+          hours: number | null
+          entries: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       can_write_workspace: { Args: { p_workspace: string }; Returns: boolean }
