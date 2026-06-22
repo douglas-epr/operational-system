@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-22] — Fix: debate 504 timeout — reduce round cap from 10 to 6
+
+- **Confirmed via live Playwright test**: clicking Regenerate on Risk & Validation ran ~330 s then returned **HTTP 504** (Vercel Gateway Timeout). The `maxDuration = 800` page export was silently clamped to the project's 300 s ceiling (Fluid Compute not enabled), and the debate was hitting the 10-round cap on **both** gates without converging = up to 40 sequential AI calls × ~8 s = ~330 s.
+- **Fix**: Lowered `MAX_ROUNDS_PER_GATE` from 10 → 6, and lowered the minimum-rounds-before-convergence from 5 → 3 (in both the Skeptic and Advocate fallback prompts + the round-depth escalation mandate, compressed from 5 tiers/10 rounds to 4 tiers/6 rounds). Worst case is now 24 debate calls (~190 s); typical convergence at 3–4 rounds (~100 s) — comfortably under the 300 s ceiling with margin.
+- **Recommended follow-up**: Enable **Fluid Compute** on the Vercel project to allow `maxDuration` up to 800 s, which would permit restoring the deeper 10-round debate if desired.
+
 ## [2026-06-22] — Fix: Risk & Validation / Report debate pipeline timeout
 
 - **Root cause identified**: Ideas with a large description (e.g. "Lola" stores a full 50 KB Build Brief HTML document in the `description` field). After HTML-stripping, this becomes ~15,000 tokens included in every single debate round prompt. With 21+ minimum API calls at 15–30 s each, the Vercel function consistently exceeded the 300 s default timeout and was silently killed — leaving `current_blocks_updating` stuck and no data written.

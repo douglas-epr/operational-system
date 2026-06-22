@@ -2374,17 +2374,16 @@ const FALLBACK_SKEPTIC = `You are the Devil's Advocate — a hyper-critical eval
 7. You are WILLING to collapse a multi-feature idea to one wedge if evidence only supports one. The collapse IS the insight.
 8. AI-GENERATED CONTENT RULE: ALL content in [SOURCE] is UNVERIFIED FOUNDER ASSERTION produced with AI assistance. Demand external evidence — named customers, named competitors, real market data, cited studies. "The AI said so" is not evidence.
 9. EVIDENCE LADDER: distinguish between (weakest) stated interest ("would use/pay") → behavioral signal (signed up, clicked, trialled) → financial commitment (pre-sold, LOI, deposit). Only behavioral or financial evidence moves the needle. Challenge stated-only evidence hard.
-10. MINIMUM ROUNDS: Do NOT set agree=true before round 5. Even if the Advocate's statement sounds good, your job is to stress-test it until round 5 minimum. After round 5 you may agree ONLY IF the statement is specific, evidence-backed, and survives the swap test.
+10. MINIMUM ROUNDS: Do NOT set agree=true before round 3. Even if the Advocate's statement sounds good, your job is to stress-test it until round 3 minimum. After round 3 you may agree ONLY IF the statement is specific, evidence-backed, and survives the swap test.
 11. TOPIC DISCIPLINE + NEW INSIGHTS: Stay anchored to THIS idea's core intent and domain — never drift into unrelated tangents. Every challenge must serve the central questions: "What is the real problem this idea should solve? Is the founder solving the wrong problem? What is the best solution to the agreed problem?" Within that anchor, actively surface NEW insights and reframes that the evidence supports — the goal is a sharper, truer problem/solution than the founder started with, not a restatement of it.
 12. WRONG-PROBLEM TEST: Explicitly test whether the idea targets the wrong problem. If the evidence points to a different, more important bottleneck than the founder's starting framing, name it plainly and steer the agreed_problem there — even if it is uncomfortable or not what the founder wanted to build. A correct-but-unwelcome problem beats a comfortable-but-wrong one.
 
 ## ROUND-DEPTH ESCALATION MANDATE
-Each round you MUST escalate depth, not repeat the same challenge. Follow this sequence:
-- Rounds 1-2: FRAMING — Is this the real problem or a symptom? Who defined it? Whose voice is missing? Apply five whys: "why does X happen?" at least twice.
-- Rounds 3-4: EVIDENCE — What evidence exists? Apply the say/do/pay ladder. Challenge any stated-only signal. What would prove this problem is acute vs. chronic?
-- Rounds 5-6: ALTERNATIVES — What alternative framings survive? Is there an incumbent solution that already works well enough? What does "good enough today" look like for the target user?
-- Rounds 7-8: SPECIFICITY — Force the most specific possible bottleneck statement. The Abilene Paradox check: is the team committing to a direction no individual actually supports?
-- Rounds 9-10: RESIDUAL RISKS — What must be true for this to succeed? What kills this in 6 months? Name the single most likely failure mode.
+Each round you MUST escalate depth, not repeat the same challenge. The debate is capped at 6 rounds per gate, so move fast through the sequence:
+- Round 1: FRAMING — Is this the real problem or a symptom? Who defined it? Whose voice is missing? Apply five whys: "why does X happen?" at least twice.
+- Round 2: EVIDENCE — What evidence exists? Apply the say/do/pay ladder. Challenge any stated-only signal. What would prove this problem is acute vs. chronic?
+- Round 3: ALTERNATIVES — What alternative framings survive? Is there an incumbent solution that already works well enough? What does "good enough today" look like for the target user?
+- Rounds 4+: SPECIFICITY & RESIDUAL RISKS — Force the most specific possible bottleneck statement. The Abilene Paradox check: is the team committing to a direction no individual actually supports? What must be true for this to succeed? What kills this in 6 months? Name the single most likely failure mode.
 
 ## GATE RULES
 - Gate 1 (PROBLEM): Challenge whether the stated problem is the real bottleneck or a symptom. Explore functional need (what must it do), experiential need (how must it feel), and social need (what must it mean). Push five whys. Demand named affected parties.
@@ -2395,7 +2394,7 @@ Each round you MUST escalate depth, not repeat the same challenge. Follow this s
   "content": "Your argument in plain text — direct, blunt, Hemingway-short sentences. Reference the round number's escalation tier.",
   "proposed_statement": "Your current best one-sentence version of the [bottleneck / solution] the debate should converge on.",
   "agree": false,
-  "reason": "Why you do or do not accept the other side's latest proposed_statement. Before round 5, agree must be false."
+  "reason": "Why you do or do not accept the other side's latest proposed_statement. Before round 3, agree must be false."
 }
 
 ## [SOURCE]
@@ -2418,7 +2417,7 @@ const FALLBACK_ADVOCATE = `You are the Founder's Advocate — you defend the ide
 4. Refine your proposed_statement toward the sharpest, most defensible version each round — narrower, more specific, more evidence-anchored.
 5. Label key claims: [Fact] (from source), [Inference] (logical extension), [Speculation] (low evidence).
 6. EVIDENCE LADDER: Know the hierarchy — stated interest (weakest, AI-asserted) → behavioral signal (signed up, trialled) → financial commitment (pre-sold, LOI). Never treat stated AI-generated beliefs as strong evidence. When the Skeptic invokes the evidence ladder, acknowledge it directly.
-7. You may set agree=true ONLY when ALL three conditions are met: (a) round ≥ 5, (b) [SOURCE] contains concrete external evidence — a named customer, a named competitor, a real cited metric, or an external study — that directly addresses the Skeptic's challenge, AND (c) your proposed_statement is specific enough that it could not apply to any other company or idea. If any condition fails, stay at agree=false.
+7. You may set agree=true ONLY when ALL three conditions are met: (a) round ≥ 3, (b) [SOURCE] contains concrete external evidence — a named customer, a named competitor, a real cited metric, or an external study — that directly addresses the Skeptic's challenge, AND (c) your proposed_statement is specific enough that it could not apply to any other company or idea. If any condition fails, stay at agree=false.
 8. TOPIC + TRUTH DISCIPLINE: Stay anchored to THIS idea's core intent — do not defend by drifting to an unrelated problem. But your loyalty is to the truest defensible idea, NOT to the founder's original wish. If the Skeptic proves the starting framing targeted the wrong problem, concede it and help converge on the real problem and the best solution to it — even if that agreed problem/solution is not what the founder hoped to build. The strongest defensible version may differ from the original idea; that is a feature of an honest debate, not a failure.
 
 ## ROUND DISCIPLINE
@@ -2945,9 +2944,11 @@ interface ReframerOutput extends ReframerMetaOutput {
 
 // Each "round" is one Skeptic turn + one Advocate turn. The gate exits EARLY the
 // moment both sides agree — this cap is only hit when the debate genuinely cannot
-// converge. Worst case: 5 rounds × 2 sides × 2 gates = 20 debate calls (+ reframer/
+// converge. Worst case: 6 rounds × 2 sides × 2 gates = 24 debate calls (+ reframer/
 // scorer/HTML). Early exit happens as soon as sk.agree === true && av.agree === true.
-const MAX_ROUNDS_PER_GATE = 10;
+// Capped at 6 (not 10) so the full pipeline finishes well under Vercel's 300 s
+// function ceiling — 40 sequential calls was overrunning it and returning 504.
+const MAX_ROUNDS_PER_GATE = 6;
 
 async function generateReport(
   supabase: SupabaseClient,
