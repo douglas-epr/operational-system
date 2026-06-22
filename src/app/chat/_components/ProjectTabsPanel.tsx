@@ -780,7 +780,7 @@ function FeedbackModal({
   const fields: Array<{ label: string; ref: React.RefObject<RichTextEditorHandle | null>; html: string }> = [
     { label: "What I worked on this period", ref: todayRef, html: feedback?.current_work ?? "" },
     { label: "What I will work on next", ref: tomorrowRef, html: feedback?.next_work ?? "" },
-    { label: "Blockers", ref: blockersRef, html: feedback?.blockers ?? "" },
+    { label: "Next week forecast & blockers", ref: blockersRef, html: feedback?.blockers ?? "" },
     { label: "Video & Links", ref: linksRef, html: feedback?.video_and_links ?? "" },
   ];
 
@@ -920,7 +920,7 @@ function FeedbackContent({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
                     <FeedbackBlock label="What I worked on this period" html={f.current_work} />
                     <FeedbackBlock label="What I will work on next" html={f.next_work} />
-                    <FeedbackBlock label="Blockers" html={f.blockers} />
+                    <FeedbackBlock label="Next week forecast & blockers" html={f.blockers} />
                     <FeedbackBlock label="Video & Links" html={f.video_and_links} />
                   </div>
                 </li>

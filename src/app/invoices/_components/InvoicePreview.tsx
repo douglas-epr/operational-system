@@ -125,11 +125,9 @@ export default function InvoicePreview({ invoice, onClose }: Props) {
                 <div className="px-4 py-3 grid grid-cols-[1fr_140px]">
                   <div>
                     <p className="text-sm font-semibold text-neutral-900">{invoice.service_title ?? "—"}</p>
-                    {(periodLabel || invoice.total_time != null) && (
+                    {periodLabel && (
                       <p className="text-[11px] text-neutral-500 mt-0.5">
                         {periodLabel}
-                        {periodLabel && invoice.total_time != null ? " · " : ""}
-                        {invoice.total_time != null ? `${invoice.total_time}h worked` : ""}
                       </p>
                     )}
                     {invoice.service_description && (

@@ -140,7 +140,7 @@ export default function DailyFeedbackFormModal({
               initialHtml={feedback?.next_work ?? ""}
             />
             <FieldBlock
-              label="Blockers"
+              label="Next week forecast & blockers"
               editorRef={blockersRef}
               initialHtml={feedback?.blockers ?? ""}
             />

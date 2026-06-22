@@ -170,21 +170,32 @@ export async function aiFillInvoiceFromFeedback(input: {
   for (const p of (projNameRows.data ?? [])) nameById[p.id] = p.name;
   for (const p of (intlNameRows.data ?? [])) nameById[p.id] = p.name;
 
-  // Group entries by project name for bullet-point-per-project output.
+  // Group entries by project, tracking work items and hours per project.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const byProject: Record<string, string[]> = {};
+  const byProject: Record<string, { items: string[]; hours: number }> = {};
   for (const r of rows) {
     const text = stripHtml(r.current_work);
-    if (!text) continue;
     const id = r.project_id ?? r.internal_project_id ?? null;
     const projectName = (id && nameById[id]) ? nameById[id] : "General";
-    if (!byProject[projectName]) byProject[projectName] = [];
-    byProject[projectName].push(text);
+    if (!byProject[projectName]) byProject[projectName] = { items: [], hours: 0 };
+    if (text) byProject[projectName].items.push(text);
+    byProject[projectName].hours += typeof r.total_time === "number" ? r.total_time : 0;
   }
 
   const projectEntries = Object.entries(byProject)
-    .map(([name, items]) => `Project ${name}:\n${items.map((t) => `  - ${t}`).join("\n")}`)
+    .map(([name, { items }]) =>
+      items.length > 0
+        ? `Project ${name}:\n${items.map((t) => `  - ${t}`).join("\n")}`
+        : `Project ${name}: (no work log entries)`
+    )
     .join("\n\n");
+
+  const projectHoursEntries = Object.entries(byProject)
+    .map(([name, { hours }]) => {
+      const pct = totalTime > 0 ? Math.round((hours / totalTime) * 1000) / 10 : 0;
+      return `  ${name}: ${hours}h (${pct}% of period)`;
+    })
+    .join("\n");
 
   if (!projectEntries) {
     return { totalTime };
@@ -195,21 +206,23 @@ export async function aiFillInvoiceFromFeedback(input: {
     return { totalTime, error: "No AI service configured — filled hours only." };
   }
 
-  const multiProject = Object.keys(byProject).length > 1;
   const prompt = [
     "You are writing the 'Service description' section of a professional invoice.",
     `Create a client-facing description of the work performed between ${startDate} and ${endDate}.`,
     "Rules:",
-    "- Use ONLY the information provided in the work log below. Do NOT invent, assume, or add anything not present in the entries.",
+    "- Use ONLY the information provided in the work log and hours data below. Do NOT invent, assume, or add anything not present.",
     "- Output valid HTML with no markdown, no code fences, and no prose outside the HTML.",
-    multiProject
-      ? "- For each project, write a heading <p><strong>Project Name</strong></p> followed by a bullet list <ul><li>task 1</li><li>task 2</li></ul>."
-      : "- Output a single bullet list <ul><li>task 1</li><li>task 2</li></ul> with one item per deliverable.",
-    "- Each bullet should be one concise, professional sentence describing a deliverable or area of work.",
-    "- Do NOT include hours, dates, UUIDs, or internal jargon.",
+    "- Produce a single HTML table with three columns: Project | Tasks Summary | % of Period.",
+    "- The table must have a <thead> row with those three column headers.",
+    "- Each project gets one <tbody> <tr>. The 'Project' cell contains the project name. The 'Tasks Summary' cell contains 2–4 concise professional sentences summarizing the deliverables for that project (use the work log). The '% of Period' cell shows the percentage from the hours breakdown.",
+    "- Style the table with inline CSS: width:100%; border-collapse:collapse; font-size:12px. Give <th> and <td> padding:6px 8px and border:1px solid #e5e7eb. Give <th> a background:#f3f4f6 and text-align:left.",
+    "- Do NOT include raw hour numbers, dates, UUIDs, or internal jargon in the table.",
     "",
     "WORK LOG (grouped by project):",
     projectEntries,
+    "",
+    "HOURS BREAKDOWN (use these percentages in the '% of Period' column):",
+    projectHoursEntries,
     "",
     'Respond ONLY with JSON of the exact shape: { "service_description": "<html string>" }',
   ].join("\n");

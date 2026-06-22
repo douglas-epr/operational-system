@@ -305,15 +305,12 @@ export default function InvoiceFormModal({ invoice, lastInvoice, onClose }: Prop
             </div>
 
             {/* Work period */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <Field label="Start date">
                 <DatePicker value={startDate} onChange={(v) => { setStartDate(v); setAiFillError(null); }} size="compact" />
               </Field>
               <Field label="End date">
                 <DatePicker value={endDate} onChange={(v) => { setEndDate(v); setAiFillError(null); }} size="compact" minDate={startDate || undefined} />
-              </Field>
-              <Field label="Total time worked (h)">
-                <TextInput value={totalTime} onChange={setTotalTime} type="number" placeholder="0" />
               </Field>
             </div>
 

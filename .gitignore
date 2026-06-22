@@ -60,3 +60,6 @@ supabase/.temp/
 
 # Playwright MCP test artifacts
 .playwright-mcp/
+
+# Local attachments folder (screenshots, files — not for source control)
+Attachments/

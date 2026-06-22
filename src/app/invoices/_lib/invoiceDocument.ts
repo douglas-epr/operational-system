@@ -59,8 +59,8 @@ export function buildInvoiceDocumentHtml(invoice: Invoice): string {
       ? `${formatDate(invoice.start_date)} – ${formatDate(invoice.end_date)}`
       : null;
 
-  const metaLine = (periodLabel || invoice.total_time != null)
-    ? `<p style="margin:2px 0 0;font-size:11px;color:#737373;">${periodLabel ?? ""}${periodLabel && invoice.total_time != null ? " · " : ""}${invoice.total_time != null ? `${invoice.total_time}h worked` : ""}</p>`
+  const metaLine = periodLabel
+    ? `<p style="margin:2px 0 0;font-size:11px;color:#737373;">${periodLabel}</p>`
     : "";
 
   // service_description is rich HTML, sanitized server-side at save time and
