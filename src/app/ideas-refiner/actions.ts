@@ -2379,11 +2379,10 @@ const FALLBACK_SKEPTIC = `You are the Devil's Advocate — a hyper-critical eval
 12. WRONG-PROBLEM TEST: Explicitly test whether the idea targets the wrong problem. If the evidence points to a different, more important bottleneck than the founder's starting framing, name it plainly and steer the agreed_problem there — even if it is uncomfortable or not what the founder wanted to build. A correct-but-unwelcome problem beats a comfortable-but-wrong one.
 
 ## ROUND-DEPTH ESCALATION MANDATE
-Each round you MUST escalate depth, not repeat the same challenge. The debate is capped at 6 rounds per gate, so move fast through the sequence:
-- Round 1: FRAMING — Is this the real problem or a symptom? Who defined it? Whose voice is missing? Apply five whys: "why does X happen?" at least twice.
-- Round 2: EVIDENCE — What evidence exists? Apply the say/do/pay ladder. Challenge any stated-only signal. What would prove this problem is acute vs. chronic?
-- Round 3: ALTERNATIVES — What alternative framings survive? Is there an incumbent solution that already works well enough? What does "good enough today" look like for the target user?
-- Rounds 4+: SPECIFICITY & RESIDUAL RISKS — Force the most specific possible bottleneck statement. The Abilene Paradox check: is the team committing to a direction no individual actually supports? What must be true for this to succeed? What kills this in 6 months? Name the single most likely failure mode.
+Each round you MUST escalate depth, not repeat the same challenge. The debate is capped at 4 rounds per gate, so move fast through the sequence:
+- Round 1: FRAMING & EVIDENCE — Is this the real problem or a symptom? Who defined it? Whose voice is missing? Apply five whys at least twice. What evidence exists? Apply the say/do/pay ladder and challenge any stated-only signal.
+- Round 2: ALTERNATIVES — What alternative framings survive? Is there an incumbent solution that already works well enough? What does "good enough today" look like for the target user?
+- Rounds 3+: SPECIFICITY & RESIDUAL RISKS — Force the most specific possible bottleneck statement. The Abilene Paradox check: is the team committing to a direction no individual actually supports? What must be true for this to succeed? What kills this in 6 months? Name the single most likely failure mode.
 
 ## GATE RULES
 - Gate 1 (PROBLEM): Challenge whether the stated problem is the real bottleneck or a symptom. Explore functional need (what must it do), experiential need (how must it feel), and social need (what must it mean). Push five whys. Demand named affected parties.
@@ -2944,11 +2943,13 @@ interface ReframerOutput extends ReframerMetaOutput {
 
 // Each "round" is one Skeptic turn + one Advocate turn. The gate exits EARLY the
 // moment both sides agree — this cap is only hit when the debate genuinely cannot
-// converge. Worst case: 6 rounds × 2 sides × 2 gates = 24 debate calls (+ reframer/
+// converge. Worst case: 4 rounds × 2 sides × 2 gates = 16 debate calls (+ reframer/
 // scorer/HTML). Early exit happens as soon as sk.agree === true && av.agree === true.
-// Capped at 6 (not 10) so the full pipeline finishes well under Vercel's 300 s
-// function ceiling — 40 sequential calls was overrunning it and returning 504.
-const MAX_ROUNDS_PER_GATE = 6;
+// Capped at 4 (not 10) because each sequential AI call averages ~12 s — live
+// testing showed the debate runs to the cap without converging, so 24+ calls
+// overran Vercel's 300 s function ceiling and returned 504. 16 calls (~200 s)
+// fits with margin. Enable Fluid Compute on Vercel to safely raise this again.
+const MAX_ROUNDS_PER_GATE = 4;
 
 async function generateReport(
   supabase: SupabaseClient,
@@ -4739,7 +4740,7 @@ ${buildMarketBlock(marketRow as Record<string, unknown> | null)}`;
         apiKey: aiConfig.apiKey,
         model: aiConfig.model,
         prompt: skepticPrompt,
-        maxTokens: 4096,
+        maxTokens: 2048,
       });
       if (skepticRes.returned_an_error || !skepticRes.data) {
         return { converged: false, agreed_statement: advocateStatement || skepticStatement, rounds: round, error: skepticRes.error };
@@ -4767,7 +4768,7 @@ ${buildMarketBlock(marketRow as Record<string, unknown> | null)}`;
         apiKey: aiConfig.apiKey,
         model: aiConfig.model,
         prompt: advocatePrompt,
-        maxTokens: 4096,
+        maxTokens: 2048,
       });
       if (advocateRes.returned_an_error || !advocateRes.data) {
         return { converged: false, agreed_statement: skepticStatement, rounds: round, error: advocateRes.error };
