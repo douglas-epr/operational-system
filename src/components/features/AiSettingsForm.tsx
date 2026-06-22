@@ -51,6 +51,28 @@ export default function AiSettingsForm({
     setError(null);
     setSuccess(false);
 
+    const trimmedOpenai = openaiKey.trim();
+    const trimmedGemini = geminiKey.trim();
+    const trimmedClaude = claudeKey.trim();
+
+    // Guard against double-paste into the password field (invisible input makes
+    // it easy to accidentally paste twice, storing key+key as one string).
+    if (trimmedOpenai && (trimmedOpenai.length > 300 || !trimmedOpenai.startsWith("sk-"))) {
+      setError("Invalid OpenAI API key — it looks like the key was pasted twice or is malformed. Please clear the field and paste once.");
+      setIsSubmitting(false);
+      return;
+    }
+    if (trimmedGemini && trimmedGemini.length > 200) {
+      setError("Invalid Gemini API key — it looks like the key was pasted twice or is malformed. Please clear the field and paste once.");
+      setIsSubmitting(false);
+      return;
+    }
+    if (trimmedClaude && (trimmedClaude.length > 300 || !trimmedClaude.startsWith("sk-ant-"))) {
+      setError("Invalid Claude API key — it looks like the key was pasted twice or is malformed. Please clear the field and paste once.");
+      setIsSubmitting(false);
+      return;
+    }
+
     const payload: SaveAiSettingsPayload = {
       activeService: activeService || null,
       openaiModel,
@@ -58,9 +80,9 @@ export default function AiSettingsForm({
       claudeModel,
     };
 
-    if (openaiKey.trim()) payload.openaiApiKey = openaiKey.trim();
-    if (geminiKey.trim()) payload.geminiApiKey = geminiKey.trim();
-    if (claudeKey.trim()) payload.claudeApiKey = claudeKey.trim();
+    if (trimmedOpenai) payload.openaiApiKey = trimmedOpenai;
+    if (trimmedGemini) payload.geminiApiKey = trimmedGemini;
+    if (trimmedClaude) payload.claudeApiKey = trimmedClaude;
 
     const result = await onSave(payload);
     setIsSubmitting(false);

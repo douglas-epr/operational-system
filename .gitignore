@@ -57,3 +57,6 @@ supabase/prod-full.sql
 supabase/.temp/
 
 .vercel
+
+# Playwright MCP test artifacts
+.playwright-mcp/
