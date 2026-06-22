@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-22] — Fix: Risk & Validation / Report debate pipeline timeout
+
+- **Root cause identified**: Ideas with a large description (e.g. "Lola" stores a full 50 KB Build Brief HTML document in the `description` field). After HTML-stripping, this becomes ~15,000 tokens included in every single debate round prompt. With 21+ minimum API calls at 15–30 s each, the Vercel function consistently exceeded the 300 s default timeout and was silently killed — leaving `current_blocks_updating` stuck and no data written.
+- **Fix 1 — `actions.ts`**: Cap `idea.description` at 2,000 characters before building the `sourceBlock` in both `generateRiskAndValidation` and `generateReport`. The structured evidence fields (core_problem, ICPs, benchmarking, etc.) carry the debate substance; the full spec doc is not needed per round.
+- **Fix 2 — `page.tsx`**: Export `maxDuration = 800` from the ideas-refiner page so Vercel allocates the maximum function ceiling the plan allows for the debate pipeline.
+- **Rungate error propagation** (`a89fe55`): AI errors inside debate rounds now propagate up to `triggerAiGeneration` and appear as a toast instead of running silently to the end.
+
 ## [2026-06-22] — Fix: Risk & Validation "AI is working" stuck forever
 
 - **Root cause**: The Devil's Advocate debate pipeline runs up to 40 sequential AI calls, easily exceeding Vercel Pro's ~800 s function ceiling. When Vercel kills the serverless function, no server-side try/catch runs, so `current_blocks_updating` stays set in the DB forever. On the client, `triggerRegenerate` in `useRegenerate.ts` had no try/catch either — a thrown network error left `isRegenerating = true` permanently. The only auto-recovery was a 45-minute stuck-state timer in `AiLoadingOverlay`, far too long.
