@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-21] — Ideas Refiner: move Benchmarking before Market Opportunity; feed competitive data into sizing
+
+- **Flow reorder**: Benchmarking is now step 6 and Market Opportunity step 7 (was the reverse). `IDEA_BLOCKS_ORDERED` + `IDEA_BLOCK_STEPS` in `src/types/idea-refiner.ts`; unlock chain in `computeUnlockedSteps` (`SandboxPlannerShell.tsx`) rewired to `location_legislation → benchmarking → market_opportunity → strategic_frameworks`, with backward-compat OR-guards for existing ideas.
+- **Data flow**: `generateMarketOpportunity` now receives the benchmarking row (overview, comparison of similar apps, possible business models, takeaways) and passes it into the prompt. The model anchors `price_point`, `billing_model`, `cac_estimate`, and `ltv_estimate` to the competitive comparables (e.g. competitors' free/freemium tiers) rather than guessing. `triggerAiGeneration` broadened to fetch benchmarking for the `market_opportunity` step; `FALLBACK_MARKET_OPPORTUNITY` updated.
+- **Migration** `20260630000000_market_opportunity_prompt_add_benchmarking.sql` — adds the four benchmarking inputs + "anchor pricing to comparables" guidance to the DB-stored prompt `bb000002`. Applied to production (via CLI) and local Docker DB.
+- **Live-tested** on localhost:4000 (idea "VirtueBud"): tab order + "Step 6/Step 7" labels correct; Benchmarking renders its 9-competitor table; Market Opportunity generated fresh with all 14 fields populated, adopting a "freemium + free initial conversation" billing model that mirrors the benchmarked competitive set.
+
 ## [2026-06-21] — Fix: AI not filling Price Point / Billing Model / CAC / LTV in Market Opportunity step
 
 - **Root cause**: Migration `20260623000000_idea_market_pricing.sql` added four new columns (`price_point`, `billing_model`, `cac_estimate`, `ltv_estimate`) to `idea_market_opportunity`, but the DB-stored AI prompt (`bb000002-0000-4000-8000-000000000001`) was never updated to request those fields. The AI used the DB prompt, omitted the new keys, and the columns stayed `null`.

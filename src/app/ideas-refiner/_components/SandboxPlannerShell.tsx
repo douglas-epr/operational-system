@@ -71,9 +71,10 @@ function computeUnlockedSteps(ideaFull: IdeaFull): Set<IdeaBlock> {
     !!productDefinition?.summary?.trim() &&
     !!productDefinition?.features?.trim();
 
-  // New steps unlock after product definition.
-  // Backward compat: if benchmarking already has data, location_legislation and
-  // market_opportunity are also unlocked (existing ideas that predate these steps).
+  // New steps unlock after product definition. Flow order:
+  // location_legislation (5) → benchmarking (6) → market_opportunity (7) → strategic_frameworks (8).
+  // Each check OR's in later steps' content for backward compat with existing ideas
+  // (including those created before benchmarking moved ahead of market_opportunity).
   const benchmarkingHasContent =
     !!ideaFull.benchmarking?.overview?.trim() ||
     !!ideaFull.benchmarking?.comparison?.trim();
@@ -84,18 +85,22 @@ function computeUnlockedSteps(ideaFull: IdeaFull): Set<IdeaBlock> {
     !!ideaFull.marketOpportunity?.tam_description?.trim() ||
     !!ideaFull.marketOpportunity?.tam_estimate?.trim();
 
-  if (productDone || locationLegislationHasContent || benchmarkingHasContent) {
+  if (productDone || locationLegislationHasContent || benchmarkingHasContent || marketOpportunityHasContent) {
     unlocked.add("location_legislation");
   }
-  if (locationLegislationHasContent || marketOpportunityHasContent || benchmarkingHasContent) {
+  // Benchmarking (step 6) unlocks after Location & Legislation has content.
+  if (locationLegislationHasContent || benchmarkingHasContent || marketOpportunityHasContent) {
+    unlocked.add("benchmarking");
+  }
+  // Market Opportunity (step 7) unlocks after Benchmarking has content — it consumes
+  // the competitive/pricing signals from benchmarking to ground its sizing & unit economics.
+  if (benchmarkingHasContent || marketOpportunityHasContent) {
     unlocked.add("market_opportunity");
   }
 
-  // Benchmarking unlocks after market_opportunity has content, or already has its own data.
-  if (marketOpportunityHasContent || benchmarkingHasContent) unlocked.add("benchmarking");
-
-  // Strategic Frameworks unlocks after Benchmarking has content.
-  if (benchmarkingHasContent) unlocked.add("strategic_frameworks");
+  // Strategic Frameworks (step 8) unlocks after Market Opportunity has content
+  // (or benchmarking, for legacy ideas where it was the gate).
+  if (marketOpportunityHasContent || benchmarkingHasContent) unlocked.add("strategic_frameworks");
 
   // Risk & Validation (step 9) comes before Report. Unlocks once Strategic Frameworks
   // has content OR already has data.

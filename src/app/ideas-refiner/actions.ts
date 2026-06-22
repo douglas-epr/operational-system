@@ -1282,11 +1282,13 @@ export async function triggerAiGeneration(
       .eq("idea_id", ideaId)
       .maybeSingle();
 
-    // Additional fetches used by the Report step. Report is the pre-build
+    // Additional fetches used by several steps. Report is the pre-build
     // go/no-go gate (Step 10 in IDEA_BLOCKS_ORDERED), so it runs AFTER the
-    // discovery steps — including location_legislation (5), market_opportunity
-    // (6), and risk_and_validation (9) — and scores all of their evidence. It
-    // must NOT read PRD/Database/Visual/Milestones, which run after it.
+    // discovery steps — including location_legislation (5), benchmarking (6),
+    // market_opportunity (7), and risk_and_validation (9) — and scores all of
+    // their evidence. It must NOT read PRD/Database/Visual/Milestones, which run
+    // after it. market_opportunity also fetches here to read benchmarking (its
+    // immediate predecessor) and ground pricing/sizing in the competitive set.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let suggestionsRows: any[] | null = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1297,7 +1299,7 @@ export async function triggerAiGeneration(
     let marketRow: any = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let riskRow: any = null;
-    if (step === "report" || step === "prd" || step === "risk_and_validation") {
+    if (step === "report" || step === "prd" || step === "risk_and_validation" || step === "market_opportunity") {
       const [sugRes, benchRes, locRes, mktRes, riskRes] = await Promise.all([
         supabase.from("idea_optimization_suggestion").select("*").eq("idea_id", ideaId),
         supabase.from("idea_benchmarking" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
@@ -1382,7 +1384,7 @@ export async function triggerAiGeneration(
         break;
       case "market_opportunity":
         result = await generateMarketOpportunity(
-          supabase, idea, structureAlign, icps ?? [], productDef, ideaId, aiConfig, requestId
+          supabase, idea, structureAlign, icps ?? [], productDef, benchmarkingRow, ideaId, aiConfig, requestId
         );
         break;
       case "risk_and_validation":
@@ -4316,7 +4318,7 @@ Return a JSON object with exactly these keys (all values must be valid HTML stri
 
 Return ONLY valid JSON.`;
 
-const FALLBACK_MARKET_OPPORTUNITY = `You are a market sizing expert. Produce a TAM/SAM/SOM analysis for the following startup idea.
+const FALLBACK_MARKET_OPPORTUNITY = `You are a market sizing expert. Produce a TAM/SAM/SOM analysis and unit-economics estimate for the following startup idea.
 
 Idea: {{idea_name}}
 Description: {{idea_description}}
@@ -4328,7 +4330,13 @@ ICP Firmographics: {{icps_block}}
 Product Overview: {{product_overview}}
 Business Model: {{business_model}}
 
-Label all estimates: [Fact], [Inference], or [Uncertain]. Do not fabricate figures.
+COMPETITIVE BENCHMARKING (from the previous step — use this as primary evidence for pricing and sizing):
+Overview: {{benchmarking_overview}}
+Comparison of Similar Apps: {{benchmarking_comparison}}
+Possible Business Models: {{benchmarking_models}}
+Key Takeaways: {{benchmarking_takeaways}}
+
+Label all estimates: [Fact], [Inference], or [Uncertain]. Do not fabricate figures. When the benchmarking data names competitors and their pricing, anchor your price_point, billing_model, cac_estimate, and ltv_estimate to those real comparables and explicitly reference them.
 
 Return a JSON object with exactly these keys (all values must be valid HTML strings):
 - "tam_description": Total Addressable Market definition.
@@ -4341,8 +4349,8 @@ Return a JSON object with exactly these keys (all values must be valid HTML stri
 - "segment_filter_logic": TAM to SAM to SOM filter logic (HTML table: Layer | Filter | Reduction Factor | Size).
 - "growth_drivers": 3-5 macro forces expanding this market.
 - "market_risks": 3-5 macro forces that could suppress this market.
-- "price_point": Proposed price point(s) — e.g. "£29/mo starter, £99/mo pro". Label [Fact], [Inference], or [Uncertain].
-- "billing_model": How the product is monetised — e.g. "SaaS subscription", "transaction fee", "freemium + upsell". Include any revenue share or commission model if applicable.
+- "price_point": Proposed price point(s) — e.g. "£29/mo starter, £99/mo pro". Anchor to competitor pricing from the benchmarking comparison where available. Label [Fact], [Inference], or [Uncertain].
+- "billing_model": How the product is monetised — e.g. "SaaS subscription", "transaction fee", "freemium + upsell". Reference the benchmarking "Possible Business Models" where relevant. Include any revenue share or commission model if applicable.
 - "cac_estimate": Customer Acquisition Cost estimate with methodology — e.g. "£120 blended CAC assuming paid social + content (£80 per channel)". Label assumptions.
 - "ltv_estimate": Customer Lifetime Value estimate — e.g. "£1,080 at 30-month avg retention on £36/mo ARPU". Show the LTV:CAC ratio.
 
@@ -4500,6 +4508,12 @@ async function generateMarketOpportunity(
   structureAlign: { core_problem: string | null; target_audience: string | null } | null,
   icps: Array<Record<string, unknown>>,
   productDef: { summary: string | null; business_model: string | null } | null,
+  benchmarking: {
+    overview: string | null;
+    comparison: string | null;
+    possible_business_models: string | null;
+    takeaways: string | null;
+  } | null,
   ideaId: string,
   aiConfig: AiConfig,
   requestId: string
@@ -4515,6 +4529,10 @@ async function generateMarketOpportunity(
     icps_block: buildIcpsBlock(icps),
     product_overview: stripHtml(productDef?.summary) || "Not defined yet",
     business_model: stripHtml(productDef?.business_model) || "Not defined yet",
+    benchmarking_overview: stripHtml(benchmarking?.overview) || "Not defined yet",
+    benchmarking_comparison: stripHtml(benchmarking?.comparison) || "Not defined yet",
+    benchmarking_models: stripHtml(benchmarking?.possible_business_models) || "Not defined yet",
+    benchmarking_takeaways: stripHtml(benchmarking?.takeaways) || "Not defined yet",
   });
 
   const res = await generateAiJsonResponse<MarketOpportunityOutput>({

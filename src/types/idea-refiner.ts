@@ -82,13 +82,13 @@ export const IDEA_BLOCK_STEPS: Record<IdeaBlock, { step: number; subtitle: strin
     step: 5,
     subtitle: "Regulatory bodies, key legislation, and compliance requirements for your target market.",
   },
-  market_opportunity: {
-    step: 6,
-    subtitle: "TAM/SAM/SOM sizing, data sources, and market growth drivers.",
-  },
   benchmarking: {
-    step: 7,
+    step: 6,
     subtitle: "Competitive analysis and benchmarking.",
+  },
+  market_opportunity: {
+    step: 7,
+    subtitle: "TAM/SAM/SOM sizing and unit economics — grounded in the competitive benchmarking from the previous step.",
   },
   strategic_frameworks: {
     step: 8,
@@ -131,8 +131,8 @@ export const IDEA_BLOCKS_ORDERED: IdeaBlock[] = [
   "refining_icp",
   "product_definition_flows",
   "location_legislation",
-  "market_opportunity",
   "benchmarking",
+  "market_opportunity",
   "strategic_frameworks",
   "risk_and_validation",
   "report",
