@@ -2789,6 +2789,51 @@ function clamp(min: number, max: number, n: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
+/** Strip HTML, collapse whitespace, and truncate to `n` chars with an ellipsis. */
+function clip(s: string | null | undefined, n: number): string {
+  const t = stripHtml((s as string | null) ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  return t.length > n ? `${t.slice(0, n)}…` : t;
+}
+
+/**
+ * Compact source block for the Devil's Advocate debate (Risk & Validation).
+ *
+ * The debate re-sends this block on EVERY turn — up to ~16 sequential AI calls
+ * (2 gates × 4 rounds × 2 personas). The full source block built from rich ICP
+ * fields can reach ~8–10k tokens for a developed idea (e.g. 3 ICPs ≈ 7k tokens
+ * of ICP content alone), which makes each call slow; multiplied across 16 calls
+ * it reliably exceeds Vercel's ~300 s function ceiling and the run is killed
+ * before any data is written. This compact form keeps only what a problem/
+ * solution debate needs — each field clipped, at most the top 3 ICPs — landing
+ * around ~1.5k tokens. Full content stays in the DB for the UI and the final
+ * synthesis step; only the debate loop uses this trimmed view.
+ */
+function buildCompactDebateSource(args: {
+  idea: { name: string; description: string | null; success_metrics: string | null };
+  structureAlign: Record<string, unknown> | null;
+  icps: Array<Record<string, unknown>>;
+  benchmarking: Record<string, unknown> | null;
+  market: Record<string, unknown> | null;
+  location: Record<string, unknown> | null;
+}): string {
+  const { idea, structureAlign, icps, benchmarking, market, location } = args;
+  const icpLines = icps.slice(0, 3).map((icp, i) => {
+    const get = (k: string) => clip(icp[k] as string | null, 220);
+    return `ICP ${i + 1}: ${clip(icp["name"] as string | null, 80) || "(unnamed)"} — Pains: ${get("pain_points")} | JTBD: ${get("jtbd")} | Our solution value: ${get("our_solution_value")} | Score: ${icp["score"] ?? "n/a"}`;
+  });
+  const icpBlock = icpLines.length ? icpLines.join("\n") : "(none)";
+  return `Idea: ${idea.name} — ${clip(idea.description, 800)}
+Success Metrics: ${clip(idea.success_metrics, 300) || "Not defined"}
+Core Problem: ${clip(structureAlign?.core_problem as string, 500) || "Not defined"}
+Target Audience: ${clip(structureAlign?.target_audience as string, 400) || "Not defined"}
+ICPs (top ${Math.min(icps.length, 3)} of ${icps.length}):
+${icpBlock}
+Benchmarking Takeaways: ${clip(benchmarking?.takeaways as string, 600) || "Not defined"}
+Market: TAM ${clip(market?.tam_estimate as string, 80) || "n/a"} / SAM ${clip(market?.sam_estimate as string, 80) || "n/a"} / SOM ${clip(market?.som_estimate as string, 80) || "n/a"} | Price ${clip(market?.price_point as string, 120) || "n/a"}
+Regulatory Red Flags: ${clip(location?.red_flags as string, 300) || "None identified"}`;
+}
+
 function buildIcpsBlock(icps: Array<Record<string, unknown>>): string {
   if (!icps.length) return "(none)";
   return icps
@@ -4677,26 +4722,23 @@ async function generateRiskAndValidation(
   aiConfig: AiConfig,
   requestId: string
 ): Promise<{ error?: string }> {
-  // ── Phase 1: Build the shared [SOURCE] block for the debate ──────────────────
-  // Cap the description at 2 000 chars so a large Build Brief stored in the
-  // description field doesn't inflate every debate prompt to 15 000+ tokens
-  // and cause Vercel function timeouts.
-  const descriptionForDebate = stripHtml(idea.description).slice(0, 2000);
-  const sourceBlock = `Idea: ${idea.name} — ${descriptionForDebate}
-Success Metrics: ${stripHtml(idea.success_metrics) || "Not defined"}
-Core Problem: ${stripHtml(structureAlign?.core_problem) || "Not defined"}
-Target Audience: ${stripHtml(structureAlign?.target_audience) || "Not defined"}
-Structure Success Metrics: ${stripHtml(structureAlign?.success_metrics) || "Not defined"}
-ICPs:
-${buildIcpsBlock(icps as Array<Record<string, unknown>>)}
-Optimization Suggestions:
-${buildSuggestionsBlock(suggestions as Array<Record<string, unknown>>)}
-Product Definition: ${stripHtml(productDef?.summary) || "Not defined"} / ${stripHtml(productDef?.features) || "Not defined"}
-Benchmarking: ${stripHtml(benchmarkingRow?.overview) || "Not defined"} / ${stripHtml(benchmarkingRow?.comparison) || "Not defined"} / ${stripHtml(benchmarkingRow?.possible_business_models) || "Not defined"} / ${stripHtml(benchmarkingRow?.takeaways) || "Not defined"}
-Location & Legislation:
-${buildLocationBlock(locationRow as Record<string, unknown> | null)}
-Market Opportunity:
-${buildMarketBlock(marketRow as Record<string, unknown> | null)}`;
+  // ── Phase 1: Build the COMPACT [SOURCE] block for the debate ─────────────────
+  // The debate re-sends this on every one of ~16 sequential calls, so it must
+  // stay small (~1.5k tokens). The full rich ICP/product/benchmarking content
+  // would balloon each prompt to ~8–10k tokens and time the function out on
+  // Vercel. buildCompactDebateSource clips each field and caps ICPs to 3.
+  // `suggestions` is intentionally omitted from the debate source — it doesn't
+  // inform a problem/solution debate and only adds weight. (productDef is still
+  // used below for the final synthesis prompt's product_overview field.)
+  void suggestions;
+  const sourceBlock = buildCompactDebateSource({
+    idea,
+    structureAlign: structureAlign as Record<string, unknown> | null,
+    icps: icps as Array<Record<string, unknown>>,
+    benchmarking: benchmarkingRow as Record<string, unknown> | null,
+    market: marketRow as Record<string, unknown> | null,
+    location: locationRow as Record<string, unknown> | null,
+  });
 
   // ── Phase 2: Run 2-gate Devil's Advocate debate ───────────────────────────────
   const [skepticTemplate, advocateTemplate] = await Promise.all([
