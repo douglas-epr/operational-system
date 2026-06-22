@@ -10,6 +10,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { IdeaBlock } from "@/types/idea-refiner";
@@ -22,15 +23,15 @@ const STUCK_TIMEOUT_MS = 270_000;
 const STRATEGIC_FRAMEWORKS_STUCK_TIMEOUT_MS = 600_000;
 /**
  * The Risk & Validation step runs the multi-call Devil's Advocate debate pipeline.
- * With the round cap at 10 per gate (MAX_ROUNDS_PER_GATE), a fully-contested idea
- * can reach ~40 debate calls (10 rounds × 2 sides × 2 gates) plus the risk/validation
- * + demand-evidence synthesis call. The debate is the crux kill/refine/build gate,
- * so we never want the stuck-state auto-clear to fire while a valid generation is
- * still running — 45 min covers the worst case even on slower models. Report (which
- * now only reframes + scores using the debate outcome) keeps the same ceiling for
- * safety. Latency is intentionally traded for verdict quality.
+ * Vercel Pro's serverless function limit is ~800 s (~13 min), so any run longer
+ * than that will be killed by Vercel before the server-side try/catch can clear
+ * the DB flag. Setting the stuck-state timeout to 15 min (900 s) means the overlay
+ * auto-recovers within ~2 min of Vercel killing the function. Report keeps the same
+ * ceiling. Both steps also show a manual cancel button after 3 min.
  */
-const DEBATE_STUCK_TIMEOUT_MS = 2_700_000;
+const DEBATE_STUCK_TIMEOUT_MS = 900_000;
+/** Show a manual cancel button after this many ms for long debate steps. */
+const DEBATE_EARLY_CANCEL_MS = 180_000;
 
 /** Field names that AI updates per step — shown in the "soon you will have…" message. */
 const STEP_FIELDS: Record<IdeaBlock, string[]> = {
@@ -94,9 +95,13 @@ export default function AiLoadingOverlay({
   step,
   justCompleted = false,
 }: AiLoadingOverlayProps) {
+  const router = useRouter();
   const [showSuccess, setShowSuccess] = useState(justCompleted);
   const [isStuck, setIsStuck] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  // For debate-heavy steps: show a manual cancel button after 3 min so the user
+  // can bail out without waiting for the 15-min auto-recovery.
+  const [showEarlyCancel, setShowEarlyCancel] = useState(false);
 
   // Auto-dismiss success banner after 5 seconds
   useEffect(() => {
@@ -112,8 +117,7 @@ export default function AiLoadingOverlay({
 
   // Stuck-state detector: if the overlay has been showing too long without
   // resolving, the server-side generation probably crashed. Clear the flag so
-  // the step becomes interactive again. The report step uses a longer timeout
-  // because it runs a multi-call debate pipeline (~12-20 AI calls).
+  // the step becomes interactive again.
   useEffect(() => {
     if (justCompleted) return; // already done — don't arm the timer
     const timeoutMs =
@@ -132,9 +136,22 @@ export default function AiLoadingOverlay({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ideaId, step]);
 
+  // For debate-heavy steps: show a manual cancel button after a short delay
+  // so the user can bail out without waiting for the 15-min auto-recovery.
+  useEffect(() => {
+    if (justCompleted) return;
+    if (step !== "risk_and_validation" && step !== "report") return;
+    const timer = setTimeout(() => setShowEarlyCancel(true), DEBATE_EARLY_CANCEL_MS);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ideaId, step]);
+
   async function handleDismiss() {
     setIsClearing(true);
     await clearAiWorking(ideaId);
+    // Force a refresh so the page re-reads DB state even if Realtime missed
+    // the update (e.g. because the server function was already dead).
+    router.refresh();
     setIsClearing(false);
   }
 
@@ -207,6 +224,17 @@ export default function AiLoadingOverlay({
             <p className="text-sm text-text-muted text-center max-w-sm">
               Soon you will have {fieldList} updated
             </p>
+          )}
+
+          {/* Manual escape hatch for long debate steps — visible after 3 min */}
+          {showEarlyCancel && (
+            <button
+              onClick={handleDismiss}
+              disabled={isClearing}
+              className="mt-2 text-xs text-text-muted underline underline-offset-2 hover:text-text-secondary transition-colors disabled:opacity-50"
+            >
+              {isClearing ? "Cancelling…" : "Taking too long? Cancel and retry"}
+            </button>
           )}
         </div>
       )}

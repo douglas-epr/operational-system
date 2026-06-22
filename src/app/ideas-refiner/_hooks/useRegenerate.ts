@@ -45,25 +45,35 @@ export function useRegenerate(
     clearAutoTriggerGuard(ideaId, step);
     // risk_and_validation runs the multi-call Devil's Advocate debate loop (up to
     // 10 rounds × 2 sides × 2 gates ≈ 40 sequential calls) PLUS the risk/validation
-    // + demand-evidence synthesis call — give it a 45-min ceiling so the "timed out"
-    // toast never fires mid-debate. report now only does reframer + scorer but keeps
-    // the long ceiling for safety. strategic_frameworks loops per-ICP — 10 min is
+    // + demand-evidence synthesis call — give it a 15-min ceiling. Vercel Pro's
+    // function timeout is ~800 s (~13 min); any longer run will be killed by Vercel
+    // before the client timer fires. strategic_frameworks loops per-ICP — 10 min is
     // plenty. (isRegenerating also clears on the Realtime edge, so this timeout
     // mainly governs the error toast.)
     const debateTimeoutMs =
-      step === "risk_and_validation" || step === "report" ? 2_700_000 : undefined;
+      step === "risk_and_validation" || step === "report" ? 900_000 : undefined;
     const frameworksTimeoutMs = step === "strategic_frameworks" ? 600_000 : undefined;
-    const result = await runAiWithTimeout(action, {
-      timeoutMs: debateTimeoutMs ?? frameworksTimeoutMs,
-    });
-    // Fallback: clear if Realtime didn't already do so.
-    setIsRegenerating(false);
-    if (result.error) {
-      // A genuine AI API error (timeouts no longer surface an error). Show the
-      // inline message AND force the loading overlay to disappear: clear the
-      // server `current_blocks_updating` flag and refresh so `isAiWorking`
-      // recomputes to false even if the server clear / Realtime event lagged.
-      setError(result.error);
+    try {
+      const result = await runAiWithTimeout(action, {
+        timeoutMs: debateTimeoutMs ?? frameworksTimeoutMs,
+      });
+      // Fallback: clear if Realtime didn't already do so.
+      setIsRegenerating(false);
+      if (result.error) {
+        // A genuine AI API error (timeouts no longer surface an error). Show the
+        // inline message AND force the loading overlay to disappear: clear the
+        // server `current_blocks_updating` flag and refresh so `isAiWorking`
+        // recomputes to false even if the server clear / Realtime event lagged.
+        setError(result.error);
+        await clearAiWorking(ideaId);
+        router.refresh();
+      }
+    } catch (e) {
+      // Server action threw — e.g. Vercel killed the HTTP connection after
+      // its function timeout. Always clean up so the step is not stuck.
+      setIsRegenerating(false);
+      const msg = e instanceof Error ? e.message : "AI generation failed — please try again.";
+      setError(msg);
       await clearAiWorking(ideaId);
       router.refresh();
     }

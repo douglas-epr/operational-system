@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-22] — Fix: Risk & Validation "AI is working" stuck forever
+
+- **Root cause**: The Devil's Advocate debate pipeline runs up to 40 sequential AI calls, easily exceeding Vercel Pro's ~800 s function ceiling. When Vercel kills the serverless function, no server-side try/catch runs, so `current_blocks_updating` stays set in the DB forever. On the client, `triggerRegenerate` in `useRegenerate.ts` had no try/catch either — a thrown network error left `isRegenerating = true` permanently. The only auto-recovery was a 45-minute stuck-state timer in `AiLoadingOverlay`, far too long.
+- **Fix 1 — `useRegenerate.ts`**: Wrapped `runAiWithTimeout` in try/catch. If the server action throws (network drop, Vercel timeout), `setIsRegenerating(false)`, `clearAiWorking(ideaId)`, and `router.refresh()` are always called.
+- **Fix 2 — `AiLoadingOverlay.tsx`**: Reduced `DEBATE_STUCK_TIMEOUT_MS` from 2,700,000 ms (45 min) to 900,000 ms (15 min) — auto-recovers within ~2 min of Vercel killing the function. Added `router.refresh()` to `handleDismiss` so the page re-reads DB state even if Realtime missed the event. Added a "Taking too long? Cancel and retry" button that appears after 3 min for `risk_and_validation` and `report` steps, giving users immediate manual escape.
+- **DB cleanup**: Cleared stale `current_ai_request_id` on the affected production idea (`Lola`, `f3e68278-…`).
+
 ## [2026-06-22] — Ideas Refiner: recalibrate Claude Code milestone time estimates to 80–160h
 
 - The Milestones & Tasks step produced unrealistic timelines: the prompt suppressed estimates ("minutes not hours", "do NOT inflate", 1–8h per area), so plans came out inconsistent and far from a real Claude Code build. Researched real-world Claude Code project timelines (Anthropic's own Claude Cowork ≈1.5 weeks; multi-tenant SaaS builds ≈weeks) — a complete, production-grade app is ~2–4 focused weeks (≈80–160h) for one developer.
