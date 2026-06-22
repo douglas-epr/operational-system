@@ -413,19 +413,26 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
                     <p className="text-xs text-text-muted">
                       Generated {new Date(report.brief_generated_at).toLocaleDateString()}. Opens a 10-section investor brief with PDF/DOCX export.
                     </p>
-                    <button
-                      onClick={handleViewBrief}
-                      disabled={isViewingBrief}
-                      className="w-full text-xs px-3 py-2 rounded-md bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isViewingBrief ? "Preparing Brief..." : "View Brief"}
-                    </button>
                   </>
                 ) : (
                   <p>
                     Synthesizes all discovery steps into an investor-grade brief with 10 sections: thesis, build plan, customer targeting, unit economics, GTM, regulatory posture, validation test, risks, and verdict.
                   </p>
                 )}
+                {/* Button is always available: assembleIdeaBrief builds the brief
+                    on-demand from the discovery steps, so it works whether or not a
+                    brief was previously generated. */}
+                <button
+                  onClick={handleViewBrief}
+                  disabled={isViewingBrief}
+                  className="w-full text-xs px-3 py-2 rounded-md bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isViewingBrief
+                    ? "Preparing Brief..."
+                    : report.brief_generated_at
+                    ? "Preview & Download Brief"
+                    : "Generate, Preview & Download Brief"}
+                </button>
                 {briefViewError && (
                   <p className="text-xs text-red-400" role="alert">{briefViewError}</p>
                 )}

@@ -3,6 +3,10 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-22] — Fix: missing Brief preview/download button on Report step
+
+- The Build Brief card only rendered its action button when `report.brief_generated_at` was already set, so an idea whose brief had never been generated had no way to preview or download it. The button is now always shown — `assembleIdeaBrief` builds the brief on-demand from the discovery steps (only the Go/No-Go Report needs to exist). Label adapts: "Generate, Preview & Download Brief" when none exists yet, "Preview & Download Brief" otherwise. Opens `BriefPreviewModal` (PDF + DOCX export). `ReportStep.tsx`.
+
 ## [2026-06-21] — Ideas Refiner: move Benchmarking before Market Opportunity; feed competitive data into sizing
 
 - **Flow reorder**: Benchmarking is now step 6 and Market Opportunity step 7 (was the reverse). `IDEA_BLOCKS_ORDERED` + `IDEA_BLOCK_STEPS` in `src/types/idea-refiner.ts`; unlock chain in `computeUnlockedSteps` (`SandboxPlannerShell.tsx`) rewired to `location_legislation → benchmarking → market_opportunity → strategic_frameworks`, with backward-compat OR-guards for existing ideas.
