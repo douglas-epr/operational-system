@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-22] — Ideas Refiner: recalibrate Claude Code milestone time estimates to 80–160h
+
+- The Milestones & Tasks step produced unrealistic timelines: the prompt suppressed estimates ("minutes not hours", "do NOT inflate", 1–8h per area), so plans came out inconsistent and far from a real Claude Code build. Researched real-world Claude Code project timelines (Anthropic's own Claude Cowork ≈1.5 weeks; multi-tenant SaaS builds ≈weeks) — a complete, production-grade app is ~2–4 focused weeks (≈80–160h) for one developer.
+- Rewrote the Claude Code milestones prompt: removed the suppression language, added an explicit **GRAND-TOTAL TARGET** band (Simple ≈80h / Moderate ≈120h / Complex ≈160h) as the primary rule, raised per-area anchors to full-lifecycle values (scaffold 8–12h, DB+RLS 12–18h, auth 8–14h, pages 6–26h, deploy 10–16h), and added a "Project Total" summary line. Buffer is one consolidated "General Tasks — 4–6h" line per milestone.
+- Updated both `FALLBACK_MILESTONES` (`ideas-refiner/actions.ts`) and the DB-stored Claude Code prompt. Migration `20260701000000_milestones_claude_code_prompt_recalibrate.sql` upserts prompt `c1d2e3f4-0001-…` — seeds it in production (which had no row, was using the fallback) and overwrites the stale local copy. Applied to production and local.
+- Live-tested (idea "Clearday"): old plan totalled 190h with a split 3-row buffer; regenerated plan totals **118 hours (~3 weeks)** across 7 milestones, each with a single "General Tasks" buffer — in band, no console errors.
+
 ## [2026-06-22] — Fix: missing Brief preview/download button on Report step
 
 - The Build Brief card only rendered its action button when `report.brief_generated_at` was already set, so an idea whose brief had never been generated had no way to preview or download it. The button is now always shown — `assembleIdeaBrief` builds the brief on-demand from the discovery steps (only the Go/No-Go Report needs to exist). Label adapts: "Generate, Preview & Download Brief" when none exists yet, "Preview & Download Brief" otherwise. Opens `BriefPreviewModal` (PDF + DOCX export). `ReportStep.tsx`.
