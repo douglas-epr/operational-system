@@ -2973,8 +2973,11 @@ async function generateReport(
   requestId: string
 ): Promise<{ error?: string }> {
   // ── Build the shared [SOURCE] block used across all personas ─────────────────
+  // Cap description at 2 000 chars — same reason as generateRiskAndValidation:
+  // a large Build Brief would inflate every debate prompt to 15 000+ tokens.
   const riskRow = risk as Record<string, unknown> | null;
-  const sourceBlock = `Idea: ${idea.name} — ${stripHtml(idea.description)}
+  const descriptionForDebate = stripHtml(idea.description).slice(0, 2000);
+  const sourceBlock = `Idea: ${idea.name} — ${descriptionForDebate}
 Success Metrics: ${stripHtml(idea.success_metrics) || "Not defined"}
 Core Problem: ${stripHtml(structureAlign?.core_problem) || "Not defined"}
 Target Audience: ${stripHtml(structureAlign?.target_audience) || "Not defined"}
@@ -4673,7 +4676,11 @@ async function generateRiskAndValidation(
   requestId: string
 ): Promise<{ error?: string }> {
   // ── Phase 1: Build the shared [SOURCE] block for the debate ──────────────────
-  const sourceBlock = `Idea: ${idea.name} — ${stripHtml(idea.description)}
+  // Cap the description at 2 000 chars so a large Build Brief stored in the
+  // description field doesn't inflate every debate prompt to 15 000+ tokens
+  // and cause Vercel function timeouts.
+  const descriptionForDebate = stripHtml(idea.description).slice(0, 2000);
+  const sourceBlock = `Idea: ${idea.name} — ${descriptionForDebate}
 Success Metrics: ${stripHtml(idea.success_metrics) || "Not defined"}
 Core Problem: ${stripHtml(structureAlign?.core_problem) || "Not defined"}
 Target Audience: ${stripHtml(structureAlign?.target_audience) || "Not defined"}
