@@ -33,11 +33,11 @@ _Brownfield analysis — 2026-06-21. Risk / tech-debt register. Severity: 🔴 h
 - `src/lib/supabase/types.ts` is large (~10k lines). Feature interfaces in `src/types/` can drift from it.
 - **Rule:** regenerate or hand-update `types.ts` after every migration and keep `src/types/` in sync.
 
-## 🟡 Reference-doc traceability erodes over time
+## 🟡 Codebase is the spec — keep `.specs/` current
 
-- Ported features must cite `reference_docs/`, but the platform has grown well past the Bubble app
-  (marketing engine, expanded Ideas Refiner). Keep the greenfield/ported split explicit (see PROJECT.md)
-  so reviewers know which rule applies.
+- The legacy Bubble export has been removed; the codebase and `.specs/` are now the source of truth.
+  As the platform grows (marketing engine, expanded Ideas Refiner), keep `.specs/` and the design-token
+  docs in sync with the code so new work matches established patterns rather than re-inventing them.
 
 ## 🟡 Windows + Turbopack route caching
 

@@ -1,9 +1,8 @@
 /**
  * Gemini (Google Generative AI) Utility
- * Source: docs/reference_docs/api-connectors.md — Gemini connector
  * Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
  * Auth: x-goog-api-key header (not the ?key= query param — keeps the key out of logs)
- * Model used in Bubble: gemini-2.5-flash
+ * Default model: gemini-2.5-flash
  */
 
 const GEMINI_BASE_URL =
@@ -73,7 +72,6 @@ export interface GeminiRequestParams {
 
 /**
  * Generate content using the Gemini API.
- * Source: "Message" call in Bubble Gemini connector.
  */
 export async function generateGeminiContent(
   params: GeminiRequestParams
@@ -176,7 +174,7 @@ function sanitizeJsonText(text: string): string {
 
 /**
  * Generate content from Gemini and parse the output as JSON.
- * Mirrors Bubble's pattern of using response_mime_type: "application/json".
+ * Uses response_mime_type: "application/json".
  */
 export async function generateGeminiJsonResponse<T = unknown>(
   prompt: string,

@@ -165,8 +165,8 @@ const ALLOWED_OPS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Block tables outside the public schema. Bubble parity & blast-radius
- * containment: we only want the chatbot poking at app data, never auth.*
+ * Block tables outside the public schema. Blast-radius containment:
+ * we only want the chatbot poking at app data, never auth.*
  * (which would leak password hashes/MFA secrets) or storage.* (file
  * metadata that the app already exposes via signed URLs anyway).
  */

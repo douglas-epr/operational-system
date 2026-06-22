@@ -30,7 +30,7 @@ Browser
   ├─→ Next.js App Router (RSC)        # Server components + server actions
   │         │
   │         ├─→ Supabase JS (server)  # Row-scoped queries via anon key
-  │         └─→ Supabase JS (service) # Elevated reads (AI config, agency keys)
+  │         └─→ Supabase JS (service) # Elevated reads/writes (AI config, public landing capture)
   │
   └─→ Supabase                        # PostgreSQL 15 + Auth + Storage
             ├─→ RLS policies          # Row-level security on every table
@@ -314,7 +314,7 @@ AI generation flow (every step):
 
 ### Marketing Validation Engine
 
-A greenfield demand-validation pipeline attached to any `idea` (not a Bubble port). Admin/manager only; the public capture zone is anonymous.
+A greenfield demand-validation pipeline attached to any `idea`. Admin/manager only; the public capture zone is anonymous.
 
 ```
 /marketing                      → portfolio of ideas with validation + funnel rollup

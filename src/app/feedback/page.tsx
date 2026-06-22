@@ -1,8 +1,7 @@
 /**
  * /feedback page — server component.
  *
- * Mirrors the Bubble "feedback" page (docs/reference_docs/paginas.md §feedback,
- * tabelas.md §feedback). Every authenticated user can submit feedback about a
+ * Every authenticated user can submit feedback about a
  * project; admin/manager see the full wall, non-managers see their own posts.
  */
 import { requirePageAccess } from "@/lib/auth/page-gate";

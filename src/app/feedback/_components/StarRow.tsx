@@ -4,8 +4,7 @@
  * Read-only or interactive 1–5 star row.
  *
  * The rightmost star renders as a "happy face" variant when the current value
- * reaches 5 — matches the Bubble design (docs/reference_docs/paginas.md §feedback
- * and the attached reference screenshots).
+ * reaches 5.
  */
 interface Props {
   value: number;                       // 0–5

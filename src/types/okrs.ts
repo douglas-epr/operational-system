@@ -1,5 +1,5 @@
 // Types mirror Supabase tables internal_goal, internal_key_result,
-// internal_key_result_track. Status enums map to Bubble option sets
+// internal_key_result_track. Status enums map to PostgreSQL enums
 // os_internal_goals_status and os_internal_key_result_status.
 
 export type InternalGoalStatus =

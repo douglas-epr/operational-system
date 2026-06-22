@@ -3,7 +3,7 @@
  *
  * A generic, project-agnostic demand-validation pipeline
  * (Source → Outreach → Content → Capture → Measure) that attaches to any
- * row in `public.project`. This is a NEW domain — it has no Bubble ancestor
+ * row in `public.project`. This is a NEW, greenfield domain
  * (see docs/marketing/). Interfaces mirror the columns created in
  * supabase/migrations/20260601000000_marketing_validation_engine.sql.
  */

@@ -1,8 +1,6 @@
 /**
- * Types, enums, and labels for the Sandbox Planner feature.
- * Source: supabase/migrations/20260304000000_initial_schema.sql (lines 241-264, 858-956)
- * Maps to Bubble data types: idea, idea_icp, idea_optimization_suggestion,
- * idea_product_definition_and_flows, idea_structure_and_align
+ * Types, enums, and labels for the Ideas Refiner feature.
+ * Backed by the `idea` table and its `idea_*` sub-tables (see supabase/migrations/).
  */
 import type { PlaybookVersion } from "./docs";
 

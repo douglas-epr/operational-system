@@ -5,13 +5,15 @@ _Spec-driven workspace initialized 2026-06-21 (brownfield)._
 ## Vision
 
 A role-gated internal operations platform for the Move37 studio. It is a modern, type-safe
-Next.js + Supabase rebuild of the studio's legacy Bubble.io application, extended with a
-greenfield demand-validation product (the Market Validation Engine).
+A modern Next.js + Supabase platform for running the studio's internal operations, extended
+with a greenfield demand-validation product (the Market Validation Engine). The codebase and
+this `.specs/` workspace are the source of truth. (The operational core was originally ported
+from a legacy Bubble.io app; that migration is complete and the Bubble export is no longer kept.)
 
 ## Goals
 
-1. **Faithful port** of the Bubble operational core — projects, tasks, chat, OKRs, SOPs,
-   invoices, ideas — with every ported feature traceable to `docs/reference_docs/`.
+1. **Solid operational core** — projects, tasks, chat, OKRs, SOPs, invoices, ideas — built to
+   the patterns established in the existing codebase.
 2. **Type safety & RLS everywhere** — strict TypeScript, RLS on every table, server-only mutations.
 3. **AI-assisted idea development** — the 15-step Ideas Refiner takes a raw idea through
    discovery → a Devil's-Advocate go/no-go report → PRD/DB/design/build playbook.
@@ -26,10 +28,10 @@ greenfield demand-validation product (the Market Validation Engine).
 
 ## Domains
 
-| Domain | Bubble port? | Source of truth |
-|---|---|---|
-| Projects, tasks, chat, OKRs, SOPs, invoices, internal projects, ideas | Yes | `docs/reference_docs/` |
-| Market Validation Engine (`/marketing`, `/m`, `mkt_*`) | No (greenfield) | `docs/marketing/` |
+| Domain | Source of truth |
+|---|---|
+| Projects, tasks, chat, OKRs, SOPs, invoices, internal projects, ideas | the codebase + `.specs/` |
+| Market Validation Engine (`/marketing`, `/m`, `mkt_*`) | `docs/marketing/` (greenfield design notes) |
 
 ## Stakeholders
 

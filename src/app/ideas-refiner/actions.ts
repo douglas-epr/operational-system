@@ -1,7 +1,6 @@
 /**
- * Server Actions for Sandbox Planner.
+ * Server Actions for the Ideas Refiner.
  * Handles CRUD for ideas and related entities, plus AI generation triggers.
- * Source: docs/reference_docs/paginas.md — sandbox-planner workflows
  */
 "use server";
 

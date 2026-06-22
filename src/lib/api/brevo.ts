@@ -1,6 +1,5 @@
 /**
  * Brevo Transactional Email Utility
- * Source: docs/reference_docs/api-connectors.md — Brevo connector
  * All calls POST to https://api.brevo.com/v3/smtp/email using server-side API key.
  */
 
@@ -8,11 +7,11 @@ const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 // 45s — invoice sends attach a multi-MB base64 PDF; allow slow uploads.
 const BREVO_TIMEOUT_MS = 45_000;
 
-// Template IDs as documented in Bubble API connector
+// Brevo transactional template IDs
 const TEMPLATE_IDS = {
   ACCOUNT_DETAILS: 6,
   INSTRUCTOR_BOOKING: 10,
-  // The following are used in Bubble but template IDs not exposed in docs;
+  // These template IDs are environment-specific —
   // set via BREVO_TEMPLATE_PASSWORD_RESET / BREVO_TEMPLATE_MAGIC_LINK env vars.
   PASSWORD_RESET: Number(process.env.BREVO_TEMPLATE_PASSWORD_RESET ?? 0),
   MAGIC_LINK: Number(process.env.BREVO_TEMPLATE_MAGIC_LINK ?? 0),

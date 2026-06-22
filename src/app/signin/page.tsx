@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { signIn, sendPasswordReset } from "./actions";
 
 // ── View types ────────────────────────────────────────────────────────────────
-// Mirrors Bubble custom state: custom.view_ = "signin" | "reset_password" | "email_sent"
+// View state for the sign-in flow: "signin" | "reset_password" | "email_sent"
 
 type View = "signin" | "reset_password" | "email_sent";
 

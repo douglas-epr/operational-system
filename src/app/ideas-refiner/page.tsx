@@ -1,7 +1,6 @@
 ﻿/**
- * Sandbox Planner page — server component.
+ * Ideas Refiner page — server component.
  * Handles auth, data fetching, and renders the client shell.
- * Source: docs/reference_docs/paginas.md — sandbox-planner page
  */
 import { redirect } from "next/navigation";
 import { requirePageAccess } from "@/lib/auth/page-gate";

@@ -27,5 +27,5 @@ _Snapshot 2026-06-21. Status mirrors `docs/project_status.md`._
 ## Guiding Constraints
 
 - Append-only migrations; RLS on every new table.
-- Ported features must cite a `reference_docs/` entry; greenfield marketing features document in `docs/marketing/`.
+- Build to the patterns already in the codebase; greenfield marketing features document in `docs/marketing/`.
 - Update `docs/changelog.md` every session.

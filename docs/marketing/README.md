@@ -1,8 +1,6 @@
 # Marketing Validation Engine (`mkt_*`)
 
-> **New domain — not a Bubble replication.** Unlike the rest of this app (which
-> replicates the legacy Bubble export documented in `docs/reference_docs/`), the
-> Marketing Validation Engine has **no Bubble ancestor**. It is a deliberate,
+> **Greenfield domain.** The Marketing Validation Engine is a deliberate,
 > authorized new product domain. This README is its source of truth, satisfying
 > the "no orphan code" rule (`CLAUDE.md` #7) for everything under the `mkt_`
 > prefix and the `/marketing` + `/m` routes.

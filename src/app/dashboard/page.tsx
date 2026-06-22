@@ -22,7 +22,7 @@ import { loadAllDashboardMetrics } from "./_lib/queries";
  * regular users never see the link.
  *
  * `view` slug values use hyphens (matches the user's URL spec) — internally
- * the metric module uses underscores for the `os_tab` enum from Bubble.
+ * the metric module uses underscores for the `os_tab` enum.
  */
 
 type SearchParams = Promise<{ view?: string }>;

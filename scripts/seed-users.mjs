@@ -44,8 +44,8 @@ const TEMP_PASSWORD = "Move37@2026!";
 
 const USERS = [
   { email: "ranjit@deviceint.com",  first_name: "Ranjit B",      last_name: "",          type: "admin",    country: "Brunei",    picture: null },
-  { email: "douglas@move37.fun",     first_name: "Douglas",       last_name: "Gouveia",   type: "manager",  country: "Brazil",    picture: "https://8d6d318cb1c67bc0b84ee11b83349e08.cdn.bubble.io/f1756438439474x634837500110274400/1724603304101.jpeg" },
-  { email: "ranjit@move37.fun",      first_name: "Ranjit",        last_name: "Bhinge",    type: "admin",    country: "Brunei",    picture: "https://8d6d318cb1c67bc0b84ee11b83349e08.cdn.bubble.io/f1756471667959x387678722100177400/ranjit.jpeg" },
+  { email: "douglas@move37.fun",     first_name: "Douglas",       last_name: "Gouveia",   type: "manager",  country: "Brazil",    picture: null },
+  { email: "ranjit@move37.fun",      first_name: "Ranjit",        last_name: "Bhinge",    type: "admin",    country: "Brunei",    picture: null },
   { email: "richard_dev@gmail.com",  first_name: "Richard",       last_name: "Developer", type: "developer",country: "Cameroon",  picture: null },
   { email: "sarah_client@gmail.com", first_name: "Sarah",         last_name: "Client",    type: "client",   country: "Australia", picture: null },
   { email: "marcos_qa@gmail.com",    first_name: "Marcos",        last_name: "QA",        type: "qa",       country: "Brunei",    picture: null },

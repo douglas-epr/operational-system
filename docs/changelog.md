@@ -3,6 +3,28 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-21] — Fix: AI not filling Price Point / Billing Model / CAC / LTV in Market Opportunity step
+
+- **Root cause**: Migration `20260623000000_idea_market_pricing.sql` added four new columns (`price_point`, `billing_model`, `cac_estimate`, `ltv_estimate`) to `idea_market_opportunity`, but the DB-stored AI prompt (`bb000002-0000-4000-8000-000000000001`) was never updated to request those fields. The AI used the DB prompt, omitted the new keys, and the columns stayed `null`.
+- **Fix**: New migration `20260629000000_market_opportunity_prompt_add_pricing.sql` — appends the four "Offer & Pricing" output keys to the market opportunity prompt in the `prompt` table. Applied to production via Supabase MCP.
+
+## [2026-06-21] — Remove Bubble/BlurApps references; reframe codebase + .specs/ as source of truth
+
+- Deleted `docs/reference_docs/` (7 Bubble export files + 2 screenshots, ~15k lines) — the migration is complete and the export is no longer maintained.
+- Deleted `docs/architecture.md` — stale duplicate; superseded by root `architecture.md`.
+- Deleted `.env.local.clean` — tracked file contained live secrets for the old Blur Studio Supabase project (`hddwpacyhuvijefswtqp`). Credentials rotated separately.
+- `CLAUDE.md`: rewrote Project Goal, Knowledge Base Mapping, and Mandatory Coding Rules to point at `supabase/migrations/`, `src/`, and `.specs/` instead of the Bubble export.
+- `RULES.md`: renamed "Reference-First Development" → "Spec & Codebase-First Development"; updated all lookup table entries and DON'T/DO examples.
+- `README.md`: removed "replicating the legacy Bubble.io application" framing; updated project-structure tree.
+- `architecture.md`: removed "(not a Bubble port)" annotation; updated one stale comment.
+- `.env.example`: removed "Source: docs/reference_docs/api-connectors.md" comments; updated model names.
+- `scripts/unwrap-types.js`: updated hardcoded project path from `blur-studio-internal-tools` to `move37-operational-system`.
+- `scripts/seed-users.mjs`: removed `cdn.bubble.io` avatar URLs (nulled out).
+- `src/lib/api/{openai,gemini,brevo,json-converters}.ts`: stripped all file-header comments referencing the Bubble connector or `reference_docs/`.
+- `src/types/{leads,idea-refiner,okrs,marketing}.ts`: removed Bubble data-type and option-set docblock references.
+- `src/app/{dashboard,chat/_chatbot/tools,feedback/page,feedback/_components/StarRow,ideas-refiner/page,ideas-refiner/actions,signin/page}.tsx/ts`: removed inline comments citing `reference_docs/` pages or Bubble data types.
+- `.specs/project/PROJECT.md`, `.specs/project/ROADMAP.md`, `.specs/codebase/CONCERNS.md`, `.specs/codebase/STRUCTURE.md`, `docs/marketing/README.md`: reworded to reflect codebase-as-spec.
+
 ## [2026-06-21] — Full security, code-quality, and performance audit (skills: /tlc-spec-driven, /code-quality-reviewer, /code-review, /performance-optimization, /security-review, /security-best-practices, /supabase, /supabase-postgres-best-practices)
 
 ### CRITICAL security fix

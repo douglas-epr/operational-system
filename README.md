@@ -1,6 +1,6 @@
 ﻿# Move37 — Internal Tools
 
-A full-stack internal operations platform built with **Next.js 16, Supabase, and Tailwind CSS v4**, replicating the studio's legacy Bubble.io application with a modern, type-safe architecture.
+A full-stack internal operations platform built with **Next.js 16, Supabase, and Tailwind CSS v4** — a modern, type-safe system for running the studio's projects, communication, billing, and AI-assisted idea development.
 
 ---
 
@@ -32,7 +32,7 @@ Move37 Operational System is a role-gated SaaS platform that centralises:
 - **Internal operations** — OKRs, SOPs/Documents, internal projects, and an admin KPI dashboard
 - **Billing** — invoice generator with rich-text service descriptions, AI fill from work-feedback, PDF export, and email delivery
 
-Most of the operational core (projects, chat, OKRs, SOPs, invoices, ideas) is a modern port of the studio's legacy Bubble.io application — every such feature traces back to a documented Bubble element in `docs/reference_docs/`. The **Market Validation Engine** is a new, greenfield domain with no Bubble ancestor.
+The codebase and the `.specs/` workspace are the source of truth — features follow the patterns established in the existing code. (The operational core was originally ported from a legacy Bubble.io app; that migration is complete and the Bubble export is no longer maintained.)
 
 ---
 
@@ -81,7 +81,7 @@ cd move37-operational-system
 npm install
 
 # 3. Copy and fill environment variables
-cp .env.local.clean .env.local
+cp .env.example .env.local
 # Edit .env.local — add NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 
 # 4. Apply all database migrations
@@ -155,10 +155,12 @@ move37-operational-system/
 ├── docs/
 │   ├── changelog.md                  # Feature-level changelog (updated every session)
 │   ├── project_status.md             # Current build completion status
-│   ├── marketing/                    # Marketing-engine design notes & reports
-│   └── reference_docs/               # Bubble.io export — source of truth for ported features
+│   └── marketing/                    # Marketing-engine design notes & reports
+├── .specs/
+│   ├── project/                      # Project goals, roadmap, current state
+│   └── codebase/                     # Stack, architecture, conventions, structure, concerns
 ├── supabase/
-│   └── migrations/                   # 28 numbered SQL migrations (append-only)
+│   └── migrations/                   # Numbered SQL migrations (append-only)
 ├── README.md                         # This file
 ├── CLAUDE.md                         # AI assistant working instructions
 ├── architecture.md                   # System architecture deep-dive

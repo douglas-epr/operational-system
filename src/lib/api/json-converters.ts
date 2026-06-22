@@ -1,14 +1,9 @@
 /**
- * JSON Converters — Internal replacement for Bubble "convert_json_text_into_json_object" calls
- * Source: docs/reference_docs/api-connectors.md — Bubble connector section
- *
- * Context: In Bubble, the app called its own backend workflow endpoint
- * (blurapps.com/api/1.1/wf/convert_json_text_into_json_object) to parse
- * AI-generated JSON text strings into typed objects. In this Next.js app,
- * that parsing is done locally with full type safety.
+ * JSON Converters — parse AI-generated JSON text strings into typed objects.
  *
  * Each function accepts a raw JSON string (from an AI response) and returns
- * the typed object or throws a descriptive error.
+ * the typed object (or a descriptive error). Parsing is done locally with
+ * full type safety — no external service is involved.
  */
 
 // ── Shared error type ─────────────────────────────────────────────────────────
@@ -267,5 +262,5 @@ export interface ReportOutput {
   playbook_html: string;
 }
 
-// Talent & Client verification (Bubble GET calls) were removed alongside the
+// Talent & Client verification helpers were removed alongside the
 // talent/client tables in the 2026-06-14 cleanup; no replacement is needed.

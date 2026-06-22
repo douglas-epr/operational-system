@@ -2,9 +2,9 @@
 
 ## Project Goal
 
-Replicate the studio's legacy Bubble.io application (documented in `docs/reference_docs/`) as a modern, type-safe Next.js + Supabase web app. Every **ported** feature must trace back to a documented Bubble element, page, workflow, or data type.
+Move37 Operational System is a modern, type-safe Next.js + Supabase platform for running the studio's internal operations — projects, chat, OKRs, SOPs, invoices, AI idea development, and market validation. The app is the product; **the codebase and the `.specs/` workspace are the source of truth.** Build features to fit the patterns already established in the code, not against an external specification.
 
-**Exception:** the **Market Validation Engine** (`/marketing`, `/m`, `mkt_*`, `src/lib/marketing/`) is a greenfield domain with no Bubble ancestor — its source of truth is `docs/marketing/`, not `reference_docs/`.
+> **History:** the operational core was originally ported from a legacy Bubble.io app. That migration is complete and the Bubble export is no longer maintained or referenced — do not reintroduce it as a source of truth. When extending a feature, read the existing implementation and `.specs/` instead.
 
 ---
 
@@ -12,12 +12,13 @@ Replicate the studio's legacy Bubble.io application (documented in `docs/referen
 
 | Domain | Source of Truth |
 |---|---|
-| **DB** — tables, types, privacy rules | `docs/reference_docs/tabelas.md` · `docs/reference_docs/option-sets.md` |
-| **APIs** — external integrations | `docs/reference_docs/api-connectors.md` |
-| **UI** — pages & layout | `docs/reference_docs/paginas.md` |
-| **Components** — reusable elements | `docs/reference_docs/elementos-reutilizaveis.md` |
-| **Logic** — server-side workflows | `docs/reference_docs/backend-workflows.md` |
-| **Master export** | `docs/reference_docs/blurapps-41815--2--documentacao-completa-2026-03-04.md` (7,567 lines) |
+| **DB** — tables, types, RLS | `supabase/migrations/` (applied schema) · `src/lib/supabase/types.ts` (generated types) |
+| **APIs** — external integrations | `src/lib/api/*` (the client modules themselves) |
+| **UI** — pages & layout | `src/app/*/page.tsx` + `src/components/layout/` |
+| **Components** — reusable elements | `src/components/ui/` · `src/components/layout/` |
+| **Logic** — server-side workflows | `src/app/*/actions.ts` (`"use server"` functions) |
+| **Project & codebase specs** | `.specs/project/` · `.specs/codebase/` |
+| **Marketing engine design notes** | `docs/marketing/` |
 | **Build status** | `docs/project_status.md` |
 | **Change log** | `docs/changelog.md` |
 
@@ -45,19 +46,19 @@ Replicate the studio's legacy Bubble.io application (documented in `docs/referen
 
 These rules are non-negotiable. Follow them on every change. See `RULES.md` for the full policy.
 
-1. **Consult the reference docs before coding.** Read the relevant section of `docs/reference_docs/` before implementing any feature. Never invent behaviour that isn't documented there.
+1. **Study the existing code before coding.** Read the relevant feature in `src/app/` and the matching `.specs/` notes before implementing. Match established patterns; never invent a parallel way of doing something the codebase already solves.
 
-2. **RLS on every table — no exceptions.** Map every Bubble Privacy Rule from `tabelas.md` to a Supabase RLS policy. A table without RLS is a bug. Use `public.get_user_type()`, `public.is_admin_or_manager()`, and `auth.uid()` in policies.
+2. **RLS on every table — no exceptions.** Every table needs a Supabase RLS policy. A table without RLS is a bug. Use `public.get_user_type()`, `public.is_admin_or_manager()`, and `auth.uid()` in policies.
 
 3. **Append-only migrations.** Create a new numbered SQL file in `supabase/migrations/` for every schema change. Never edit an existing migration.
 
 4. **Changelog discipline.** Update `docs/changelog.md` at the end of every session. Format: `## [YYYY-MM-DD] — Short title` then bullet points for what changed.
 
-5. **Option Sets → PostgreSQL enums.** Convert all Bubble Option Sets to `CREATE TYPE … AS ENUM` — never hardcode status strings in application code.
+5. **Status/type values → PostgreSQL enums.** Define every status/type set as `CREATE TYPE … AS ENUM` (`os_*` operational, `mkt_*` marketing) — never hardcode status strings in application code.
 
-6. **Bubble Backend Workflows → Server Actions.** Implement all data-mutating logic as Next.js `"use server"` functions in `actions.ts` files co-located with the feature page. Never mutate data from client components.
+6. **Mutations → Server Actions.** Implement all data-mutating logic as Next.js `"use server"` functions in `actions.ts` files co-located with the feature page. Never mutate data from client components.
 
-7. **No orphan code.** Every new file must trace to a Bubble element, page, workflow, or data type. Delete dead code immediately.
+7. **No orphan code.** Every new file must trace to a real feature, page, or data type that exists in the app. Delete dead code immediately.
 
 8. **TypeScript types must match the DB.** After each migration, either regenerate `src/lib/supabase/types.ts` or manually update it. Feature interfaces in `src/types/` must stay in sync with both the DB types and the select queries.
 
@@ -249,16 +250,18 @@ Import from `@/components/ui/icons` — never write inline `<svg>` in component 
 
 ---
 
-## Reference Docs Quick Links
+## Where to Look (Quick Links)
 
-| Topic | File |
+| Topic | Location |
 |---|---|
-| Database tables & columns | `docs/reference_docs/tabelas.md` |
-| Bubble Option Sets (enums) | `docs/reference_docs/option-sets.md` |
-| API connector calls | `docs/reference_docs/api-connectors.md` |
-| Page layouts & logic | `docs/reference_docs/paginas.md` |
-| Backend workflows | `docs/reference_docs/backend-workflows.md` |
-| Master Bubble export | `docs/reference_docs/blurapps-41815--2--documentacao-completa-2026-03-04.md` |
+| Database tables, columns & enums | `supabase/migrations/` · `src/lib/supabase/types.ts` |
+| External API integrations | `src/lib/api/` (openai, gemini, claude, brevo, apify, buffer, postiz, image-search) |
+| Page layouts & access gating | `src/app/*/page.tsx` · `src/lib/auth/page-gate.ts` |
+| Server-side workflows | `src/app/*/actions.ts` |
+| Reusable components | `src/components/ui/` · `src/components/layout/` |
+| Project goals, roadmap, state | `.specs/project/` |
+| Codebase conventions & architecture | `.specs/codebase/` · `architecture.md` |
+| Marketing engine design notes | `docs/marketing/` |
 
 <!-- rtk-instructions v2 -->
 # RTK (Rust Token Killer) - Token-Optimized Commands

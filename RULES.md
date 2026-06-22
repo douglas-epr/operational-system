@@ -6,7 +6,7 @@
 
 ## Table of Contents
 
-1. [Reference-First Development](#1-reference-first-development)
+1. [Spec & Codebase-First Development](#1-spec--codebase-first-development)
 2. [Database & Migrations](#2-database--migrations)
 3. [Row Level Security (RLS)](#3-row-level-security-rls)
 4. [TypeScript Discipline](#4-typescript-discipline)
@@ -20,23 +20,25 @@
 
 ---
 
-## 1. Reference-First Development
+## 1. Spec & Codebase-First Development
 
-**Rule:** Read the relevant section of `docs/reference_docs/` before writing a single line of feature code.
+**Rule:** Read the existing implementation and the relevant `.specs/` notes before writing a single line of feature code. The running code is the source of truth.
 
 | What you are building | Where to look first |
 |---|---|
-| A new table or column | `docs/reference_docs/tabelas.md` |
-| An enum / status value | `docs/reference_docs/option-sets.md` |
-| A page or route | `docs/reference_docs/paginas.md` |
-| A reusable component | `docs/reference_docs/elementos-reutilizaveis.md` |
-| Data-mutating logic | `docs/reference_docs/backend-workflows.md` |
-| An external API call | `docs/reference_docs/api-connectors.md` |
-| Anything above | `docs/reference_docs/blurapps-41815--2--documentacao-completa-2026-03-04.md` (master export) |
+| A new table or column | `supabase/migrations/` + `src/lib/supabase/types.ts` |
+| An enum / status value | `supabase/migrations/` (the `os_*` / `mkt_*` `CREATE TYPE` blocks) |
+| A page or route | the sibling `src/app/*/page.tsx` |
+| A reusable component | `src/components/ui/` + `src/components/layout/` |
+| Data-mutating logic | the feature's `src/app/*/actions.ts` |
+| An external API call | `src/lib/api/*` |
+| Project goals / architecture | `.specs/project/` + `.specs/codebase/` + `architecture.md` |
 
-**Why:** The operational core (projects, chat, OKRs, SOPs, invoices, ideas) is a direct port of the studio's Bubble.io application. Behaviour that is not documented in the reference docs does not belong in those features.
+**Why:** The app is a mature, type-safe Next.js + Supabase codebase with well-established patterns. New work must fit those patterns. Match what the neighbouring feature does rather than inventing a parallel approach.
 
-**Exception — greenfield domains.** The **Market Validation Engine** (`/marketing`, `/m`, `mkt_*` tables, `src/lib/marketing/`) has no Bubble ancestor. It is exempt from reference-first; its source of truth is `docs/marketing/`. New net-new domains must document their own design notes there before/while building.
+> The operational core was originally ported from a legacy Bubble.io app. That migration is **complete**; the Bubble export has been removed and is no longer a reference. Do not reintroduce it.
+
+**Greenfield domains.** The **Market Validation Engine** (`/marketing`, `/m`, `mkt_*` tables, `src/lib/marketing/`) is a net-new domain — its design notes live in `docs/marketing/`. New net-new domains must document their own design notes there before/while building.
 
 ---
 
@@ -55,13 +57,13 @@
 | Migration file | `YYYYMMDDHHMMSS_short_description.sql` | `20260501000001_profile_coworker_visibility.sql` |
 | Table | `snake_case`, singular where possible | `project_task`, `idea_styles` |
 | Column | `snake_case` | `created_by`, `authorized_users` |
-| PostgreSQL enum | `os_` prefix (mirrors Bubble Option Set naming) | `os_task_type`, `os_user_type` |
+| PostgreSQL enum | `os_` prefix (operational) / `mkt_` prefix (marketing) | `os_task_type`, `os_user_type` |
 | RLS policy | `"table: actor action"` | `"task: developer insert"` |
 | RLS helper function | `public.verb_noun()` | `public.get_user_type()`, `public.is_admin_or_manager()` |
 
-### 2.3 Option Sets → PostgreSQL enums
+### 2.3 Status/type values → PostgreSQL enums
 
-- All Bubble Option Sets **must** become `CREATE TYPE … AS ENUM` in a migration.
+- Every fixed set of status/type values **must** be a `CREATE TYPE … AS ENUM` in a migration.
 - Never hardcode status/type strings in application code. Always reference the enum.
 
 ```sql
@@ -96,7 +98,7 @@ ALTER TABLE public.my_table ENABLE ROW LEVEL SECURITY;
 
 ### 3.2 Standard three-tier model
 
-Apply this template unless the Bubble reference doc specifies different access rules:
+Apply this template unless the feature's access model requires different rules:
 
 ```sql
 -- Tier 1: Admin / Manager — unrestricted
@@ -373,7 +375,7 @@ Inside any multi-step AI generation function, call `isRequestActive(supabase, id
 
 ### 9.1 No orphan code
 
-Every file must trace to a documented Bubble element, page, workflow, or data type. If you cannot point to the reference doc entry, the file does not belong in the codebase. Delete dead code immediately — do not leave it commented out.
+Every file must trace to a real feature, page, workflow, or data type in the app. If you cannot point to where it is used, the file does not belong in the codebase. Delete dead code immediately — do not leave it commented out.
 
 ### 9.2 Co-location
 
@@ -438,7 +440,7 @@ Keep `docs/project_status.md` current. Mark features as `complete`, `in-progress
 
 | DO | DON'T |
 |---|---|
-| Read reference docs before coding | Invent behaviour not in the reference docs |
+| Study the existing code + `.specs/` before coding | Invent a parallel pattern the codebase already solves |
 | Create new numbered migration files | Edit existing migration files |
 | Enable RLS on every table | Ship a table without RLS |
 | Use `public.get_user_type()` in RLS policies | Check roles in application code as primary gate |

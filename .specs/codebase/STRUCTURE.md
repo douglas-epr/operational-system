@@ -8,7 +8,7 @@ _Brownfield analysis — 2026-06-21._
 move37-operational-system/
 ├── src/                      # Application code
 ├── supabase/migrations/      # 28 append-only SQL migrations
-├── docs/                     # changelog, project_status, reference_docs/, marketing/
+├── docs/                     # changelog, project_status, marketing/
 ├── .specs/                   # This spec-driven workspace
 ├── CLAUDE.md README.md architecture.md RULES.md
 ```

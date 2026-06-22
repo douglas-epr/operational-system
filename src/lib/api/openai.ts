@@ -1,8 +1,7 @@
 /**
  * OpenAI Responses API Utility
- * Source: docs/reference_docs/api-connectors.md — OpenAI connector
  * Endpoint: POST https://api.openai.com/v1/responses
- * Model used in Bubble: GPT-5 (or latest available)
+ * Default model: gpt-4.1 (see ai-config.ts)
  */
 
 const OPENAI_API_URL = "https://api.openai.com/v1/responses";
@@ -73,7 +72,6 @@ export interface OpenAIRequestParams {
 
 /**
  * Send a message to OpenAI via the Responses API.
- * Source: "Message" call in Bubble OpenAI connector.
  */
 export async function generateOpenAIResponse(
   params: OpenAIRequestParams
@@ -186,7 +184,7 @@ function sanitizeJsonText(text: string): string {
 
 /**
  * Generate a response and parse the output as JSON.
- * Used by Bubble's "Message (copy)" pattern — extract structured JSON from AI output.
+ * Extracts structured JSON from the AI output.
  */
 export async function generateOpenAIJsonResponse<T = unknown>(
   params: Omit<OpenAIRequestParams, "format">
