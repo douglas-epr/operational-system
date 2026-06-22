@@ -4711,7 +4711,7 @@ ${buildMarketBlock(marketRow as Record<string, unknown> | null)}`;
 
   async function runGate(
     gate: "problem" | "solution"
-  ): Promise<{ converged: boolean; agreed_statement: string; rounds: number }> {
+  ): Promise<{ converged: boolean; agreed_statement: string; rounds: number; error?: string }> {
     let skepticStatement = "";
     let advocateStatement = "";
     let converged = false;
@@ -4734,7 +4734,7 @@ ${buildMarketBlock(marketRow as Record<string, unknown> | null)}`;
         maxTokens: 4096,
       });
       if (skepticRes.returned_an_error || !skepticRes.data) {
-        return { converged: false, agreed_statement: advocateStatement || skepticStatement, rounds: round };
+        return { converged: false, agreed_statement: advocateStatement || skepticStatement, rounds: round, error: skepticRes.error };
       }
       const sk = skepticRes.data;
       skepticStatement = sk.proposed_statement || skepticStatement;
@@ -4762,7 +4762,7 @@ ${buildMarketBlock(marketRow as Record<string, unknown> | null)}`;
         maxTokens: 4096,
       });
       if (advocateRes.returned_an_error || !advocateRes.data) {
-        return { converged: false, agreed_statement: skepticStatement, rounds: round };
+        return { converged: false, agreed_statement: skepticStatement, rounds: round, error: advocateRes.error };
       }
       const av = advocateRes.data;
       advocateStatement = av.proposed_statement || advocateStatement;
@@ -4785,11 +4785,15 @@ ${buildMarketBlock(marketRow as Record<string, unknown> | null)}`;
   }
 
   const gate1 = await runGate("problem");
+  // Propagate hard AI errors (e.g. invalid key, rate limit) immediately so the
+  // outer triggerAiGeneration catch path clears current_blocks_updating.
+  if (gate1.error) return { error: gate1.error };
   const agreedProblem = gate1.agreed_statement;
 
   if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
 
   const gate2 = await runGate("solution");
+  if (gate2.error) return { error: gate2.error };
   const agreedSolution = gate2.agreed_statement;
 
   if (!(await isRequestActive(supabase, ideaId, requestId))) return {};
