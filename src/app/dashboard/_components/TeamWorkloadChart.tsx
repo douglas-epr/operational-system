@@ -3,11 +3,10 @@
 /**
  * TeamWorkloadChart — "% of hours per project, per team member, per month".
  *
- * Renders one 100%-stacked horizontal bar per team member for the selected
- * month: each colored segment is a project (or internal project), its width
- * the share of that member's logged hours that went to it. A month selector
- * scrubs across the loaded window; a shared legend keeps project colors stable
- * across members within a month.
+ * Split by team member: each member shows a compact 100%-stacked bar followed
+ * by an explicit per-project breakdown (project name · hours · % of that
+ * member's logged hours) for the selected month. A month selector scrubs the
+ * loaded window; project colors are stable across members and months.
  *
  * Data comes pre-aggregated from the `dashboard_member_project_hours` Supabase
  * view (see _lib/queries.ts) — this component only derives per-month/per-member
@@ -178,55 +177,69 @@ export default function TeamWorkloadChart({ rows }: Props) {
         </div>
       </div>
 
-      {/* Shared project legend */}
-      {projectsInMonth.length > 0 && (
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-          {projectsInMonth.map((p) => (
-            <span key={p.key} className="inline-flex items-center gap-1.5 text-[11px] text-text-secondary">
-              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: p.color }} />
-              <span className="truncate max-w-[180px]">{p.name}</span>
-              {p.kind === "internal" && (
-                <span className="text-[9px] uppercase tracking-wide text-text-muted border border-border rounded px-1">
-                  int
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Per-member stacked bars */}
+      {/* Per-member breakdown: stacked bar + explicit per-project list */}
       {members.length === 0 ? (
         <div className="h-32 flex items-center justify-center text-xs text-text-muted">
           No hours logged for {monthLabel(selectedMonth)}.
         </div>
       ) : (
-        <ul className="flex flex-col gap-3.5">
+        <ul className="flex flex-col gap-5">
           {members.map((m) => (
-            <li key={m.memberId} className="flex flex-col gap-1.5">
+            <li
+              key={m.memberId}
+              className="flex flex-col gap-2 pb-4 border-b border-border/40 last:border-0 last:pb-0"
+            >
+              {/* User header */}
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm text-text-primary font-medium truncate">{m.memberName}</span>
+                <span className="text-sm text-text-primary font-semibold truncate">{m.memberName}</span>
                 <span className="text-[11px] text-text-muted tabular-nums shrink-0">
-                  {round1(m.totalHours)}h
+                  {round1(m.totalHours)}h total · {m.segments.length}{" "}
+                  {m.segments.length === 1 ? "project" : "projects"}
                 </span>
               </div>
+
               {m.segments.length > 0 ? (
-                <div className="flex h-6 w-full rounded-md overflow-hidden bg-muted/40">
-                  {m.segments.map((s) => (
-                    <div
-                      key={`${s.kind}:${s.projectId}`}
-                      className="h-full flex items-center justify-center group relative transition-opacity hover:opacity-90"
-                      style={{ width: `${Math.max(s.pct, 0.5)}%`, background: s.color }}
-                      title={`${s.projectName} — ${round1(s.hours)}h (${s.pct}%)`}
-                    >
-                      {s.pct >= 10 && (
-                        <span className="text-[10px] font-medium text-white/95 tabular-nums px-1 truncate">
+                <>
+                  {/* Compact stacked bar */}
+                  <div className="flex h-4 w-full rounded-md overflow-hidden bg-muted/40">
+                    {m.segments.map((s) => (
+                      <div
+                        key={`${s.kind}:${s.projectId}`}
+                        className="h-full transition-opacity hover:opacity-90"
+                        style={{ width: `${Math.max(s.pct, 0.5)}%`, background: s.color }}
+                        title={`${s.projectName} — ${round1(s.hours)}h (${s.pct}%)`}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Explicit per-project breakdown with percentages */}
+                  <ul className="flex flex-col gap-1 mt-0.5">
+                    {m.segments.map((s) => (
+                      <li
+                        key={`row-${s.kind}:${s.projectId}`}
+                        className="flex items-center gap-2 text-[12px]"
+                      >
+                        <span
+                          className="w-2.5 h-2.5 rounded-sm shrink-0"
+                          style={{ background: s.color }}
+                        />
+                        <span className="text-text-secondary truncate">{s.projectName}</span>
+                        {s.kind === "internal" && (
+                          <span className="text-[9px] uppercase tracking-wide text-text-muted border border-border rounded px-1 shrink-0">
+                            int
+                          </span>
+                        )}
+                        <span className="flex-1 border-b border-dashed border-border/40 mx-1" />
+                        <span className="text-text-muted tabular-nums shrink-0">
+                          {round1(s.hours)}h
+                        </span>
+                        <span className="text-text-primary font-semibold tabular-nums shrink-0 w-12 text-right">
                           {s.pct}%
                         </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               ) : (
                 <div className="flex h-6 w-full items-center rounded-md bg-muted/30 px-2">
                   <span className="text-[10px] text-text-muted italic">
