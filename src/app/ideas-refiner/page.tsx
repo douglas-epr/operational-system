@@ -19,9 +19,9 @@ import type {
 import type { UserProfile } from "@/types/projects";
 import type { AiService, UserAiSettingsClient } from "@/types/settings";
 
-// The Devil's Advocate debate pipeline (risk_and_validation, report) runs up to
-// 21 sequential AI calls. Allow 800 s so the function is never killed mid-debate.
-export const maxDuration = 800;
+// Hobby plan cap is 300 s. The debate pipeline (risk_and_validation, report) was
+// optimised to ~80–130 s via compact source blocks, so 300 s is sufficient.
+export const maxDuration = 300;
 
 interface PageProps {
   searchParams: Promise<{ idea?: string; tab?: string; project?: string }>;
