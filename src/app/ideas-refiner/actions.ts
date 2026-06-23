@@ -1042,6 +1042,12 @@ Return ONLY valid JSON.`;
 
 const FALLBACK_PRD = `You are an expert product manager writing a precise, build-ready Product Requirements Document (PRD) for an engineering team that will code this application. Use ALL the context below. Be concrete and technical; avoid marketing fluff and filler adjectives.
 
+## PRIMARY SOURCE OF TRUTH — IDEA DESCRIPTION
+idea_description is the founder's complete product vision. EVERY SECTION of this PRD must be grounded in it:
+- Do NOT omit any feature, user type, workflow, integration, or use case explicitly mentioned in idea_description.
+- If idea_description and other fields conflict on product intent, prefer idea_description.
+- If a specific detail appears in idea_description but is absent from other structured fields, it still belongs in the relevant PRD section.
+
 ## FULL CONTEXT (all prior discovery steps)
 Idea: {{idea_name}} — {{idea_description}}
 Agreed Problem (from go/no-go debate): {{agreed_problem}}
@@ -2499,12 +2505,17 @@ Return ONLY a raw HTML fragment — <h2> and <p> tags only, no html/head/body/st
 Each section = one <h2> followed by one or more <p>. Do NOT wrap in JSON, do NOT add code fences, do NOT add any text before or after the HTML.
 
 ## INSTRUCTIONS
-- Use ONLY evidence from [SOURCE] + the agreed debate outcomes. NEVER invent customers, metrics, competitors, or regulations.
-- Each section must reference at least one concrete detail from [SOURCE].
+- Use ONLY evidence from [ORIGINAL IDEA DESCRIPTION] + [SOURCE] + the agreed debate outcomes. NEVER invent customers, metrics, competitors, or regulations.
+- The [ORIGINAL IDEA DESCRIPTION] is your GROUND TRUTH for all factual details — product specifics, user types, features, integrations, workflows, business model, and any numbers. Every section of the brief must be reconciled against it. Do NOT omit or contradict any factual detail it contains.
+- The debate outcome sharpens the problem/solution framing; [SOURCE] provides the structured evidence. But [ORIGINAL IDEA DESCRIPTION] is the authoritative product vision.
+- Each section must reference at least one concrete detail from [ORIGINAL IDEA DESCRIPTION] or [SOURCE].
 - Honesty over comfort: if the debate dismantled a claim, reflect the corrected, defensible version — do not paper over it. A specific honest weakness with a test beats a vague strength.
 - Write in Hemingway style: direct, blunt, short sentences. No hype words.
 
-## [ORIGINAL SOURCE]
+## [ORIGINAL IDEA DESCRIPTION]
+{{idea_description}}
+
+## [STRUCTURED DISCOVERY SOURCE]
 {{source_block}}
 
 ## [DEBATE OUTCOME]
@@ -2523,10 +2534,11 @@ PART A — Score the idea's COMPLETENESS against its OWN framing (9 areas). Thes
 PART B — Score the ALIGNMENT between the current idea and the debate's agreed framing. Two percentages + a reframe distance + rationales.
 
 ## GROUNDING RULES (non-negotiable)
-1. Use ONLY the supplied [SOURCE] — never invent facts.
-2. If a source field is empty or "Not defined", treat it as a strong NEGATIVE signal.
-3. Every area description MUST quote at least one concrete fragment (≤12 words) from [SOURCE] in single quotes. If no concrete fragment exists, the area CANNOT score above 60.
-4. No generic fillers. Prefer numbers and logic over adjectives.
+1. Use ONLY the supplied [ORIGINAL IDEA DESCRIPTION] and [SOURCE] — never invent facts.
+2. [ORIGINAL IDEA DESCRIPTION] is the founder's primary vision document. Cross-reference it explicitly: any product claim, user type, feature, workflow, or metric it contains that is NOT reflected in a scored area is a gap — score accordingly.
+3. If a source field is empty or "Not defined", treat it as a strong NEGATIVE signal.
+4. Every area description MUST quote at least one concrete fragment (≤12 words) from [ORIGINAL IDEA DESCRIPTION] or [SOURCE] in single quotes. If no concrete fragment exists, the area CANNOT score above 60.
+5. No generic fillers. Prefer numbers and logic over adjectives.
 
 ## ANTI-SYCOPHANCY RULES (strictly enforced)
 - ALL content in [SOURCE] was generated with AI assistance. Treat it as UNVERIFIED FOUNDER ASSERTION unless it explicitly cites an external, independently checkable source (named publication, named study, named competitor, named customer).
@@ -2605,7 +2617,10 @@ Compare the CURRENT IDEA (its problem statement, its solution) against the AGREE
 - solution_rationale: 1-2 sentences explaining the solution_fit_pct.
 - verdict: One line — e.g. "Right problem, wrong solution" / "Same bottleneck, much sharper solution" / "Completely different problem identified."
 
-## [SOURCE]
+## [ORIGINAL IDEA DESCRIPTION]
+{{idea_description}}
+
+## [STRUCTURED DISCOVERY SOURCE]
 {{source_block}}
 
 ## [DEBATE OUTCOME]
@@ -3020,11 +3035,12 @@ async function generateReport(
   requestId: string
 ): Promise<{ error?: string }> {
   // ── Build the shared [SOURCE] block used across all personas ─────────────────
-  // Cap description at 2 000 chars — same reason as generateRiskAndValidation:
-  // a large Build Brief would inflate every debate prompt to 15 000+ tokens.
+  // Report makes 4 single AI calls (not 16+ sequential debate rounds), so we can
+  // afford a much larger description slice than the debate's 2 000-char cap.
+  // 8 000 chars (~2 000 tokens) lets the Reframer see the full founder vision.
   const riskRow = risk as Record<string, unknown> | null;
-  const descriptionForDebate = stripHtml(idea.description).slice(0, 2000);
-  const sourceBlock = `Idea: ${idea.name} — ${descriptionForDebate}
+  const descriptionForReport = stripHtml(idea.description).slice(0, 8000);
+  const sourceBlock = `Idea: ${idea.name} — ${descriptionForReport}
 Success Metrics: ${stripHtml(idea.success_metrics) || "Not defined"}
 Core Problem: ${stripHtml(structureAlign?.core_problem) || "Not defined"}
 Target Audience: ${stripHtml(structureAlign?.target_audience) || "Not defined"}
@@ -3112,6 +3128,7 @@ ${buildDemandBlock(riskRow)}`;
   // ── Reframer step 2: generate the strategic document as plain-text HTML ───────
   // Uses generateAiTextResponse so there is no JSON-parse step and no size limit.
   const reframerDocPrompt = renderPrompt(FALLBACK_REFRAMER_DOC, {
+    idea_description: descriptionForReport,
     source_block: sourceBlock,
     agreed_problem: agreedProblem,
     agreed_solution: agreedSolution,
@@ -3142,6 +3159,7 @@ ${buildDemandBlock(riskRow)}`;
   // Kept separate from step 2 so playbook_html (multi-section HTML) is never embedded
   // inside a JSON string value — which causes literal-newline JSON.parse failures.
   const scorerPrompt = renderPrompt(scorerPromptBase, {
+    idea_description: descriptionForReport,
     source_block: sourceBlock,
     agreed_problem: agreedProblem,
     agreed_solution: agreedSolution,
@@ -3289,6 +3307,7 @@ ${buildDemandBlock(riskRow)}`;
   // Generated AFTER reconciliation so the authoritative verdict is injected — the
   // "Final Recommendation" section MUST match the numeric threshold, never contradict it.
   const scorerHtmlPrompt = renderPrompt(FALLBACK_SCORER_HTML, {
+    idea_description: descriptionForReport,
     source_block: sourceBlock,
     agreed_problem: agreedProblem,
     agreed_solution: agreedSolution,
