@@ -2245,7 +2245,7 @@ async function generateVisualStylesContent(
 
   const payload = {
     logo_branding: d.logo_branding,
-    color_palette: d.color_narrative ?? d.color_palette,
+    color_palette: d.color_narrative?.trim() || d.color_palette?.trim() || d.product_feeling?.trim() || null,
     product_feeling: d.product_feeling,
     primary_color: d.primary_color,
     secondary_color: d.secondary_color,

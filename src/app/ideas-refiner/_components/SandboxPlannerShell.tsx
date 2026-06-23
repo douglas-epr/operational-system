@@ -135,7 +135,11 @@ function computeUnlockedSteps(ideaFull: IdeaFull): Set<IdeaBlock> {
   const stylesHasContent = !!ideaFull.styles?.color_palette?.trim();
   if (databaseDone || stylesHasContent) unlocked.add("visual_styles");
 
-  const stylesDone = !!ideaFull.styles?.color_palette?.trim();
+  const stylesDone = !!(
+    ideaFull.styles?.color_palette?.trim() ||
+    ideaFull.styles?.primary_color?.trim() ||
+    ideaFull.styles?.brand_voice?.trim()
+  );
   const milestonesHasContent = !!ideaFull.milestonesAndTasks?.content?.trim();
   if (stylesDone || milestonesHasContent) unlocked.add("milestones_and_tasks");
 

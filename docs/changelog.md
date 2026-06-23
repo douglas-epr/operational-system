@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-22] — Fix: Milestones & Tasks unlock gate + Visual Styles color_palette fallback
+
+- **Root cause**: `computeUnlockedSteps()` in `SandboxPlannerShell.tsx` gated `milestones_and_tasks` on `ideaFull.styles?.color_palette?.trim()`. The Visual Styles generator maps `color_palette: d.color_narrative ?? d.color_palette`; Gemini Flash consistently omits both keys in its JSON response (returns all other fields: `primary_color`, `brand_voice`, `logo_branding`, etc.), so `color_palette` stayed `null` in `idea_styles` after every successful generation — keeping the step permanently locked with no error.
+- **Fix 1 — `SandboxPlannerShell.tsx`**: Broadened `stylesDone` to check three independent signals: `color_palette || primary_color || brand_voice`. Any populated field proves the generation ran; no single AI-omitted key can break the gate.
+- **Fix 2 — `actions.ts` `generateVisualStylesContent()`**: Added a fallback chain to the `color_palette` payload mapping: `d.color_narrative?.trim() || d.color_palette?.trim() || d.product_feeling?.trim() || null` — ensures `color_palette` is populated from the first non-empty related field the AI returns, so the column is no longer silently null after a successful generation.
+- **Tested live**: navigated directly to `milestones_and_tasks` tab — no redirect; Regenerate ran successfully; Playbook unlocked and "Generate Build Guide" assembled a v1 Build Guide.
+
 ## [2026-06-22] — Fix: Risk & Validation debate — compact source block (real timeout root cause)
 
 - **Real root cause (measured against production data)**: previous fixes reduced the debate *round count* (10→6→4), but the dominant cost was per-call **prompt size**, not call count. The debate's `sourceBlock` is re-sent on every one of ~16 sequential calls, and it embedded the full rich ICP fields via `buildIcpsBlock`. For idea "Lola" the ICP content alone measured **~28,400 chars (~7,100 tokens)** across its 3 ICPs; with product/benchmarking/location/market blocks the source ran ~8–10k tokens **per call × 16 calls**. Large prompts → slow calls → cumulative time past Vercel's ~300 s function ceiling → function killed before any write (leaving the step unfinished). Capping only `description` (an earlier fix) didn't touch the ICP bloat.
