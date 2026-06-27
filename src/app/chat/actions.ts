@@ -15,7 +15,6 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { sendFeedbackEmails } from "@/lib/notifications/feedbackEmail";
 import {
   BLOCK_TABLES,
   CHAT_ALLOWED_ROLES,
@@ -1230,7 +1229,7 @@ export async function getProjectDailyFeedbacks(
   const { data } = await ctx.supabase
     .from("project_work_feedback")
     .select(
-      "id, project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, emails, created_by, created_at, updated_at"
+      "id, project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, created_by, created_at, updated_at"
     )
     .eq("project_id", projectId)
     .order("date", { ascending: false });
@@ -1716,7 +1715,7 @@ export async function getInternalProjectDailyFeedbacks(internalProjectId: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await (ctx.supabase as any)
     .from("internal_project_work_feedback")
-    .select("id, internal_project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, emails, created_by, created_at, updated_at")
+    .select("id, internal_project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, created_by, created_at, updated_at")
     .eq("internal_project_id", internalProjectId)
     .order("date", { ascending: false });
   return (data ?? []) as unknown as InternalProjectDailyFeedback[];
@@ -1761,19 +1760,17 @@ export async function createInternalProjectDailyFeedback(input: {
   next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
-  emails?: string[];
 }): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
   if ("error" in ctx) return { error: ctx.error };
-  const { internalProjectId, emails: rawEmails, ...rest } = input;
-  const emails = (rawEmails ?? []).map((e) => e.trim()).filter(Boolean);
+  const { internalProjectId, ...rest } = input;
   // Legacy NOT NULL `date` mirrors the work-period start.
   const legacyDate = input.start_date ?? new Date().toISOString().slice(0, 10);
   const messageHtml = buildInternalFeedbackMessage({ ...input, date: legacyDate });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (ctx.supabase as any)
     .from("internal_project_work_feedback")
-    .insert({ internal_project_id: internalProjectId, created_by: ctx.userId, date: legacyDate, emails, ...rest })
+    .insert({ internal_project_id: internalProjectId, created_by: ctx.userId, date: legacyDate, ...rest })
     .select("id")
     .single();
   if (error) return { error: error.message };
@@ -1803,15 +1800,6 @@ export async function createInternalProjectDailyFeedback(input: {
     }
   }
 
-  // Notify the chosen recipients by email (best-effort; never fails the save).
-  await sendFeedbackEmails(
-    emails,
-    messageHtml,
-    input.start_date && input.end_date
-      ? `${input.start_date} → ${input.end_date}`
-      : input.start_date ?? legacyDate
-  );
-
   revalidatePath("/chat");
   return {};
 }
@@ -1826,18 +1814,12 @@ export async function updateInternalProjectDailyFeedback(
     next_work: string | null;
     blockers: string | null;
     video_and_links: string | null;
-    emails?: string[];
   }
 ): Promise<{ error?: string }> {
   const ctx = await requireChatUser();
   if ("error" in ctx) return { error: ctx.error };
-  const emails = input.emails !== undefined
-    ? input.emails.map((e) => e.trim()).filter(Boolean)
-    : undefined;
   // Keep the legacy `date` column aligned with the work-period start.
   const updates: Record<string, unknown> = { ...input };
-  if (emails !== undefined) updates.emails = emails;
-  else delete updates.emails;
   if (input.start_date) updates.date = input.start_date;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (ctx.supabase as any)
@@ -1861,17 +1843,6 @@ export async function updateInternalProjectDailyFeedback(
       .from("conversation_internal_project_message")
       .update({ message: messageHtml })
       .eq("id", fb.conversation_internal_project_message_id);
-  }
-
-  // Notify the chosen recipients by email (best-effort; never fails the save).
-  if (emails && emails.length > 0 && messageHtml) {
-    await sendFeedbackEmails(
-      emails,
-      messageHtml,
-      fb.start_date && fb.end_date
-        ? `${fb.start_date} → ${fb.end_date}`
-        : fb.start_date ?? fb.date
-    );
   }
 
   revalidatePath("/chat");

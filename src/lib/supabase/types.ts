@@ -1385,52 +1385,28 @@ export type Database = {
       }
       idea_prd: {
         Row: {
-          app_overview: string | null
           created_at: string
           created_by: string | null
-          essential_features: string | null
+          description: string | null
           id: string
           idea_id: string
-          non_functional_reqs: string | null
-          objectives: string | null
-          out_of_scope: string | null
-          phasing_notes: string | null
-          priority_personas: string | null
-          success_indicators: string | null
           updated_at: string
-          user_flow: string | null
         }
         Insert: {
-          app_overview?: string | null
           created_at?: string
           created_by?: string | null
-          essential_features?: string | null
+          description?: string | null
           id?: string
           idea_id: string
-          non_functional_reqs?: string | null
-          objectives?: string | null
-          out_of_scope?: string | null
-          phasing_notes?: string | null
-          priority_personas?: string | null
-          success_indicators?: string | null
           updated_at?: string
-          user_flow?: string | null
         }
         Update: {
-          app_overview?: string | null
           created_at?: string
           created_by?: string | null
-          essential_features?: string | null
+          description?: string | null
           id?: string
           idea_id?: string
-          non_functional_reqs?: string | null
-          objectives?: string | null
-          out_of_scope?: string | null
-          phasing_notes?: string | null
-          priority_personas?: string | null
-          success_indicators?: string | null
           updated_at?: string
-          user_flow?: string | null
         }
         Relationships: [
           {
@@ -1966,7 +1942,6 @@ export type Database = {
           created_by: string
           current_work: string | null
           date: string
-          emails: string[]
           end_date: string | null
           id: string
           internal_project_id: string
@@ -1982,7 +1957,6 @@ export type Database = {
           created_by: string
           current_work?: string | null
           date: string
-          emails?: string[]
           end_date?: string | null
           id?: string
           internal_project_id: string
@@ -1998,7 +1972,6 @@ export type Database = {
           created_by?: string
           current_work?: string | null
           date?: string
-          emails?: string[]
           end_date?: string | null
           id?: string
           internal_project_id?: string
@@ -2406,7 +2379,6 @@ export type Database = {
           document_number: string | null
           due_date: string | null
           email: string | null
-          emails: string[]
           end_date: string | null
           iban_code: string | null
           id: string
@@ -2431,7 +2403,6 @@ export type Database = {
           document_number?: string | null
           due_date?: string | null
           email?: string | null
-          emails?: string[]
           end_date?: string | null
           iban_code?: string | null
           id?: string
@@ -2456,7 +2427,6 @@ export type Database = {
           document_number?: string | null
           due_date?: string | null
           email?: string | null
-          emails?: string[]
           end_date?: string | null
           iban_code?: string | null
           id?: string
@@ -3616,7 +3586,6 @@ export type Database = {
           created_by: string
           current_work: string | null
           date: string
-          emails: string[]
           end_date: string | null
           id: string
           next_work: string | null
@@ -3632,7 +3601,6 @@ export type Database = {
           created_by: string
           current_work?: string | null
           date: string
-          emails?: string[]
           end_date?: string | null
           id?: string
           next_work?: string | null
@@ -3648,7 +3616,6 @@ export type Database = {
           created_by?: string
           current_work?: string | null
           date?: string
-          emails?: string[]
           end_date?: string | null
           id?: string
           next_work?: string | null

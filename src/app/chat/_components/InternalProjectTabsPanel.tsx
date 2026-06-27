@@ -12,10 +12,6 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { RichTextEditor, type RichTextEditorHandle } from "@/components/editor/RichTextEditor";
 import DatePicker from "@/components/DatePicker";
-import EmailMultiInput from "@/components/ui/EmailMultiInput";
-
-/** Default recipient pre-filled when creating a new work feedback entry. */
-const DEFAULT_FEEDBACK_EMAIL = "rich@move37.fun";
 
 /** Shared compact textarea for the optional resource description field. */
 function DescriptionField({
@@ -762,8 +758,6 @@ function FeedbackModal({
   const [startDate, setStartDate] = useState(feedback?.start_date ?? feedback?.date ?? new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState(feedback?.end_date ?? feedback?.date ?? new Date().toISOString().slice(0, 10));
   const [totalTime, setTotalTime] = useState<string>(feedback?.total_time != null ? String(feedback.total_time) : "");
-  // Default a recipient when creating; restore saved recipients when editing.
-  const [emails, setEmails] = useState<string[]>(isEdit ? (feedback?.emails ?? []) : [DEFAULT_FEEDBACK_EMAIL]);
   const todayRef = useRef<RichTextEditorHandle>(null);
   const tomorrowRef = useRef<RichTextEditorHandle>(null);
   const blockersRef = useRef<RichTextEditorHandle>(null);
@@ -784,7 +778,6 @@ function FeedbackModal({
       next_work: tomorrowRef.current?.getHTML() ?? null,
       blockers: blockersRef.current?.getHTML() ?? null,
       video_and_links: linksRef.current?.getHTML() ?? null,
-      emails,
     };
     startSave(async () => {
       const res = isEdit
@@ -828,12 +821,6 @@ function FeedbackModal({
             />
           </div>
         </div>
-        <EmailMultiInput
-          label="Notify by email"
-          helpText="Recipients get this feedback by email when you save. Leave empty to skip."
-          value={emails}
-          onChange={setEmails}
-        />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {fields.map(({ label, ref, html }) => (
             <div key={label} className="flex flex-col gap-1">

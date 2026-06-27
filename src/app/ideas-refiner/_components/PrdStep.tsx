@@ -1,7 +1,7 @@
-﻿/**
- * Step 7 — PRD (Product Requirements Document).
- * Nine editable rich-text sections in collapsible cards.
- * Supports AI regeneration and manual save.
+/**
+ * Step — PRD (Product Requirements Document).
+ * One comprehensive rich-text document (was 10 per-section cards — collapsed
+ * 2026-07-02). Supports AI regeneration, manual save, and PDF/DOCX export.
  */
 "use client";
 
@@ -17,21 +17,6 @@ import { useRegenerate } from "../_hooks/useRegenerate";
 import { createPortal } from "react-dom";
 import { useStepActions } from "../_context/StepActionsContext";
 
-const PRD_SECTIONS = [
-  { key: "app_overview", label: "App Overview" },
-  { key: "objectives", label: "Objectives" },
-  { key: "priority_personas", label: "Personas" },
-  { key: "essential_features", label: "Essential Features" },
-  { key: "user_flow", label: "Core Users flow" },
-  { key: "features_per_page", label: "Features per Page" },
-  { key: "non_functional_reqs", label: "Non-Functional Requirements" },
-  { key: "out_of_scope", label: "Out of Scope" },
-  { key: "success_indicators", label: "Success Indicators" },
-  { key: "phasing_notes", label: "Phasing Notes" },
-] as const;
-
-type PrdKey = (typeof PRD_SECTIONS)[number]["key"];
-
 interface PrdStepProps {
   ideaFull: IdeaFull;
 }
@@ -40,22 +25,7 @@ export default function PrdStep({ ideaFull }: PrdStepProps) {
   const { idea, prd } = ideaFull;
   const isAiWorking = idea.current_blocks_updating === "prd";
 
-  const [fields, setFields] = useState<Record<PrdKey, string>>({
-    app_overview: prd?.app_overview ?? "",
-    objectives: prd?.objectives ?? "",
-    priority_personas: prd?.priority_personas ?? "",
-    essential_features: prd?.essential_features ?? "",
-    user_flow: prd?.user_flow ?? "",
-    features_per_page: prd?.features_per_page ?? "",
-    non_functional_reqs: prd?.non_functional_reqs ?? "",
-    out_of_scope: prd?.out_of_scope ?? "",
-    success_indicators: prd?.success_indicators ?? "",
-    phasing_notes: prd?.phasing_notes ?? "",
-  });
-
-  const [expandedSections, setExpandedSections] = useState<Set<PrdKey>>(
-    new Set(PRD_SECTIONS.map((s) => s.key))
-  );
+  const [description, setDescription] = useState<string>(prd?.description ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const { isRegenerating, error, setError, triggerRegenerate } = useRegenerate(idea.id, "prd", isAiWorking);
   const [showPreview, setShowPreview] = useState(false);
@@ -63,58 +33,17 @@ export default function PrdStep({ ideaFull }: PrdStepProps) {
   const [isExportingDocx, setIsExportingDocx] = useState(false);
 
   useEffect(() => {
-    setFields({
-      app_overview: prd?.app_overview ?? "",
-      objectives: prd?.objectives ?? "",
-      priority_personas: prd?.priority_personas ?? "",
-      essential_features: prd?.essential_features ?? "",
-      user_flow: prd?.user_flow ?? "",
-      features_per_page: prd?.features_per_page ?? "",
-      non_functional_reqs: prd?.non_functional_reqs ?? "",
-      out_of_scope: prd?.out_of_scope ?? "",
-      success_indicators: prd?.success_indicators ?? "",
-      phasing_notes: prd?.phasing_notes ?? "",
-    });
+    setDescription(prd?.description ?? "");
   }, [prd]);
 
-  function setField(key: PrdKey, value: string) {
-    setFields((prev) => ({ ...prev, [key]: value }));
-  }
-
-  function toggleSection(key: PrdKey) {
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
-  const hasContent = Object.values(fields).some((v) => v.trim().length > 0);
+  const hasContent = description.trim().length > 0;
   const canSave = hasContent && !isSaving && !isRegenerating;
-
-  const isEmpty =
-    !prd ||
-    [
-      prd.app_overview,
-      prd.objectives,
-      prd.priority_personas,
-      prd.essential_features,
-      prd.user_flow,
-      prd.features_per_page,
-      prd.non_functional_reqs,
-      prd.out_of_scope,
-      prd.success_indicators,
-      prd.phasing_notes,
-    ].every(isBlankHtml);
+  const isEmpty = !prd || isBlankHtml(prd.description);
   const { actionBarEl, onOpenAiConfig } = useStepActions();
 
   function buildDocumentHtml(): string {
-    const bodyHtml = PRD_SECTIONS.map(
-      (s) =>
-        `<h2>${s.label}</h2>${fields[s.key] || "<p><em>(empty)</em></p>"}`
-    ).join("");
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${idea.name} — PRD</title></head><body><h1>${idea.name} — PRD</h1>${bodyHtml}</body></html>`;
+    const body = description || "<p><em>(empty)</em></p>";
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${idea.name} — PRD</title></head><body><h1>${idea.name} — PRD</h1>${body}</body></html>`;
   }
 
   async function handleExportPdf() {
@@ -126,11 +55,10 @@ export default function PrdStep({ ideaFull }: PrdStepProps) {
       const container = document.createElement("div");
       container.style.cssText =
         "position:fixed;top:-9999px;left:-9999px;width:800px;background:#fff;color:#111;font-family:Georgia,serif;font-size:14px;line-height:1.6;padding:40px 56px;";
-      container.innerHTML = `<h1 style="font-size:26px;margin:0 0 6px">${idea.name} — PRD</h1><p style="color:#666;margin:0 0 20px">Product Requirements Document</p>` +
-        PRD_SECTIONS.map(
-          (s) =>
-            `<h2 style="font-size:18px;margin:20px 0 6px;color:#111">${s.label}</h2><div>${fields[s.key] || "<p><em>(empty)</em></p>"}</div>`
-        ).join("");
+      container.innerHTML =
+        `<h1 style="font-size:26px;margin:0 0 6px">${idea.name} — PRD</h1>` +
+        `<p style="color:#666;margin:0 0 20px">Product Requirements Document</p>` +
+        `<div>${description || "<p><em>(empty)</em></p>"}</div>`;
       document.body.appendChild(container);
 
       const { exportElementToPdf } = await import("../_lib/exportPdf");
@@ -179,12 +107,7 @@ export default function PrdStep({ ideaFull }: PrdStepProps) {
     setIsSaving(true);
     setError(null);
 
-    const trimmed: Record<string, string> = {};
-    for (const [k, v] of Object.entries(fields)) {
-      trimmed[k] = v.trim();
-    }
-
-    const result = await savePrd(idea.id, trimmed);
+    const result = await savePrd(idea.id, { description: description.trim() });
     setIsSaving(false);
     if (result.error) setError(result.error);
   }
@@ -201,103 +124,80 @@ export default function PrdStep({ ideaFull }: PrdStepProps) {
     <div className="space-y-4">
       {/* Export toolbar — always visible at top */}
       <div className="flex items-center justify-end gap-2 pb-1">
-          {/* Preview modal opener */}
-          <button
-            onClick={() => setShowPreview(true)}
-            disabled={isRegenerating || isSaving}
-            title="Preview full PRD document"
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold",
-              "bg-white text-gray-900 hover:bg-gray-100 transition-colors shadow-sm",
-              "disabled:opacity-50 disabled:cursor-not-allowed"
-            )}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-            Preview
-          </button>
+        {/* Preview modal opener */}
+        <button
+          onClick={() => setShowPreview(true)}
+          disabled={isRegenerating || isSaving}
+          title="Preview full PRD document"
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold",
+            "bg-white text-gray-900 hover:bg-gray-100 transition-colors shadow-sm",
+            "disabled:opacity-50 disabled:cursor-not-allowed"
+          )}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          Preview
+        </button>
 
-          {/* Direct PDF download */}
-          <button
-            onClick={handleExportPdf}
-            disabled={isRegenerating || isSaving || isExportingPdf}
-            title="Download PRD as PDF"
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold",
-              "bg-red-600 text-white hover:bg-red-700 transition-colors shadow-sm",
-              "disabled:opacity-50 disabled:cursor-not-allowed"
-            )}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
-            </svg>
-            {isExportingPdf ? "Generating…" : "PDF"}
-          </button>
+        {/* Direct PDF download */}
+        <button
+          onClick={handleExportPdf}
+          disabled={isRegenerating || isSaving || isExportingPdf}
+          title="Download PRD as PDF"
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold",
+            "bg-red-600 text-white hover:bg-red-700 transition-colors shadow-sm",
+            "disabled:opacity-50 disabled:cursor-not-allowed"
+          )}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+          </svg>
+          {isExportingPdf ? "Generating…" : "PDF"}
+        </button>
 
-          {/* Direct DOCX download */}
-          <button
-            onClick={handleExportDocx}
-            disabled={isRegenerating || isSaving || isExportingDocx}
-            title="Download PRD as DOCX"
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold",
-              "bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm",
-              "disabled:opacity-50 disabled:cursor-not-allowed"
-            )}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
-            </svg>
-            {isExportingDocx ? "Generating…" : "DOCX"}
-          </button>
+        {/* Direct DOCX download */}
+        <button
+          onClick={handleExportDocx}
+          disabled={isRegenerating || isSaving || isExportingDocx}
+          title="Download PRD as DOCX"
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold",
+            "bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm",
+            "disabled:opacity-50 disabled:cursor-not-allowed"
+          )}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+          </svg>
+          {isExportingDocx ? "Generating…" : "DOCX"}
+        </button>
+      </div>
+
+      {isEmpty && (
+        <p className="text-sm text-text-muted">
+          No PRD yet. Click <span className="font-semibold text-text-secondary">Regenerate</span> to
+          generate a complete Product Requirements Document from your discovery steps.
+        </p>
+      )}
+
+      <div className="rounded-xl border border-border bg-surface overflow-hidden">
+        <div className="px-4 py-3 border-b border-border">
+          <span className="text-sm font-semibold text-text-primary">
+            Product Requirements Document
+          </span>
         </div>
-
-      {PRD_SECTIONS.map(({ key, label }) => {
-        const isExpanded = expandedSections.has(key);
-        return (
-          <div
-            key={key}
-            className="rounded-xl border border-border bg-surface overflow-hidden"
-          >
-            <button
-              type="button"
-              onClick={() => toggleSection(key)}
-              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors"
-            >
-              <span className="text-sm font-semibold text-text-primary">
-                {label}
-              </span>
-              <svg
-                className={cn(
-                  "w-4 h-4 text-text-muted transition-transform",
-                  isExpanded && "rotate-180"
-                )}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
-            </button>
-            {isExpanded && (
-              <div className="px-4 pb-4">
-                <RichTextEditor
-                  content={fields[key]}
-                  onChange={(html) => setField(key, html)}
-                  editable={!isSaving && !isRegenerating}
-                />
-              </div>
-            )}
-          </div>
-        );
-      })}
+        <div className="px-4 pb-4 pt-2">
+          <RichTextEditor
+            content={description}
+            onChange={(html) => setDescription(html)}
+            editable={!isSaving && !isRegenerating}
+          />
+        </div>
+      </div>
 
       {/* Error */}
       {error && (
@@ -345,11 +245,7 @@ export default function PrdStep({ ideaFull }: PrdStepProps) {
         isOpen={showPreview}
         onClose={() => setShowPreview(false)}
         ideaName={idea.name}
-        sections={PRD_SECTIONS.map(({ key, label }) => ({
-          key,
-          label,
-          html: fields[key],
-        }))}
+        sections={[{ key: "description", label: "Product Requirements Document", html: description }]}
       />
     </div>
   );

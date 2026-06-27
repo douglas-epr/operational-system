@@ -579,16 +579,7 @@ export async function saveBenchmarking(
 export async function savePrd(
   ideaId: string,
   data: {
-    app_overview?: string;
-    objectives?: string;
-    priority_personas?: string;
-    essential_features?: string;
-    user_flow?: string;
-    features_per_page?: string;
-    non_functional_reqs?: string;
-    out_of_scope?: string;
-    success_indicators?: string;
-    phasing_notes?: string;
+    description?: string;
   }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
@@ -728,20 +719,18 @@ export async function generateIdeaLogos(
 
   const [{ data: ideaData }, { data: prdData }] = await Promise.all([
     supabase.from("idea" as never).select("name, description").eq("id", ideaId).single(),
-    supabase.from("idea_prd" as never).select("app_overview, priority_personas, essential_features").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_prd" as never).select("description").eq("idea_id", ideaId).maybeSingle(),
   ]);
 
   const idea = ideaData as { name: string; description: string | null } | null;
-  const prd = prdData as { app_overview: string | null; priority_personas: string | null; essential_features: string | null } | null;
+  const prd = prdData as { description: string | null } | null;
   if (!idea) return { error: "Idea not found" };
 
   const logoPrompt = `You are a senior brand designer and SVG illustrator. Generate 4 distinct logo concepts for the following product.
 
 Product: ${idea.name}
 Description: ${stripHtml(idea.description) || "Not defined"}
-App Overview: ${stripHtml(prd?.app_overview) || "Not defined"}
-Target Personas: ${stripHtml(prd?.priority_personas) || "Not defined"}
-Core Features: ${stripHtml(prd?.essential_features) || "Not defined"}
+PRD: ${stripHtml(prd?.description) || "Not defined"}
 
 ## Requirements
 - Each logo must be a COMPLETE, self-contained SVG with a viewBox (e.g. viewBox="0 0 200 200").
@@ -1040,13 +1029,13 @@ Return a JSON object with exactly these keys:
 All values must be valid HTML strings.
 Return ONLY valid JSON.`;
 
-const FALLBACK_PRD = `You are an expert product manager writing a precise, build-ready Product Requirements Document (PRD) for an engineering team that will code this application. Use ALL the context below. Be concrete and technical; avoid marketing fluff and filler adjectives.
+const FALLBACK_PRD = `You are a senior product manager writing a single, comprehensive, build-ready Product Requirements Document (PRD) for an engineering team that will code this application with Claude Code on a Next.js + Supabase + Tailwind stack. Produce ONE cohesive document — concrete, technical, and free of marketing fluff.
 
 ## PRIMARY SOURCE OF TRUTH — IDEA DESCRIPTION
-idea_description is the founder's complete product vision. EVERY SECTION of this PRD must be grounded in it:
-- Do NOT omit any feature, user type, workflow, integration, or use case explicitly mentioned in idea_description.
-- If idea_description and other fields conflict on product intent, prefer idea_description.
-- If a specific detail appears in idea_description but is absent from other structured fields, it still belongs in the relevant PRD section.
+idea_description is the founder's complete product vision. It is your GROUND TRUTH:
+- Do NOT omit any feature, user type, workflow, integration, tool, platform, or use case explicitly named in idea_description.
+- If idea_description names specific tools, services, APIs, models, or open-source repos, you MUST carry them through into the relevant feature areas, the tooling inventory, and the phased plan.
+- If idea_description and the other discovery fields conflict on product intent, prefer idea_description.
 
 ## FULL CONTEXT (all prior discovery steps)
 Idea: {{idea_name}} — {{idea_description}}
@@ -1070,22 +1059,36 @@ Risk & Validation:
 {{risk_and_validation}}
 
 ## CRITICAL CONCEPT DISTINCTION
-"Personas" (a.k.a. User Types) are a TECHNICAL concept: the functional roles that log into and operate the application — e.g. Admin, Manager, Client, Seller, Supplier, Operator, Guest. They are NOT the marketing ICPs / target-audience segments above. Derive personas from how the app actually works, not from buyer demographics.
+"Personas" (a.k.a. User Types) are a TECHNICAL concept: the functional roles that log into and operate the application (e.g. Admin, Operator, Creator, Client, Guest). They are NOT the marketing ICPs / target-audience segments. Derive personas from how the app actually works.
 
-## OUTPUT — return a JSON object with EXACTLY these keys (every value a valid rich HTML string):
-- "app_overview": Full app overview and product vision, grounded in the agreed problem/solution.
-- "objectives": Measurable product objectives.
-- "priority_personas": The distinct TECHNICAL user types who access the app. Use short, role-based names (Admin, Client, Seller, Manager, etc.). For each: a one-line role description and their main actions/permissions inside the product. Do NOT restate marketing ICPs or audience segments.
-- "essential_features": Essential features organized by category with sub-items.
-- "user_flow": ONE clearly-labelled core flow PER persona listed in "priority_personas". Head each flow with the persona name (e.g. "<h3>Admin</h3>") and give the ordered steps that persona takes through the app. Every persona must have its own flow.
-- "features_per_page": A page-by-page breakdown of the application. For EACH page/screen, describe: its purpose, which personas use it, the features it exposes (drawn from "essential_features"), and which step(s) of each persona's flow (from "user_flow") it serves. This section is the bridge from features+flows to implementation — it must let an engineer understand how each page works and what logic it needs. Organize as one labelled block per page.
-- "non_functional_reqs": Non-functional requirements (platform, performance, security, scalability, compliance — reflect the Location & Legislation context where relevant).
-- "out_of_scope": What is explicitly out of scope for v1, and why.
-- "success_indicators": Measurable success indicators / KPIs.
-- "phasing_notes": Phasing/roadmap notes for future development.
+## DOCUMENT STRUCTURE — produce ALL of these sections, in this order, as rich HTML
+Use <h2> for each numbered section heading and <h3> for sub-sections. Use <ul>/<li>, <strong>, <table> where it aids clarity.
 
-All values must be valid HTML strings.
-Return ONLY valid JSON.`;
+[1] Project Name — the product name and a one-line working title.
+[2] App Overview — what it is, what it is explicitly NOT, the core workflow, the primary platform (web/mobile), and the launch market. Ground every claim in idea_description.
+[3] Objectives of Version 1 (v1) — the concrete, measurable goals of the first build.
+[4] Priority Personas — each technical user type, a one-line role description, and their main actions/permissions inside the product.
+[5] Essential MVP Features — the heart of the document. For EACH feature area provide:
+   - <strong>Purpose</strong>: one line.
+   - <strong>Must include</strong>: a bullet list of concrete capabilities.
+   - <strong>Tools used in this area</strong>: a bullet list naming the specific tools/services/APIs/models that power this feature (drawn from idea_description and the stack). THIS IS MANDATORY for every feature area.
+   - <strong>MVP outcome</strong>: one line on what "done" looks like.
+[6] Main User Flow — the end-to-end core flow for the primary persona(s), as an ordered list, noting which tool handles each step.
+[7] Non-Functional Requirements — include these sub-sections:
+   - Platform & Access (platform, primary usage model, mobile priority, launch market).
+   - <strong>Core Runtime Tooling</strong>: a bullet list of every runtime tool/service with a one-line role for each.
+   - <strong>Open-Source / Forked Repositories</strong>: any open-source repos to fork/self-host (name, URL if given in idea_description, role). Omit only if none are implied.
+   - <strong>Connected Platform Integrations</strong>: the external platforms/APIs the product publishes to or reads from, each with its integration approach and any compliance constraint. Use an HTML table when there are several.
+   - Security & Access Rules, Data & Auditability, Performance & Reliability, Content Governance.
+[8] Out of Scope for v1 — what is explicitly excluded, and why.
+[9] Success Metrics for v1 — measurable indicators of a successful first build.
+[10] Suggested v1 Delivery Scope by Phase — a phased build plan (Phase 1, Phase 2, …). For EACH phase list what to build and the <strong>Main tools involved</strong>. End with a "Tooling Inventory" recap and a "Final MVP Definition" paragraph.
+
+## OUTPUT
+Return a JSON object with EXACTLY one key:
+- "description": the ENTIRE PRD as a single valid rich-HTML string covering all 10 sections above.
+
+Return ONLY valid JSON with no markdown fences.`;
 
 const FALLBACK_DATABASE = `You are a database architect. The PRD (Product Requirements Document) is your PRIMARY input — design the data model so it directly supports the documented features, pages, personas, and user flows. Do not invent entities the PRD does not imply, and do not model anything listed as out of scope.
 
@@ -1094,17 +1097,11 @@ Core Problem: {{core_problem}}
 Product Overview: {{product_overview}}
 Features: {{features}}
 
---- PRD (primary source) ---
-App Overview: {{app_overview}}
-Essential Features: {{essential_features}}
-Features Per Page: {{features_per_page}}
-User Flows: {{user_flow}}
-Priority Personas: {{priority_personas}}
-Non-Functional Requirements: {{non_functional_reqs}}
-Out of Scope (do NOT model these): {{out_of_scope}}
+--- PRD (primary source — one comprehensive document) ---
+{{prd}}
 
 How to use the PRD:
-- Derive tables/entities from the PRD essential features and the per-page feature breakdown — every page/feature that persists data should map to one or more tables.
+- Derive tables/entities from the PRD's essential features and per-page breakdown — every page/feature that persists data should map to one or more tables.
 - Model role/permission/account tables from the priority personas (e.g. admin, client, member) and reflect their access needs.
 - Let the user flows reveal relationships, state/status columns, and join tables (many-to-many).
 - Reflect the non-functional requirements in indexing, constraints, soft-delete/audit columns, and security/RLS notes.
@@ -1122,10 +1119,9 @@ const FALLBACK_VISUAL_STYLES = `You are a brand identity designer and design sys
 
 ## Key inputs
 Idea: {{idea_name}} — {{idea_description}}
-App Overview: {{app_overview}}
-Essential Features: {{essential_features}}
-Priority Personas (your target audience): {{priority_personas}}
 Core Problem: {{core_problem}}
+PRD (one comprehensive document — personas, features, NFRs, phased plan):
+{{prd}}
 
 ## Logo Colors (SOURCE OF TRUTH for all color decisions)
 {{logo_colors}}
@@ -1171,15 +1167,8 @@ If your milestone totals sum to far below 80h, your per-area estimates are too o
 
 Idea: {{idea_name}} — {{idea_description}}
 
---- PRD (primary source) ---
-App Overview: {{prd_overview}}
-Essential Features: {{essential_features}}
-Features Per Page: {{features_per_page}}
-User Flows: {{user_flow}}
-Priority Personas: {{priority_personas}}
-Phasing Notes: {{phasing_notes}}
-Non-Functional Requirements: {{non_functional_reqs}}
-Out of Scope (do NOT plan work for these): {{out_of_scope}}
+--- PRD (primary source — one comprehensive document with personas, features, per-feature tooling, user flow, NFRs, out-of-scope, and a phased delivery plan) ---
+{{prd}}
 
 ## How to structure milestones
 - Create ONE milestone per app PAGE or cohesive feature area, taken primarily from the PRD "Features Per Page" breakdown. Respect the PRD phasing notes for ordering.
@@ -1562,7 +1551,7 @@ async function assemblePlaybookVersion(
     const [{ data: prd }, { data: styles }, { data: db }, { data: milestones }] = await Promise.all([
       supabase
         .from("idea_prd" as never)
-        .select("app_overview, objectives, priority_personas, essential_features, user_flow, non_functional_reqs, out_of_scope, success_indicators, phasing_notes")
+        .select("description")
         .eq("idea_id", ideaId)
         .maybeSingle(),
       supabase
@@ -1584,20 +1573,9 @@ async function assemblePlaybookVersion(
 
     const sections: string[] = [];
 
-    const prdRow = prd as {
-      app_overview: string | null; objectives: string | null;
-      priority_personas: string | null; essential_features: string | null;
-      user_flow: string | null; non_functional_reqs: string | null;
-      out_of_scope: string | null; success_indicators: string | null;
-      phasing_notes: string | null;
-    } | null;
-    if (prdRow) {
-      const body = [
-        prdRow.app_overview, prdRow.objectives, prdRow.priority_personas,
-        prdRow.essential_features, prdRow.user_flow, prdRow.non_functional_reqs,
-        prdRow.out_of_scope, prdRow.success_indicators, prdRow.phasing_notes,
-      ].filter(Boolean).join("\n");
-      if (body.trim()) sections.push(`<h2>Product Requirements Document (PRD)</h2>${body}`);
+    const prdRow = prd as { description: string | null } | null;
+    if (prdRow?.description?.trim()) {
+      sections.push(`<h2>Product Requirements Document (PRD)</h2>${prdRow.description}`);
     }
 
     const stylesRow = styles as {
@@ -2083,16 +2061,7 @@ async function generatePrdContent(
     .maybeSingle();
 
   const payload = {
-    app_overview: d.app_overview,
-    objectives: d.objectives,
-    priority_personas: d.priority_personas,
-    essential_features: d.essential_features,
-    user_flow: d.user_flow,
-    features_per_page: d.features_per_page,
-    non_functional_reqs: d.non_functional_reqs,
-    out_of_scope: d.out_of_scope,
-    success_indicators: d.success_indicators,
-    phasing_notes: d.phasing_notes,
+    description: d.description,
   };
 
   if (existing) {
@@ -2124,15 +2093,11 @@ async function generateDatabaseContent(
   aiConfig: AiConfig,
   requestId: string
 ): Promise<{ error?: string }> {
-  const prd = prdData as {
-    app_overview: string | null;
-    essential_features: string | null;
-    user_flow: string | null;
-    features_per_page: string | null;
-    priority_personas: string | null;
-    non_functional_reqs: string | null;
-    out_of_scope: string | null;
-  } | null;
+  const prd = prdData as { description: string | null } | null;
+  // The PRD is now one comprehensive document. Feed it whole as {{prd}}; the
+  // legacy per-section placeholders ({{essential_features}}, {{app_overview}}, …)
+  // still resolve to the full PRD so older DB-stored prompts keep working.
+  const prdDoc = stripHtml(prd?.description) || "Not defined yet";
   const template = (await getPromptTemplate("database")) ?? FALLBACK_DATABASE;
   const prompt = renderPrompt(template, {
     idea_name: idea.name,
@@ -2140,13 +2105,9 @@ async function generateDatabaseContent(
     core_problem: stripHtml(structureAlign?.core_problem) || "Not defined yet",
     product_overview: stripHtml(productDef?.summary) || "Not defined yet",
     features: stripHtml(productDef?.features) || "Not defined yet",
-    essential_features: stripHtml(prd?.essential_features) || "Not defined yet",
-    app_overview: stripHtml(prd?.app_overview) || "Not defined yet",
-    user_flow: stripHtml(prd?.user_flow) || "Not defined yet",
-    features_per_page: stripHtml(prd?.features_per_page) || "Not defined yet",
-    priority_personas: stripHtml(prd?.priority_personas) || "Not defined yet",
-    non_functional_reqs: stripHtml(prd?.non_functional_reqs) || "Not defined yet",
-    out_of_scope: stripHtml(prd?.out_of_scope) || "Not defined yet",
+    prd: prdDoc,
+    essential_features: prdDoc,
+    app_overview: prdDoc,
   });
 
   const res = await generateAiJsonResponse<DatabaseOutput>({
@@ -2204,12 +2165,13 @@ async function generateVisualStylesContent(
   requestId: string
 ): Promise<{ error?: string }> {
   const [{ data: prdData }, { data: stylesData }] = await Promise.all([
-    supabase.from("idea_prd" as never).select("app_overview, essential_features, priority_personas").eq("idea_id", ideaId).maybeSingle(),
+    supabase.from("idea_prd" as never).select("description").eq("idea_id", ideaId).maybeSingle(),
     supabase.from("idea_styles" as never).select("logo_colors").eq("idea_id", ideaId).maybeSingle(),
   ]);
 
-  const prd = prdData as { app_overview: string | null; essential_features: string | null; priority_personas: string | null } | null;
+  const prd = prdData as { description: string | null } | null;
   const savedStyles = stylesData as { logo_colors: { hex: string; label: string }[] | null } | null;
+  const prdDoc = stripHtml(prd?.description) || "Not defined yet";
 
   const logoColorsText = savedStyles?.logo_colors?.length
     ? savedStyles.logo_colors.map((c) => `${c.hex} (${c.label})`).join(", ")
@@ -2221,9 +2183,10 @@ async function generateVisualStylesContent(
     idea_description: stripHtml(idea.description),
     core_problem: stripHtml(structureAlign?.core_problem) || "Not defined yet",
     target_audience: stripHtml(structureAlign?.target_audience) || "Not defined yet",
-    app_overview: stripHtml(prd?.app_overview) || "Not defined yet",
-    essential_features: stripHtml(prd?.essential_features) || "Not defined yet",
-    priority_personas: stripHtml(prd?.priority_personas) || "Not defined yet",
+    prd: prdDoc,
+    app_overview: prdDoc,
+    essential_features: prdDoc,
+    priority_personas: prdDoc,
     logo_colors: logoColorsText,
   });
 
@@ -2295,16 +2258,14 @@ async function generateMilestonesContent(
   requestId: string,
   platform?: "bubble" | "claude_code"
 ): Promise<{ error?: string }> {
-  const prd = prdData as {
-    app_overview: string | null;
-    essential_features: string | null;
-    features_per_page: string | null;
-    user_flow: string | null;
-    priority_personas: string | null;
-    phasing_notes: string | null;
-    non_functional_reqs: string | null;
-    out_of_scope: string | null;
-  } | null;
+  const prd = prdData as { description: string | null } | null;
+  // The PRD is now one comprehensive document (it already contains personas,
+  // features, per-feature tooling, user flow, NFRs, out-of-scope, and a phased
+  // delivery plan). Feed it whole as {{prd}} / {{prd_overview}}; the remaining
+  // legacy per-section placeholders point back to it to avoid duplicating the
+  // full document into every slot.
+  const prdDoc = stripHtml(prd?.description) || "Not defined yet";
+  const seePrd = "(see the full PRD under App Overview above)";
   const stepKey = platform === "bubble"
     ? "milestones_and_tasks_bubble"
     : "milestones_and_tasks_claude_code";
@@ -2312,14 +2273,15 @@ async function generateMilestonesContent(
   const prompt = renderPrompt(template, {
     idea_name: idea.name,
     idea_description: stripHtml(idea.description),
-    prd_overview: stripHtml(prd?.app_overview) || "Not defined yet",
-    essential_features: stripHtml(prd?.essential_features) || "Not defined yet",
-    features_per_page: stripHtml(prd?.features_per_page) || "Not defined yet",
-    user_flow: stripHtml(prd?.user_flow) || "Not defined yet",
-    priority_personas: stripHtml(prd?.priority_personas) || "Not defined yet",
-    phasing_notes: stripHtml(prd?.phasing_notes) || "Not defined yet",
-    non_functional_reqs: stripHtml(prd?.non_functional_reqs) || "Not defined yet",
-    out_of_scope: stripHtml(prd?.out_of_scope) || "Not defined yet",
+    prd: prdDoc,
+    prd_overview: prdDoc,
+    essential_features: seePrd,
+    features_per_page: seePrd,
+    user_flow: seePrd,
+    priority_personas: seePrd,
+    phasing_notes: seePrd,
+    non_functional_reqs: seePrd,
+    out_of_scope: seePrd,
   });
 
   const res = await generateAiJsonResponse<MilestonesAndTasksOutput>({
@@ -3525,15 +3487,19 @@ function buildIdeaContextVars(ideaFull: IdeaFull): Record<string, string> {
     risk_block: buildRiskBlock(
       riskAndValidation as unknown as Record<string, unknown> | null
     ),
-    prd_app_overview: stripHtml(prd?.app_overview) || "(not defined yet)",
-    prd_objectives: stripHtml(prd?.objectives) || "(not defined yet)",
-    prd_priority_personas: stripHtml(prd?.priority_personas) || "(not defined yet)",
-    prd_essential_features: stripHtml(prd?.essential_features) || "(not defined yet)",
-    prd_user_flow: stripHtml(prd?.user_flow) || "(not defined yet)",
-    prd_non_functional_reqs: stripHtml(prd?.non_functional_reqs) || "(not defined yet)",
-    prd_out_of_scope: stripHtml(prd?.out_of_scope) || "(not defined yet)",
-    prd_success_indicators: stripHtml(prd?.success_indicators) || "(not defined yet)",
-    prd_phasing_notes: stripHtml(prd?.phasing_notes) || "(not defined yet)",
+    // PRD is now one comprehensive document. Surface it whole under the
+    // primary placeholder; the legacy per-section placeholders point back to it
+    // so existing DB-stored chatbot prompts keep resolving without duplication.
+    prd_document: stripHtml(prd?.description) || "(not defined yet)",
+    prd_app_overview: stripHtml(prd?.description) || "(not defined yet)",
+    prd_objectives: "(see full PRD above)",
+    prd_priority_personas: "(see full PRD above)",
+    prd_essential_features: "(see full PRD above)",
+    prd_user_flow: "(see full PRD above)",
+    prd_non_functional_reqs: "(see full PRD above)",
+    prd_out_of_scope: "(see full PRD above)",
+    prd_success_indicators: "(see full PRD above)",
+    prd_phasing_notes: "(see full PRD above)",
     db_tables_schema: stripHtml(database?.tables_schema) || "(not defined yet)",
     db_relationships: stripHtml(database?.relationships) || "(not defined yet)",
     db_notes: stripHtml(database?.notes) || "(not defined yet)",

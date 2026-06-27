@@ -7,7 +7,6 @@ import {
   type RichTextEditorHandle,
 } from "@/components/editor/RichTextEditor";
 import DatePicker from "@/components/DatePicker";
-import EmailMultiInput from "@/components/ui/EmailMultiInput";
 import type { Project } from "@/types/projects";
 import type { ProjectDailyFeedback } from "@/types/docs";
 import { createDailyFeedback, updateDailyFeedback } from "../../actions";
@@ -34,7 +33,6 @@ export default function DailyFeedbackFormModal({
   const [startDate, setStartDate] = useState<string>(feedback?.start_date ?? feedback?.date ?? todayIso());
   const [endDate, setEndDate] = useState<string>(feedback?.end_date ?? feedback?.date ?? todayIso());
   const [totalTime, setTotalTime] = useState<string>(feedback?.total_time != null ? String(feedback.total_time) : "");
-  const [emails, setEmails] = useState<string[]>(feedback?.emails ?? []);
 
   const todayRef = useRef<RichTextEditorHandle>(null);
   const tomorrowRef = useRef<RichTextEditorHandle>(null);
@@ -66,8 +64,8 @@ export default function DailyFeedbackFormModal({
     };
     startSave(async () => {
       const res = isEdit
-        ? await updateDailyFeedback(feedback!.id, { emails, ...payload })
-        : await createDailyFeedback({ projectId: project.id, emails, ...payload });
+        ? await updateDailyFeedback(feedback!.id, payload)
+        : await createDailyFeedback({ projectId: project.id, ...payload });
       if (res.error) {
         alert(res.error);
         return;
@@ -150,13 +148,6 @@ export default function DailyFeedbackFormModal({
               initialHtml={feedback?.video_and_links ?? ""}
             />
           </div>
-
-          <EmailMultiInput
-            label="Notify by email"
-            helpText="Recipients will receive this feedback by email."
-            value={emails}
-            onChange={setEmails}
-          />
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border shrink-0">

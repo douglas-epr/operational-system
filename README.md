@@ -176,7 +176,7 @@ move37-operational-system/
 | `/dashboard` | admin, manager | KPI strip, recharts charts, key results, project/internal-project overviews |
 | `/projects` | admin, manager, operational, developer, client, qa | Project detail: stages, developer tasks, client requests, QA requests |
 | `/chat` | admin, manager, operational, developer, client, qa | Messaging with threads, emoji reactions, client/QA kanban tabs, chatbots, file/link/video tabs, work-feedback |
-| `/ideas-refiner` | admin, manager, operational, developer, client, lead | 15-step AI wizard: idea → ICP → location → market → benchmarking → frameworks → risk → **go/no-go report** → PRD → DB → design system → milestones → playbook |
+| `/ideas-refiner` | admin, manager, operational, developer, client, lead | 15-step AI wizard: idea → structure → ICP → product → location → benchmarking → market → frameworks → risk → **go/no-go report** → PRD → DB → design system → milestones → playbook |
 | `/marketing` & `/marketing/[ideaId]/*` | admin, manager | Market Validation Engine: positioning, sourcing, outreach, interviews, content, landing, signals, traffic/SEO |
 | `/m/[slug]` | Public (anonymous) | Published landing pages with staged capture (quiz / waitlist) and event tracking |
 | `/internal-projects` | admin, manager, operational | Internal company projects with kanban and time tracking |

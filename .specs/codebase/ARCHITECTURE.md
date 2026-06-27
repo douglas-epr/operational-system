@@ -39,8 +39,10 @@ developer/client/qa/referrer→`/projects`, lead→`/ideas-refiner`.
   unread comment badges via `viewed_by[]`.
 - **Chat** — `ChatBlock` = projects | internal_projects | private | chatbot; per-block refresh ticks;
   emoji reactions over Realtime.
-- **Ideas Refiner** — 15 ordered steps (`IDEA_BLOCKS_ORDERED`); AI generation guarded by
-  `isRequestActive(ideaId, requestId)`; Report (step 10) is a go/no-go gate.
+- **Ideas Refiner** — 15 ordered steps (`IDEA_BLOCKS_ORDERED`: benchmarking=6 before market_opportunity=7);
+  AI generation guarded by `isRequestActive(ideaId, requestId)`; Report (step 10) is a go/no-go gate.
+  PRD (step 11) is one comprehensive rich-HTML `idea_prd.description` doc (per-feature tooling + phased
+  plan); Database/Visual/Milestones/Playbook consume it.
 - **Market Validation Engine** — per-`idea` funnel; public landing at `/m/[slug]` (service-role);
   cron workers under `/api/mkt/cron/*`.
 

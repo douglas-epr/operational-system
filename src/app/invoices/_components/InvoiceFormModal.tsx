@@ -8,13 +8,10 @@ import {
   RichTextEditor,
   type RichTextEditorHandle,
 } from "@/components/editor/RichTextEditor";
-import EmailMultiInput from "@/components/ui/EmailMultiInput";
-import { generateInvoicePdfBase64 } from "../_lib/invoicePdf";
 import {
   createInvoice,
   updateInvoice,
   aiFillInvoiceFromFeedback,
-  sendInvoiceEmail,
   type InvoicePayload,
 } from "../actions";
 
@@ -93,8 +90,6 @@ export default function InvoiceFormModal({ invoice, lastInvoice, onClose }: Prop
   );
   const serviceDescRef = useRef<RichTextEditorHandle>(null);
   const [accountDetails, setAccountDetails]         = useState(legacyAccountDetails(invoice) || legacyAccountDetails(prev));
-  // Default a recipient when creating; start empty when editing.
-  const [emails, setEmails]                         = useState<string[]>(isEdit ? (invoice?.emails ?? []) : ["rich@move37.fun"]);
   const [aiFilling, setAiFilling] = useState(false);
   const [aiFillError, setAiFillError] = useState<string | null>(null);
 
@@ -160,7 +155,6 @@ export default function InvoiceFormModal({ invoice, lastInvoice, onClose }: Prop
       start_date:           startDate || null,
       end_date:             endDate || null,
       total_time:           totalNum,
-      emails,
     };
 
     startSave(async () => {
@@ -168,33 +162,6 @@ export default function InvoiceFormModal({ invoice, lastInvoice, onClose }: Prop
         ? await updateInvoice(invoice!.id, payload)
         : await createInvoice(payload);
       if (res.error) { alert(res.error); return; }
-
-      // Email the invoice PDF to any recipients (best-effort — never blocks the save).
-      if (emails.length > 0) {
-        try {
-          const savedId = isEdit
-            ? invoice!.id
-            : (res as { invoice?: { id: string } }).invoice?.id ?? "";
-          const pdfBase64 = await generateInvoicePdfBase64({
-            ...payload,
-            id: savedId,
-            created_by: invoice?.created_by ?? "",
-            swift_code: invoice?.swift_code ?? null,
-            iban_code: invoice?.iban_code ?? null,
-            created_at: invoice?.created_at ?? new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-          await sendInvoiceEmail({
-            code: payload.code,
-            clientName: payload.client_name,
-            companyName: payload.company_or_user_name,
-            emails,
-            pdfBase64,
-          });
-        } catch {
-          alert("Invoice saved, but sending the email failed.");
-        }
-      }
 
       onClose();
       router.refresh();
@@ -347,16 +314,6 @@ export default function InvoiceFormModal({ invoice, lastInvoice, onClose }: Prop
                 placeholder={"SWIFT / BIC: CHASUS33\nIBAN: DE89 3704 0044 0532 0130 00\nWise: ..."}
               />
             </Field>
-          </section>
-
-          {/* SEND BY EMAIL */}
-          <section>
-            <SectionTitle>Send by email</SectionTitle>
-            <EmailMultiInput
-              helpText="On save, the invoice PDF is emailed to these recipients. Leave empty to skip."
-              value={emails}
-              onChange={setEmails}
-            />
           </section>
         </div>
 

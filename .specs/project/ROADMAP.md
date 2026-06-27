@@ -6,11 +6,11 @@ _Snapshot 2026-06-21. Status mirrors `docs/project_status.md`._
 
 | Milestone | Status |
 |---|---|
-| Platform foundation (Next 16, Supabase, RLS, 28 migrations, Vercel) | ✅ |
+| Platform foundation (Next 16, Supabase, RLS, 35 migrations, Vercel) | ✅ |
 | Auth + 8-role access model (middleware + page gate + RLS) | ✅ |
 | Core pages (dashboard, projects, chat, internal-projects, okrs, sops, feedback, users, prompts, settings, profile) | ✅ |
 | Invoices (rich-text, AI fill, PDF + email) | ✅ |
-| Ideas Refiner — 15 steps incl. Risk & Validation debate + go/no-go Report + Build Brief | ✅ |
+| Ideas Refiner — 15 steps incl. Risk & Validation debate + go/no-go Report + Build Brief + single-document PRD (per-feature tooling + phased plan) | ✅ |
 | Market Validation Engine — Phases 0–5 + interview intelligence + traffic/SEO | ✅ |
 | Integrations: OpenAI/Gemini/Claude, Brevo, Apify, Buffer/Postiz, Pexels | ✅ |
 | Storage buckets (avatars, signatures, project-files, chat-attachments) | ✅ |

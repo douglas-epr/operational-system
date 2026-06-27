@@ -1,6 +1,6 @@
 ﻿# Architecture — Move37 Operational System
 
-Last updated: 2026-06-21
+Last updated: 2026-06-23
 
 ---
 
@@ -143,7 +143,7 @@ The `project_task` table has an expanded model to support self-service by client
 
 ### Migration strategy
 
-- 28 migrations in `supabase/migrations/`, from `20260101000000_production_baseline.sql` onward, named `YYYYMMDDNNNNNN_description.sql`
+- 35 migrations in `supabase/migrations/`, from `20260101000000_production_baseline.sql` onward, named `YYYYMMDDNNNNNN_description.sql`
 - **Append-only** — existing migration files are never edited
 - Migrations are idempotent (`IF NOT EXISTS` guards) and end with `NOTIFY pgrst, 'reload schema';` to hot-reload PostgREST
 - The local dev stack runs Supabase at `127.0.0.1:54321`; apply with `npm run db:reset` / `supabase migration up`
@@ -172,7 +172,8 @@ The `project_task` table has an expanded model to support self-service by client
 | `idea_location_legislation`, `idea_market_opportunity` | Regulatory + TAM/SAM/SOM & unit economics |
 | `idea_benchmarking`, `idea_risk_and_validation` | Competitor analysis + risk register / demand evidence / debate |
 | `idea_report` | Go/no-go report: scores, alignment, debate, Build Brief HTML |
-| `idea_prd`, `idea_database`, `idea_styles`, `idea_milestones_and_tasks` | Build-phase artifacts |
+| `idea_prd` | PRD — one comprehensive rich-HTML `description` document (10 per-section columns collapsed 2026-07-02) |
+| `idea_database`, `idea_styles`, `idea_milestones_and_tasks` | Build-phase artifacts |
 | `idea_chatbot`, `idea_chatbot_devil_advocate` | Per-idea chatbots |
 | `idea_playbook_version` (+ comments) | Build playbook versioning |
 
@@ -286,10 +287,12 @@ The canonical step order lives in `IDEA_BLOCKS_ORDERED` (`src/types/idea-refiner
 3  Refining ICP                11  PRD
 4  Product Definition & Flows  12  Database
 5  Location & Legislation      13  Design System (visual_styles)
-6  Market Opportunity          14  Project Milestones & Tasks
-7  Benchmarking                15  Playbook
+6  Benchmarking                14  Project Milestones & Tasks
+7  Market Opportunity          15  Playbook
 8  Strategic Frameworks
 ```
+
+> Benchmarking (6) runs **before** Market Opportunity (7) so the competitive/pricing comparables feed the TAM/SAM/SOM sizing & unit economics. The `IdeaBlock` type-union order in `idea-refiner.ts` is unrelated to the step order — only `IDEA_BLOCKS_ORDERED` is canonical.
 
 ```
 /ideas-refiner

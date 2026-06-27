@@ -120,14 +120,11 @@ function computeUnlockedSteps(ideaFull: IdeaFull): Set<IdeaBlock> {
   if (riskHasContent || reportHasContent) unlocked.add("report");
 
   // PRD is the first build-phase step. Unlocks once Report exists OR PRD already has data.
-  const prdHasContent =
-    !!ideaFull.prd?.app_overview?.trim() ||
-    !!ideaFull.prd?.essential_features?.trim();
+  // The PRD is now one comprehensive document in `description`.
+  const prdHasContent = !!ideaFull.prd?.description?.trim();
   if (reportHasContent || prdHasContent) unlocked.add("prd");
 
-  const prdDone =
-    !!ideaFull.prd?.app_overview?.trim() &&
-    !!ideaFull.prd?.essential_features?.trim();
+  const prdDone = !!ideaFull.prd?.description?.trim();
   const databaseHasContent = !!ideaFull.database?.tables_schema?.trim();
   if (prdDone || databaseHasContent) unlocked.add("database");
 

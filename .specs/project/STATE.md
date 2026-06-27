@@ -5,6 +5,16 @@ _Initialized 2026-06-21 from git history + changelog._
 
 ## Decisions
 
+- **2026-07-02 (migration date) — PRD collapsed to one document.** `idea_prd` now stores a single rich-HTML
+  `description` (the 10 per-section columns were backfilled into it, then dropped — migration
+  `20260702000000_idea_prd_single_description.sql`). The PRD prompt emits 10 numbered sections with
+  per-feature "Tools used in this area", Connected Platform Integrations, and a phased delivery plan with
+  tools per phase. `PrdOutput = { description }`. Database/Visual/Milestones/Playbook/chatbots/logo-gen and
+  the docs-feature playbook compiler all read `idea_prd.description`; legacy prompt placeholders resolve to
+  the full doc (primary) or a pointer (secondary) so DB-stored prompts keep working without rewriting them.
+- **Step order (confirmed):** `IDEA_BLOCKS_ORDERED` is canonical — benchmarking is step 6, market_opportunity
+  step 7 (benchmarking's comparables feed sizing). The `IdeaBlock` type-union order is NOT the step order;
+  several docs had drifted to the old market→benchmarking order and were corrected 2026-06-23.
 - **2026-06-14 — Removed talent/leads domain.** Dropped `talent*`, `client`, `company` tables and
   the `/talent-pool`, `/talent-profile`, `/leads`, `/recommended-projects` pages. Referrer home → `/projects`.
 - **2026-06-14 — Removed agency AI key tier.** Dropped `agency_ai_settings`. AI resolution is now
@@ -24,6 +34,12 @@ _Initialized 2026-06-21 from git history + changelog._
 - **Chat tab panels must guard overlapping polls** (`loadingRef`) and only poll while visible — a 2s
   interval fanning out 5 server actions floods the queue and starves user saves.
 - **`getPromptTemplate` runs `stripHtml`** on stored prompts — describe output structure in words, not literal tags.
+- **DB `prompt` rows override `FALLBACK_*` constants.** When a prompt's variables/output shape change, re-seed
+  the DB row via an idempotent `INSERT … ON CONFLICT DO UPDATE` migration AND update the code FALLBACK — editing
+  only the constant has no effect where the DB row exists (which is every prompt in local + prod).
+- **Dropping a column requires fixing every explicit `select("col, …")`.** PostgREST errors on a missing column,
+  so each generate function's select + render-vars must move together; `select("*")` callers (e.g. `loadIdeaFull`)
+  adapt automatically.
 - **html2canvas can't parse Tailwind v4 `oklch()`** — use inline hex styles for client-side PDF rendering.
 - **Windows + Turbopack** can hold stale bracket-route entries; a config no-op edit forces a rescan.
 

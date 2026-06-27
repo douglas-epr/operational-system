@@ -141,19 +141,10 @@ export interface BenchmarkingOutput {
 }
 
 // ── 6. PRD (Product Requirements Document) ──────────────────────────────────
-// AI-generated PRD with 9 sections.
+// AI-generated PRD as a single comprehensive rich-HTML document.
 
 export interface PrdOutput {
-  app_overview: string;
-  objectives: string;
-  priority_personas: string;
-  essential_features: string;
-  user_flow: string;
-  features_per_page: string;
-  non_functional_reqs: string;
-  out_of_scope: string;
-  success_indicators: string;
-  phasing_notes: string;
+  description: string;
 }
 
 // ── 7. Database ─────────────────────────────────────────────────────────────

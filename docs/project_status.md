@@ -1,6 +1,6 @@
 # Project Status
 
-_Last updated: 2026-06-21_
+_Last updated: 2026-06-23_
 
 Legend: ✅ complete · 🟡 in progress · ⬜ not started
 
@@ -10,7 +10,7 @@ Legend: ✅ complete · 🟡 in progress · ⬜ not started
 
 - ✅ Next.js 16 App Router + Turbopack scaffolded (dev port 4000, prod 30003)
 - ✅ Supabase project connected (hosted `bcarzmfdamsozmfjgnpv` + local stack at `127.0.0.1:54321`)
-- ✅ 28 append-only migrations applied (baseline `20260101000000` → `20260626000000`)
+- ✅ 35 append-only migrations applied (baseline `20260101000000` → `20260702000000`)
 - ✅ Generated DB types in `src/lib/supabase/types.ts`
 - ✅ RLS on every table; helper functions (`get_user_type`, `is_admin_or_manager`, `is_staff_role`, `is_operational_user`)
 - ✅ Vercel auto-deploy on push to `master`
@@ -35,10 +35,10 @@ Legend: ✅ complete · 🟡 in progress · ⬜ not started
 
 ## Ideas Refiner (15 steps)
 
-- ✅ Steps 1–8: ideas → structure_align → refining_icp → product_definition_flows → location_legislation → market_opportunity → benchmarking → strategic_frameworks
+- ✅ Steps 1–8: ideas → structure_align → refining_icp → product_definition_flows → location_legislation → benchmarking → market_opportunity → strategic_frameworks
 - ✅ Step 9: risk_and_validation (Devil's-Advocate debate + demand evidence)
 - ✅ Step 10: report (go/no-go gate, build/refine/kill verdict, Build Brief)
-- ✅ Steps 11–15: prd → database → visual_styles (Design System) → milestones_and_tasks → playbook
+- ✅ Steps 11–15: prd (single comprehensive document — per-feature tooling + phased plan) → database → visual_styles (Design System) → milestones_and_tasks → playbook
 - ✅ Per-idea chatbot + Devil's-Advocate chatbot
 - ✅ `buildProjectFromIdea` (inherits authorized_users, links idea↔project)
 

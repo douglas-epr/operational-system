@@ -82,6 +82,21 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     },
   },
   {
+    name: "summarize_work_feedback",
+    description:
+      "Return the CURRENT USER's own work feedback entries (both project and internal-project) " +
+      "whose work period falls within [start_date, end_date]. Use this whenever the user asks to " +
+      "summarize, review, or report their work feedback for a date range (e.g. 'summarize my work " +
+      "feedback from 22 jun 2026 to 26 jun 2026'). Returns one entry per project with the four content " +
+      "fields (current_work = what I worked on, next_work = what I will work on next, blockers = what I " +
+      "need from you next & blockers, video_and_links) plus total_time and pct_of_period (that project's " +
+      "share of total hours). Dates must be ISO yyyy-mm-dd.",
+    args: {
+      start_date: { type: "string", description: "Work-period start, ISO yyyy-mm-dd." },
+      end_date: { type: "string", description: "Work-period end, ISO yyyy-mm-dd." },
+    },
+  },
+  {
     name: "query_db",
     description:
       "Run a SELECT against any public-schema table. Returns up to 100 rows. " +
@@ -361,6 +376,91 @@ export async function runTool(
           .single();
         if (error) return { ok: false, error: error.message };
         return { ok: true, data: created };
+      }
+      case "summarize_work_feedback": {
+        const start = String(args.start_date ?? "").trim();
+        const end = String(args.end_date ?? "").trim();
+        if (!start || !end) return { ok: false, error: "start_date and end_date are required (ISO yyyy-mm-dd)" };
+        if (start > end) return { ok: false, error: "start_date must be on or before end_date" };
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { ok: false, error: "not authenticated" };
+
+        // `date` mirrors the work-period start, so filtering on it selects the
+        // user's feedback logged within the window (covers legacy single-date rows).
+        const [proj, intl] = await Promise.all([
+          supabase
+            .from("project_work_feedback")
+            .select("project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links")
+            .eq("created_by", user.id)
+            .gte("date", start)
+            .lte("date", end),
+          supabase
+            .from("internal_project_work_feedback")
+            .select("internal_project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links")
+            .eq("created_by", user.id)
+            .gte("date", start)
+            .lte("date", end),
+        ]);
+        if (proj.error) return { ok: false, error: proj.error.message };
+        if (intl.error) return { ok: false, error: intl.error.message };
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rows: any[] = [...(proj.data ?? []), ...(intl.data ?? [])];
+        if (rows.length === 0) {
+          return { ok: true, data: { period: { start_date: start, end_date: end }, total_hours: 0, projects: [] } };
+        }
+
+        // Resolve readable project names.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const projIds = [...new Set((proj.data ?? []).map((r: any) => r.project_id).filter(Boolean))];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const intlIds = [...new Set((intl.data ?? []).map((r: any) => r.internal_project_id).filter(Boolean))];
+        const [projNames, intlNames] = await Promise.all([
+          projIds.length > 0 ? supabase.from("project").select("id, name").in("id", projIds) : { data: [] },
+          intlIds.length > 0 ? supabase.from("internal_project").select("id, name").in("id", intlIds) : { data: [] },
+        ]);
+        const nameById: Record<string, string> = {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const p of ((projNames.data ?? []) as any[])) nameById[p.id] = p.name;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const p of ((intlNames.data ?? []) as any[])) nameById[p.id] = p.name;
+
+        const totalHours = rows.reduce(
+          (sum, r) => sum + (typeof r.total_time === "number" ? r.total_time : 0),
+          0
+        );
+
+        // Group entries by project name, tracking hours per project.
+        const byProject: Record<string, { hours: number; entries: unknown[] }> = {};
+        for (const r of rows) {
+          const id = r.project_id ?? r.internal_project_id ?? null;
+          const projectName = (id && nameById[id]) ? nameById[id] : "General";
+          if (!byProject[projectName]) byProject[projectName] = { hours: 0, entries: [] };
+          byProject[projectName].hours += typeof r.total_time === "number" ? r.total_time : 0;
+          byProject[projectName].entries.push({
+            date: r.date,
+            start_date: r.start_date,
+            end_date: r.end_date,
+            total_time: r.total_time,
+            current_work: r.current_work,
+            next_work: r.next_work,
+            blockers: r.blockers,
+            video_and_links: r.video_and_links,
+          });
+        }
+
+        const projects = Object.entries(byProject).map(([project, { hours, entries }]) => ({
+          project,
+          total_time: hours,
+          pct_of_period: totalHours > 0 ? Math.round((hours / totalHours) * 1000) / 10 : 0,
+          entries,
+        }));
+
+        return {
+          ok: true,
+          data: { period: { start_date: start, end_date: end }, total_hours: totalHours, projects },
+        };
       }
       case "query_db": {
         const table = String(args.table ?? "");

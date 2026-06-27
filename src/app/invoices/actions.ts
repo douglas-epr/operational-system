@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { resolveAiConfig } from "@/lib/api/ai-config";
 import { generateAiJsonResponse } from "@/lib/api/ai-dispatcher";
-import { sendRawEmail } from "@/lib/api/brevo";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabase = any;
@@ -26,7 +25,6 @@ export interface InvoicePayload {
   start_date: string | null;
   end_date: string | null;
   total_time: number | null;
-  emails: string[];
 }
 
 /**
@@ -242,70 +240,4 @@ export async function aiFillInvoiceFromFeedback(input: {
 
   const serviceDescription = sanitizeInvoiceHtml(res.data.service_description) ?? undefined;
   return { totalTime, serviceDescription };
-}
-
-/** Escape plain-text values interpolated into the email HTML body. */
-function escapeText(s: string | null): string {
-  if (!s) return "";
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-/**
- * Email the invoice PDF to one or more recipients via Brevo. The PDF is rendered
- * client-side and passed here as a bare base64 string. Best-effort: a delivery
- * failure is reported but never throws, so the invoice save is unaffected.
- */
-export async function sendInvoiceEmail(input: {
-  code: string;
-  clientName: string | null;
-  companyName: string | null;
-  emails: string[];
-  pdfBase64: string;
-}): Promise<{ error?: string }> {
-  const supabase: AnySupabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated" };
-
-  const recipients = Array.from(
-    new Set((input.emails ?? []).map((e) => e.trim()).filter(Boolean))
-  );
-  if (recipients.length === 0) return {};
-  if (!input.pdfBase64) return { error: "Missing invoice PDF." };
-
-  const subject = `Invoice ${input.code}`;
-  const company = escapeText(input.companyName) || "Move37";
-  const forClient = input.clientName ? ` for ${escapeText(input.clientName)}` : "";
-  const htmlContent = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#1d2939;">
-    <p>Hello,</p>
-    <p>Please find attached invoice <strong>${escapeText(input.code)}</strong>${forClient}.</p>
-    <p>Thank you,<br/>${company}</p>
-  </div>`;
-  const fileName = `invoice-${input.code.replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`;
-
-  const results = await Promise.allSettled(
-    recipients.map((email) =>
-      sendRawEmail({
-        to: { email, name: email },
-        subject,
-        htmlContent,
-        attachments: [{ content: input.pdfBase64, name: fileName }],
-        tags: ["invoice"],
-      })
-    )
-  );
-  // sendRawEmail RESOLVES with { returned_an_error: true } on a non-OK Brevo
-  // response (it does not throw), so a fulfilled result can still be a failure.
-  const failed = results.filter(
-    (r) => r.status === "rejected" || (r.status === "fulfilled" && r.value.returned_an_error)
-  ).length;
-  if (failed > 0) {
-    return {
-      error: `Invoice saved, but ${failed}/${recipients.length} email(s) could not be sent.`,
-    };
-  }
-  return {};
 }

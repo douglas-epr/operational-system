@@ -626,6 +626,24 @@ textarea.input {
 .tiptap-content .ProseMirror u      { text-decoration: underline; }
 .tiptap-content .ProseMirror s      { text-decoration: line-through; }
 
+/* Chatbot reply markdown (rendered via marked → DOMPurify). Explicit element
+   rules so headings keep the primary text color and a larger size than the 14px
+   body — the Tailwind arbitrary-variant approach did not reliably win here. */
+.chatbot-markdown { color: var(--text-primary); }
+.chatbot-markdown h1 { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin: 0.25rem 0 0.5rem; }
+.chatbot-markdown h2 { font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin: 0.25rem 0 0.5rem; }
+.chatbot-markdown h3 { font-size: 1.125rem; font-weight: 700; color: var(--text-primary); margin: 1rem 0 0.35rem; }
+.chatbot-markdown p  { margin: 0 0 0.5rem; }
+.chatbot-markdown p:last-child { margin-bottom: 0; }
+.chatbot-markdown strong { font-weight: 600; color: var(--text-primary); }
+.chatbot-markdown em { font-style: italic; }
+.chatbot-markdown ul { list-style: disc;    padding-left: 1.1rem; margin: 0.25rem 0; }
+.chatbot-markdown ol { list-style: decimal; padding-left: 1.1rem; margin: 0.25rem 0; }
+.chatbot-markdown li { margin: 0.1rem 0; }
+.chatbot-markdown a  { color: var(--accent); text-decoration: underline; }
+.chatbot-markdown hr { margin: 1rem 0; border: 0; border-top: 1px solid var(--border); }
+.chatbot-markdown code { background: rgba(127, 127, 127, 0.18); border-radius: 3px; padding: 0 3px; }
+
 .tiptap-content .ProseMirror ul { list-style-type: disc;    padding-left: 1.5rem; margin: 0.5rem 0; }
 .tiptap-content .ProseMirror ol { list-style-type: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
 .tiptap-content .ProseMirror li { margin: 0.25rem 0; }

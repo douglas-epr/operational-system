@@ -372,20 +372,15 @@ export interface IdeaBenchmarking {
   created_at: string;
 }
 
-/** Represents a row in the `idea_prd` table. */
+/**
+ * Represents a row in the `idea_prd` table.
+ * The PRD is now a single comprehensive rich-HTML document in `description`
+ * (was 10 per-section columns — collapsed 2026-07-02).
+ */
 export interface IdeaPrd {
   id: string;
   idea_id: string;
-  app_overview: string | null;
-  objectives: string | null;
-  priority_personas: string | null;
-  essential_features: string | null;
-  user_flow: string | null;
-  features_per_page: string | null;
-  non_functional_reqs: string | null;
-  out_of_scope: string | null;
-  success_indicators: string | null;
-  phasing_notes: string | null;
+  description: string | null;
   created_at: string;
 }
 

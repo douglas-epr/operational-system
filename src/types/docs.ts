@@ -187,7 +187,6 @@ export interface ProjectDailyFeedback {
   next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
-  emails: string[];
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -238,7 +237,6 @@ export interface InternalProjectDailyFeedback {
   next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
-  emails: string[];
   created_by: string;
   created_at: string;
   updated_at: string;

@@ -12,7 +12,6 @@ import type { IdeaFull } from "@/types/idea-refiner";
 import { loadIdeaFull } from "@/app/ideas-refiner/_lib/loadIdeaFull";
 import { resolveAiConfig } from "@/lib/api/ai-config";
 import { generateAiTextResponse } from "@/lib/api/ai-dispatcher";
-import { sendFeedbackEmails } from "@/lib/notifications/feedbackEmail";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -645,7 +644,6 @@ export async function createDailyFeedback(input: {
   next_work: string | null;
   blockers: string | null;
   video_and_links: string | null;
-  emails?: string[];
 }): Promise<{ error?: string; feedback?: { id: string } }> {
   const { user, supabase, error: authErr } = (await getUserIdOrError()) as Awaited<ReturnType<typeof getUserIdOrError>> & { error?: string };
   if (authErr) return { error: authErr };
@@ -653,7 +651,6 @@ export async function createDailyFeedback(input: {
   // The legacy NOT NULL `date` column mirrors the work-period start so existing
   // ordering/queries keep working.
   const legacyDate = input.start_date ?? new Date().toISOString().slice(0, 10);
-  const emails = (input.emails ?? []).map((e) => e.trim()).filter(Boolean);
   const messageHtml = buildFeedbackMessage({ ...input, date: legacyDate });
 
   const { data, error } = await supabase
@@ -668,7 +665,6 @@ export async function createDailyFeedback(input: {
       next_work:       input.next_work,
       blockers:        input.blockers,
       video_and_links: input.video_and_links,
-      emails,
       created_by:      user!.id,
       updated_at:      new Date().toISOString(),
     })
@@ -702,13 +698,6 @@ export async function createDailyFeedback(input: {
     }
   }
 
-  // Notify the chosen recipients by email (best-effort; never fails the save).
-  await sendFeedbackEmails(
-    emails,
-    messageHtml,
-    formatFeedbackPeriod(input.start_date, input.end_date, legacyDate)
-  );
-
   revalidatePath("/docs");
   return { feedback: data };
 }
@@ -723,18 +712,13 @@ export async function updateDailyFeedback(
     next_work?: string | null;
     blockers?: string | null;
     video_and_links?: string | null;
-    emails?: string[];
   }
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
-  const emails = patch.emails !== undefined
-    ? patch.emails.map((e) => e.trim()).filter(Boolean)
-    : undefined;
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const [k, v] of Object.entries(patch)) {
     if (v !== undefined) updates[k] = v;
   }
-  if (emails !== undefined) updates.emails = emails;
   // Keep the legacy `date` column aligned with the work-period start.
   if (patch.start_date !== undefined && patch.start_date) {
     updates.date = patch.start_date;
@@ -760,15 +744,6 @@ export async function updateDailyFeedback(
       .from("conversation_project_external_message")
       .update({ message: messageHtml })
       .eq("id", fb.conversation_project_external_message_id);
-  }
-
-  // Notify the chosen recipients by email (best-effort; never fails the save).
-  if (emails && emails.length > 0 && messageHtml) {
-    await sendFeedbackEmails(
-      emails,
-      messageHtml,
-      formatFeedbackPeriod(fb.start_date, fb.end_date, fb.date)
-    );
   }
 
   revalidatePath("/docs");
@@ -1022,15 +997,8 @@ function compileIdeaToPlaybookHtml(bundle: IdeaFull): string {
   const parts: string[] = [];
 
   parts.push(`<h1>PRD</h1>`);
-  parts.push(section("App Overview",              prd?.app_overview));
-  parts.push(section("Objectives",                prd?.objectives));
-  parts.push(section("Priority Personas",         prd?.priority_personas));
-  parts.push(section("Essential Features",        prd?.essential_features));
-  parts.push(section("Core User Flows",           prd?.user_flow));
-  parts.push(section("Non-Functional Requirements", prd?.non_functional_reqs));
-  parts.push(section("Out of Scope",              prd?.out_of_scope));
-  parts.push(section("Success Indicators",        prd?.success_indicators));
-  parts.push(section("Phasing Notes",             prd?.phasing_notes));
+  // PRD is now one comprehensive document in `description` (collapsed 2026-07-02).
+  parts.push(section("Product Requirements Document", prd?.description));
 
   parts.push(`<h1>Database</h1>`);
   parts.push(section("Tables & Schema", database?.tables_schema));

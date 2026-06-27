@@ -367,7 +367,7 @@ AI prompts are stored in the `prompt` table and editable by admins at `/prompts`
 
 ### 8.5 Stale-write guard (Ideas Refiner)
 
-Inside any multi-step AI generation function, call `isRequestActive(supabase, ideaId, requestId)` before every database write to prevent stale responses from overwriting newer data when the user cancels and re-runs a step. Always check the write `error` too — a swallowed insert error on a missing column reads as a silent 4-minute timeout with no data. Multi-field rich-HTML steps must pass `maxTokens: 16384` (the 8,192 default truncates the JSON and fails the parse).
+Inside any multi-step AI generation function, call `isRequestActive(supabase, ideaId, requestId)` before every database write to prevent stale responses from overwriting newer data when the user cancels and re-runs a step. Always check the write `error` too — a swallowed insert error on a missing column reads as a silent 4-minute timeout with no data. Large rich-HTML steps (e.g. the single-document PRD, Database, Visual Styles) must pass `maxTokens: 16384` (the 8,192 default truncates the JSON and fails the parse).
 
 ---
 
@@ -460,4 +460,4 @@ Keep `docs/project_status.md` current. Mark features as `complete`, `in-progress
 
 ---
 
-*Last updated: 2026-06-21*
+*Last updated: 2026-06-23*

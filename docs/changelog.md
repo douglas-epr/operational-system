@@ -3,6 +3,44 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-06-27] — Chatbot: richer work-feedback summary formatting
+
+- Tightened the work-feedback summary format in the chatbot prompt (`run.ts`): each project is now its own `###` heading, the four block labels ("What I worked on this period:", etc.) are bold on their own line above their bullet list, and a `---` divider separates projects. Allowed `<hr>` in the DOMPurify allow-list (`sanitize.ts`) so the dividers render.
+- Replaced the per-element Tailwind arbitrary-variant classes (which did not reliably win on heading size/color) with a dedicated `.chatbot-markdown` style block in `globals.css`, applied on both chatbot panes (`ChatbotPane` + `ProjectChatbotTab`). Project-name headings now render in the primary text color (white, not the inherited dark) and at 18px — clearly larger than the 14px body — with token-based list, link, `hr`, and code styling.
+
+## [2026-06-27] — Chatbot: render replies as formatted markdown
+
+- The private chatbot (`ChatbotPane`) and project chatbot tab (`ProjectChatbotTab`) replies were rendered via `dangerouslySetInnerHTML` of the raw message, but the bot answers in **markdown** — so headings/bold/bullets/links showed as literal `##`, `**`, `-`, `[text](url)`. Added `marked` and a shared `renderMarkdownToSafeHtml` helper (`src/lib/markdown.ts`) that converts the markdown to HTML and runs it through the existing DOMPurify allow-list before rendering. Both panes now show formatted headings, bold labels, nested bullet lists, and clickable links. Regular chat messages (`MessageItem`, already HTML from the editor) are unchanged.
+
+## [2026-06-27] — Remove email-notify features; add chatbot work-feedback summary
+
+- **Work feedback — removed "Notify by email"**: dropped the recipient field from all three feedback forms (the `/docs` `DailyFeedbackFormModal` and the chat `ProjectTabsPanel` / `InternalProjectTabsPanel` modals), and removed the `emails` param + `sendFeedbackEmails` calls from `createDailyFeedback`/`updateDailyFeedback` (`docs/actions.ts`) and `createInternalProjectDailyFeedback`/`updateInternalProjectDailyFeedback` (`chat/actions.ts`). The feedback still posts to the linked project chat as before. Deleted the now-orphaned `src/lib/notifications/feedbackEmail.ts`.
+- **Invoices — removed "Send by email"**: dropped the recipients field + the PDF-email-on-save flow from `InvoiceFormModal`, removed `emails` from `InvoicePayload` and the `sendInvoiceEmail` server action (+ its `escapeText` helper and `sendRawEmail` import) in `invoices/actions.ts`, and dropped `emails` from the `/invoices` select. Deleted the now-orphaned email-PDF infra `invoicePdf.ts` + `invoiceDocument.ts` (invoice download still works via the preview's Print → Save as PDF). The shared `EmailMultiInput` component had no remaining consumers and was deleted.
+- **DB**: migration `20260703000000_drop_work_feedback_invoice_emails.sql` drops `emails` from `project_work_feedback`, `internal_project_work_feedback`, and `invoice`. **Apply only after the new code deploys** (the prior build still selected the column). Generated `types.ts` updated to match.
+- **Chatbot — work feedback summaries**: added a `summarize_work_feedback` tool (`chat/_chatbot/tools.ts`) that returns the current user's project + internal-project work feedback for a date range, grouped by project with each project's % share of hours. Added always-on formatting guidance in `run.ts` so a prompt like "Summarize my work feedback from 22 jun 2026 to 26 jun 2026" renders a per-project markdown summary (What I worked on / What I will work on next / Blockers / Video & Links).
+
+## [2026-06-23] — Ideas Refiner: collapse PRD into one comprehensive document
+
+- **Why**: the multi-column PRD (10 per-section fields) produced a thin, fragmented document. We now generate ONE build-ready PRD modelled on a best-in-class external PRD — with per-feature **"Tools used in this area"**, **Connected Platform Integrations**, a **phased delivery plan** (Phase 1..N with tools), and a tooling inventory.
+- **Schema** (`20260702000000_idea_prd_single_description.sql`): added `idea_prd.description text`; backfilled it from the old per-section columns (each wrapped in its `<h2>`) so no existing PRD was lost; then dropped `app_overview, objectives, priority_personas, essential_features, user_flow, features_per_page, non_functional_reqs, out_of_scope, success_indicators, phasing_notes`. Re-seeded the PRD prompt (`5041e57c…`) to emit a single `description` HTML document across 10 numbered sections.
+- **AI**: rewrote `FALLBACK_PRD` + the DB-stored PRD prompt to output `{ "description": "<full PRD html>" }`. `PrdOutput` is now `{ description }`. The prompt mandates a "Tools used in this area" bullet list per feature and a phased delivery plan, and treats `idea_description` as ground truth (carrying through every named tool/repo/platform).
+- **Downstream consumers** rewired to the single doc: `generateDatabaseContent`, `generateVisualStylesContent`, `generateMilestonesContent`, `assemblePlaybookVersion`, logo generation, the docs-feature playbook compiler (`docs/actions.ts`), and both chatbot context builders now read `idea_prd.description`. Legacy prompt placeholders (`{{essential_features}}`, `{{prd_overview}}`, `{{prd_app_overview}}`, …) resolve to the full PRD (primary) or a pointer (secondary) so DB-stored prompts keep working without duplicating the document into every slot. `FALLBACK_DATABASE/VISUAL_STYLES/MILESTONES` now reference a single `{{prd}}` block.
+- **UI**: `PrdStep.tsx` is now a single rich-text editor for the whole PRD (was 10 collapsible cards); Preview/PDF/DOCX export the one document. `savePrd` takes `{ description }`. Unlock gate (`SandboxPlannerShell`) gates the build phase on `prd.description`.
+- **Types**: `IdeaPrd`, generated `idea_prd` Row/Insert/Update, and `PrdOutput` updated. `tsc` clean.
+
+## [2026-06-23] — E2E Live Test: all 14 refiner steps verified on production
+
+- **Full pipeline test** on `move37-operational-system.vercel.app`, idea `eb22e079-f3ad-4fc8-85bc-fce940583c56` (Lola System).
+- All 14 content-generation steps passed end-to-end with Regenerate on each: Structure & Align (~40s), Refining ICP (~50s), Product Definition & Flows (~55s), Location & Legislation (~55s), Benchmarking (~55s), Market Opportunity (~60s), Strategic Frameworks (~90s), Risk & Validation (~7min, 4-round debate), Report (~5min, Go/No-Go brief), PRD (~3min), Database (~2.5min), Design System (~2min), Project Milestones & Tasks (~3.5min), Playbook Build Guide (~2min).
+- **Gate fix confirmed**: Design System generation populated `brand_voice` → `stylesDone` returned `true` → Project Milestones & Tasks unlocked immediately on the next page load (the fix deployed in [2026-06-22] entry below is working in production).
+- No errors, no stuck-state overlays, no timeouts during the full run.
+
+## [2026-06-22] — Fix: Report brief + PRD grounded in idea.description
+
+- **Report (`generateReport`)**: increased `description` cap from 2,000 → 8,000 chars to pass more of the founder's vision into the debate. Added `idea_description` variable to all `renderPrompt` calls (Reframer, Scorer, Scorer HTML). Updated `FALLBACK_REFRAMER_DOC` and `FALLBACK_SCORER` with a `## [ORIGINAL IDEA DESCRIPTION]` section and explicit grounding rules: every section of the Build Brief must be reconciled against `idea_description`; conflicting details must prefer it; no detail mentioned in it may be omitted.
+- **PRD (`generatePrdContent`)**: added a `## PRIMARY SOURCE OF TRUTH — IDEA DESCRIPTION` block at the top of `FALLBACK_PRD` instructing the model to include every feature, user type, workflow, and integration explicitly mentioned in `idea_description`, and to prefer it over other structured fields when they conflict.
+- **Motivation**: live tests showed the brief and PRD occasionally omitting product specifics or contradicting facts present in `idea.description` (e.g. platform specifics, user types, integrations). Both prompts now treat `idea_description` as the founder's primary vision document.
+
 ## [2026-06-22] — Fix: Milestones & Tasks unlock gate + Visual Styles color_palette fallback
 
 - **Root cause**: `computeUnlockedSteps()` in `SandboxPlannerShell.tsx` gated `milestones_and_tasks` on `ideaFull.styles?.color_palette?.trim()`. The Visual Styles generator maps `color_palette: d.color_narrative ?? d.color_palette`; Gemini Flash consistently omits both keys in its JSON response (returns all other fields: `primary_color`, `brand_voice`, `logo_branding`, etc.), so `color_palette` stayed `null` in `idea_styles` after every successful generation — keeping the step permanently locked with no error.

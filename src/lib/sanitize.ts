@@ -1,7 +1,7 @@
 import type { Config } from "dompurify";
 
 const SAFE_TAGS = [
-  "p", "br", "strong", "b", "em", "i", "u", "s",
+  "p", "br", "hr", "strong", "b", "em", "i", "u", "s",
   "ul", "ol", "li",
   "h1", "h2", "h3", "h4", "h5", "h6",
   "a", "code", "pre", "blockquote",

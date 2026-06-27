@@ -21,7 +21,7 @@ import {
   sendProjectChatbotMessage,
 } from "../../actions";
 import type { ProjectChatbotMessageRow } from "../../_chatbot/runProjectBot";
-import { sanitizeHtml } from "@/lib/sanitize";
+import { renderMarkdownToSafeHtml } from "@/lib/markdown";
 
 interface Props {
   projectId: string;
@@ -146,8 +146,8 @@ export default function ProjectChatbotTab({ projectId, block, currentUserId }: P
                 <span className="whitespace-pre-wrap">{m.message}</span>
               ) : (
                 <div
-                  className="[&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-semibold [&_em]:italic [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:ml-1 [&_code]:bg-black/10 [&_code]:rounded [&_code]:px-0.5 [&_h1]:font-bold [&_h2]:font-bold [&_h3]:font-semibold"
-                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(m.message ?? "") }}
+                  className="chatbot-markdown"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdownToSafeHtml(m.message) }}
                 />
               )}
               {!isUser && Array.isArray(m.tool_calls) && (m.tool_calls as unknown[]).length > 0 && (

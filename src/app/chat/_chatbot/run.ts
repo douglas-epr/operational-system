@@ -89,6 +89,49 @@ OUTPUT FORMAT — read carefully:
 
 const MAX_TOOL_HOPS = 6;
 
+/**
+ * Always-appended guidance for the work-feedback summary flow. Kept in code (not
+ * only the DB prompt) so it applies regardless of whether the DB "Chatbot prompt"
+ * row is present. Tells the model to use the dedicated tool and how to format the
+ * reply to match the Work Feedback layout used across the app.
+ */
+const WORK_FEEDBACK_GUIDANCE = `
+WORK FEEDBACK SUMMARIES:
+- When the user asks to summarize/review/report THEIR work feedback for a date range
+  (e.g. "Summarize my work feedback from 22 jun 2026 to 26 jun 2026"), call the
+  summarize_work_feedback tool with start_date and end_date as ISO yyyy-mm-dd.
+  Parse natural-language dates yourself (e.g. "22 jun 2026" → "2026-06-22").
+- Format the reply as markdown using EXACTLY this structure, and put a blank line
+  between every block so they render as separate paragraphs/lists:
+
+    ## Work Feedback — <DD-MM-YYYY> → <DD-MM-YYYY>
+
+    ### Project: <project name>
+
+    **% time worked:** <pct_of_period>%
+
+    **What I worked on this period:**
+    - bullet list from current_work
+
+    **What I will work on next:**
+    - bullet list from next_work
+
+    **What I need from you next & Blockers:**
+    - content from blockers
+
+    **Video & Links:**
+    - content from video_and_links (keep links as markdown links)
+
+    ---
+
+- Rules: each project name MUST be its own \`###\` heading (bigger, bold). Each of
+  the four block labels MUST be bold and on its own line, followed by a blank line
+  then its bullet list. Put a \`---\` divider line between projects (not after the
+  last one). The content fields arrive as HTML; convert them to clean markdown,
+  preserving bullet lists and links. If a project has multiple entries, merge them
+  sensibly. Omit a block entirely if it is empty. If the tool returns no projects,
+  say there is no work feedback in that range.`;
+
 // `resolveAiConfig` lives in `@/lib/api/ai-config` (shared with the
 // sandbox-planner generator + the project task importer).
 
@@ -102,6 +145,7 @@ function buildSystemPrompt(userTypeLabel: string, dbHeader: string | null): stri
     "\n\nAvailable tools:\n\n" +
     renderToolCatalog() +
     `\n\nThe user asking you is a "${userTypeLabel}". Tailor your tone accordingly.\n` +
+    WORK_FEEDBACK_GUIDANCE +
     SYSTEM_PROMPT_FOOTER
   );
 }
