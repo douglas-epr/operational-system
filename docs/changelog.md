@@ -3,6 +3,10 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-07-09] — Fix: task description not saving
+
+- The `description` column on `project_task` was never wired end-to-end: the `Task` type (`src/types/projects.ts`) had no `description` field, the task-list `select()` queries in `src/app/projects/page.tsx` and `getProjectTabBundle` (`src/app/chat/actions.ts`) didn't fetch it, `TaskInput` (`src/app/projects/actions.ts`) didn't accept it, and `TaskModal` initialized its `description` state to `""` unconditionally and never included it in the save payload. The rich-text editor in the Task modal was effectively a dead end. Added `description` to all four spots so it now loads on edit and persists on create/update. Affects both `/projects` task modals and the `/chat` Client/QA Requests ("General Tasks") kanban, which shares the same modal and a separate select query.
+
 ## [2026-06-27] — Chatbot: richer work-feedback summary formatting
 
 - Tightened the work-feedback summary format in the chatbot prompt (`run.ts`): each project is now its own `###` heading, the four block labels ("What I worked on this period:", etc.) are bold on their own line above their bullet list, and a `---` divider separates projects. Allowed `<hr>` in the DOMPurify allow-list (`sanitize.ts`) so the dividers render.

@@ -53,7 +53,7 @@ export default async function ProjectsPage({ searchParams }: PageProps) {
         .single(),
       supabase
         .from("project_task")
-        .select("id, project_id, parent_task_id, name, order, start_date_estimated, end_date_estimated, start_date_real, end_date_real, real_time, estimated_time, type, level, status, priority_level, category, assignees, created_by")
+        .select("id, project_id, parent_task_id, name, order, start_date_estimated, end_date_estimated, start_date_real, end_date_real, real_time, estimated_time, type, level, status, priority_level, category, description, assignees, created_by")
         .eq("project_id", projectId),
       supabase
         .from("project_task_comment")

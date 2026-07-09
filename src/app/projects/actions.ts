@@ -88,6 +88,7 @@ export interface TaskInput {
   assignee_ids: string[];
   priority_level?: TaskPriority | null;
   category?: TaskCategory | null;
+  description?: string | null;
 }
 
 export async function createTask(data: TaskInput): Promise<{ error?: string; id?: string }> {

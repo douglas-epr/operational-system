@@ -104,7 +104,7 @@ export default function TaskModal({
   const [endEst, setEndEst] = useState(task?.end_date_estimated ?? "");
   const [startReal, setStartReal] = useState(task?.start_date_real ?? "");
   const [endReal, setEndReal] = useState(task?.end_date_real ?? "");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(task?.description ?? "");
   const [assigneeIds, setAssigneeIds] = useState<string[]>(
     task?.task_assignees?.map((a) => a.user_id) ?? []
   );
@@ -194,6 +194,7 @@ export default function TaskModal({
         assignee_ids: assigneeIds,
         priority_level: (priorityLevel || null) as TaskPriority | null,
         category: (category || null) as TaskCategory | null,
+        description: description || null,
       };
 
       let taskId = task?.id;

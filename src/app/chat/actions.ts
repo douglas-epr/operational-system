@@ -1273,7 +1273,7 @@ export async function getProjectTabBundle(projectId: string): Promise<{
         .select(
           // Part 2 item 10/34: assignees is now a UUID[] column. The
           // hydration into the legacy task_assignees shape happens below.
-          "id, project_id, parent_task_id, name, order, start_date_estimated, end_date_estimated, start_date_real, end_date_real, real_time, estimated_time, type, level, status, assignees"
+          "id, project_id, parent_task_id, name, order, start_date_estimated, end_date_estimated, start_date_real, end_date_real, real_time, estimated_time, type, level, status, priority_level, category, description, created_by, assignees"
         )
         .eq("project_id", projectId),
       ctx.supabase

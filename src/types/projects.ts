@@ -217,6 +217,7 @@ export interface Task {
   status: TaskStatus;
   priority_level: TaskPriority | null;
   category: TaskCategory | null;
+  description: string | null;
   created_by: string | null;
   task_assignees: TaskAssignee[];
 }
