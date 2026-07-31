@@ -183,6 +183,7 @@ export interface ProjectDailyFeedback {
   start_date: string | null;  // ISO yyyy-mm-dd — work period start
   end_date: string | null;    // ISO yyyy-mm-dd — work period end
   total_time: number | null;  // total hours worked in the interval
+  current_state: string | null;  // "What we have now" — state of the deliverable
   current_work: string | null;
   next_work: string | null;
   blockers: string | null;
@@ -233,6 +234,7 @@ export interface InternalProjectDailyFeedback {
   start_date: string | null;  // ISO yyyy-mm-dd — work period start
   end_date: string | null;    // ISO yyyy-mm-dd — work period end
   total_time: number | null;  // total hours worked in the interval
+  current_state: string | null;  // "What we have now" — state of the deliverable
   current_work: string | null;
   next_work: string | null;
   blockers: string | null;

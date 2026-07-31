@@ -758,6 +758,7 @@ function FeedbackModal({
   const [startDate, setStartDate] = useState(feedback?.start_date ?? feedback?.date ?? new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState(feedback?.end_date ?? feedback?.date ?? new Date().toISOString().slice(0, 10));
   const [totalTime, setTotalTime] = useState<string>(feedback?.total_time != null ? String(feedback.total_time) : "");
+  const currentStateRef = useRef<RichTextEditorHandle>(null);
   const todayRef = useRef<RichTextEditorHandle>(null);
   const tomorrowRef = useRef<RichTextEditorHandle>(null);
   const blockersRef = useRef<RichTextEditorHandle>(null);
@@ -774,6 +775,7 @@ function FeedbackModal({
       start_date: startDate,
       end_date: endDate,
       total_time: parsedTotal,
+      current_state: currentStateRef.current?.getHTML() ?? null,
       current_work: todayRef.current?.getHTML() ?? null,
       next_work: tomorrowRef.current?.getHTML() ?? null,
       blockers: blockersRef.current?.getHTML() ?? null,
@@ -790,6 +792,7 @@ function FeedbackModal({
   }
 
   const fields: Array<{ label: string; ref: React.RefObject<RichTextEditorHandle | null>; html: string }> = [
+    { label: "What we have now", ref: currentStateRef, html: feedback?.current_state ?? "" },
     { label: "What I worked on this period", ref: todayRef, html: feedback?.current_work ?? "" },
     { label: "What I will work on next", ref: tomorrowRef, html: feedback?.next_work ?? "" },
     { label: "Next week forecast & blockers", ref: blockersRef, html: feedback?.blockers ?? "" },
@@ -926,6 +929,7 @@ function FeedbackContent({
                     )}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+                    <FeedbackBlock label="What we have now" html={f.current_state} />
                     <FeedbackBlock label="What I worked on this period" html={f.current_work} />
                     <FeedbackBlock label="What I will work on next" html={f.next_work} />
                     <FeedbackBlock label="Next week forecast & blockers" html={f.blockers} />

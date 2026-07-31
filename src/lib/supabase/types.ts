@@ -1940,6 +1940,7 @@ export type Database = {
           blockers: string | null
           created_at: string
           created_by: string
+          current_state: string | null
           current_work: string | null
           date: string
           end_date: string | null
@@ -1955,6 +1956,7 @@ export type Database = {
           blockers?: string | null
           created_at?: string
           created_by: string
+          current_state?: string | null
           current_work?: string | null
           date: string
           end_date?: string | null
@@ -1970,6 +1972,7 @@ export type Database = {
           blockers?: string | null
           created_at?: string
           created_by?: string
+          current_state?: string | null
           current_work?: string | null
           date?: string
           end_date?: string | null
@@ -3584,6 +3587,7 @@ export type Database = {
           blockers: string | null
           created_at: string
           created_by: string
+          current_state: string | null
           current_work: string | null
           date: string
           end_date: string | null
@@ -3599,6 +3603,7 @@ export type Database = {
           blockers?: string | null
           created_at?: string
           created_by: string
+          current_state?: string | null
           current_work?: string | null
           date: string
           end_date?: string | null
@@ -3614,6 +3619,7 @@ export type Database = {
           blockers?: string | null
           created_at?: string
           created_by?: string
+          current_state?: string | null
           current_work?: string | null
           date?: string
           end_date?: string | null

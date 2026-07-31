@@ -110,6 +110,9 @@ WORK FEEDBACK SUMMARIES:
 
     **% time worked:** <pct_of_period>%
 
+    **What we have now:**
+    - bullet list from current_state
+
     **What I worked on this period:**
     - bullet list from current_work
 
@@ -125,7 +128,7 @@ WORK FEEDBACK SUMMARIES:
     ---
 
 - Rules: each project name MUST be its own \`###\` heading (bigger, bold). Each of
-  the four block labels MUST be bold and on its own line, followed by a blank line
+  the five block labels MUST be bold and on its own line, followed by a blank line
   then its bullet list. Put a \`---\` divider line between projects (not after the
   last one). The content fields arrive as HTML; convert them to clean markdown,
   preserving bullet lists and links. If a project has multiple entries, merge them

@@ -153,6 +153,10 @@ export default function DailyFeedbackTab({
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
                     <FeedbackBlock
+                      label="What we have now"
+                      html={f.current_state}
+                    />
+                    <FeedbackBlock
                       label="What I worked on this period"
                       html={f.current_work}
                     />

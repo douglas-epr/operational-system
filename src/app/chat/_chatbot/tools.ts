@@ -87,10 +87,10 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
       "Return the CURRENT USER's own work feedback entries (both project and internal-project) " +
       "whose work period falls within [start_date, end_date]. Use this whenever the user asks to " +
       "summarize, review, or report their work feedback for a date range (e.g. 'summarize my work " +
-      "feedback from 22 jun 2026 to 26 jun 2026'). Returns one entry per project with the four content " +
-      "fields (current_work = what I worked on, next_work = what I will work on next, blockers = what I " +
-      "need from you next & blockers, video_and_links) plus total_time and pct_of_period (that project's " +
-      "share of total hours). Dates must be ISO yyyy-mm-dd.",
+      "feedback from 22 jun 2026 to 26 jun 2026'). Returns one entry per project with the five content " +
+      "fields (current_state = what we have now, current_work = what I worked on, next_work = what I will " +
+      "work on next, blockers = what I need from you next & blockers, video_and_links) plus total_time and " +
+      "pct_of_period (that project's share of total hours). Dates must be ISO yyyy-mm-dd.",
     args: {
       start_date: { type: "string", description: "Work-period start, ISO yyyy-mm-dd." },
       end_date: { type: "string", description: "Work-period end, ISO yyyy-mm-dd." },
@@ -391,13 +391,13 @@ export async function runTool(
         const [proj, intl] = await Promise.all([
           supabase
             .from("project_work_feedback")
-            .select("project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links")
+            .select("project_id, date, start_date, end_date, total_time, current_state, current_work, next_work, blockers, video_and_links")
             .eq("created_by", user.id)
             .gte("date", start)
             .lte("date", end),
           supabase
             .from("internal_project_work_feedback")
-            .select("internal_project_id, date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links")
+            .select("internal_project_id, date, start_date, end_date, total_time, current_state, current_work, next_work, blockers, video_and_links")
             .eq("created_by", user.id)
             .gte("date", start)
             .lte("date", end),
@@ -443,6 +443,7 @@ export async function runTool(
             start_date: r.start_date,
             end_date: r.end_date,
             total_time: r.total_time,
+            current_state: r.current_state,
             current_work: r.current_work,
             next_work: r.next_work,
             blockers: r.blockers,

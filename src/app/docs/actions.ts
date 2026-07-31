@@ -613,6 +613,7 @@ function buildFeedbackMessage(fields: {
   start_date: string | null;
   end_date: string | null;
   total_time: number | null;
+  current_state: string | null;
   current_work: string | null;
   next_work: string | null;
   blockers: string | null;
@@ -628,6 +629,7 @@ function buildFeedbackMessage(fields: {
   return [
     `<p><strong>📋 Work Feedback – ${period}</strong></p>`,
     totalLine,
+    s("What we have now", fields.current_state),
     s("What I worked on this period", fields.current_work),
     s("What I will work on next", fields.next_work),
     s("Blockers", fields.blockers),
@@ -640,6 +642,7 @@ export async function createDailyFeedback(input: {
   start_date: string | null;
   end_date: string | null;
   total_time: number | null;
+  current_state: string | null;
   current_work: string | null;
   next_work: string | null;
   blockers: string | null;
@@ -661,6 +664,7 @@ export async function createDailyFeedback(input: {
       start_date:      input.start_date,
       end_date:        input.end_date,
       total_time:      input.total_time,
+      current_state:   input.current_state,
       current_work:    input.current_work,
       next_work:       input.next_work,
       blockers:        input.blockers,
@@ -708,6 +712,7 @@ export async function updateDailyFeedback(
     start_date?: string | null;
     end_date?: string | null;
     total_time?: number | null;
+    current_state?: string | null;
     current_work?: string | null;
     next_work?: string | null;
     blockers?: string | null;
@@ -733,7 +738,7 @@ export async function updateDailyFeedback(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: fb } = await (supabase as any)
     .from("project_work_feedback")
-    .select("date, start_date, end_date, total_time, current_work, next_work, blockers, video_and_links, conversation_project_external_message_id")
+    .select("date, start_date, end_date, total_time, current_state, current_work, next_work, blockers, video_and_links, conversation_project_external_message_id")
     .eq("id", id)
     .single();
   const messageHtml = fb ? buildFeedbackMessage(fb) : null;

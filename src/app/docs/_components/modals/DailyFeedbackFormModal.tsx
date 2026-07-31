@@ -34,6 +34,7 @@ export default function DailyFeedbackFormModal({
   const [endDate, setEndDate] = useState<string>(feedback?.end_date ?? feedback?.date ?? todayIso());
   const [totalTime, setTotalTime] = useState<string>(feedback?.total_time != null ? String(feedback.total_time) : "");
 
+  const currentStateRef = useRef<RichTextEditorHandle>(null);
   const todayRef = useRef<RichTextEditorHandle>(null);
   const tomorrowRef = useRef<RichTextEditorHandle>(null);
   const blockersRef = useRef<RichTextEditorHandle>(null);
@@ -57,6 +58,7 @@ export default function DailyFeedbackFormModal({
       start_date:      startDate,
       end_date:        endDate,
       total_time:      parsedTotal,
+      current_state:   currentStateRef.current?.getHTML() ?? null,
       current_work:    todayRef.current?.getHTML() ?? null,
       next_work:       tomorrowRef.current?.getHTML() ?? null,
       blockers:        blockersRef.current?.getHTML() ?? null,
@@ -127,6 +129,11 @@ export default function DailyFeedbackFormModal({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FieldBlock
+              label="What we have now"
+              editorRef={currentStateRef}
+              initialHtml={feedback?.current_state ?? ""}
+            />
             <FieldBlock
               label="What I worked on this period"
               editorRef={todayRef}
