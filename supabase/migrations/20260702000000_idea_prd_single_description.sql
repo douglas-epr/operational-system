@@ -24,16 +24,16 @@ ALTER TABLE public.idea_prd
 UPDATE public.idea_prd SET description =
   NULLIF(
     concat_ws(E'\n',
-      CASE WHEN coalesce(app_overview,'')        <> '' THEN '<h2>App Overview</h2>'                <> app_overview        END,
-      CASE WHEN coalesce(objectives,'')          <> '' THEN '<h2>Objectives</h2>'                  <> objectives          END,
-      CASE WHEN coalesce(priority_personas,'')   <> '' THEN '<h2>Priority Personas</h2>'           <> priority_personas    END,
-      CASE WHEN coalesce(essential_features,'')  <> '' THEN '<h2>Essential Features</h2>'          <> essential_features   END,
-      CASE WHEN coalesce(user_flow,'')           <> '' THEN '<h2>Main User Flow</h2>'              <> user_flow            END,
-      CASE WHEN coalesce(features_per_page,'')   <> '' THEN '<h2>Features per Page</h2>'           <> features_per_page    END,
-      CASE WHEN coalesce(non_functional_reqs,'') <> '' THEN '<h2>Non-Functional Requirements</h2>' <> non_functional_reqs  END,
-      CASE WHEN coalesce(out_of_scope,'')        <> '' THEN '<h2>Out of Scope</h2>'                <> out_of_scope         END,
-      CASE WHEN coalesce(success_indicators,'')  <> '' THEN '<h2>Success Metrics</h2>'             <> success_indicators   END,
-      CASE WHEN coalesce(phasing_notes,'')       <> '' THEN '<h2>Phasing Notes</h2>'               <> phasing_notes        END
+      CASE WHEN coalesce(app_overview,'')        <> '' THEN '<h2>App Overview</h2>'                || app_overview        END,
+      CASE WHEN coalesce(objectives,'')          <> '' THEN '<h2>Objectives</h2>'                  || objectives          END,
+      CASE WHEN coalesce(priority_personas,'')   <> '' THEN '<h2>Priority Personas</h2>'           || priority_personas    END,
+      CASE WHEN coalesce(essential_features,'')  <> '' THEN '<h2>Essential Features</h2>'          || essential_features   END,
+      CASE WHEN coalesce(user_flow,'')           <> '' THEN '<h2>Main User Flow</h2>'              || user_flow            END,
+      CASE WHEN coalesce(features_per_page,'')   <> '' THEN '<h2>Features per Page</h2>'           || features_per_page    END,
+      CASE WHEN coalesce(non_functional_reqs,'') <> '' THEN '<h2>Non-Functional Requirements</h2>' || non_functional_reqs  END,
+      CASE WHEN coalesce(out_of_scope,'')        <> '' THEN '<h2>Out of Scope</h2>'                || out_of_scope         END,
+      CASE WHEN coalesce(success_indicators,'')  <> '' THEN '<h2>Success Metrics</h2>'             || success_indicators   END,
+      CASE WHEN coalesce(phasing_notes,'')       <> '' THEN '<h2>Phasing Notes</h2>'               || phasing_notes        END
     ),
     ''
   )
