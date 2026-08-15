@@ -17,7 +17,8 @@ import type {
   ProjectOption,
 } from "@/types/idea-refiner";
 import type { UserProfile } from "@/types/projects";
-import type { AiService, UserAiSettingsClient } from "@/types/settings";
+import type { UserAiSettingsClient } from "@/types/settings";
+import { DEFAULT_OPENROUTER_MODEL } from "@/types/settings";
 
 // Hobby plan cap is 300 s. The debate pipeline (risk_and_validation, report) was
 // optimised to ~80–130 s via compact source blocks, so 300 s is sufficient.
@@ -51,7 +52,7 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
   const tabParam = normalizeTabParam(params.tab);
   const projectParam = params.project ?? null;
 
-  // Fetch ideas, projects, AI settings, and profiles in parallel
+  // Fetch ideas, projects, AI model preference, and profiles in parallel
   const [{ data: ideasData }, { data: projectsData }, { data: aiSettingsData }, { data: profilesRaw }] =
     await Promise.all([
       supabase
@@ -64,9 +65,7 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
         .order("name", { ascending: true }),
       supabase
         .from("user_ai_settings" as never)
-        .select(
-          "active_service, openai_api_key, gemini_api_key, claude_api_key, openai_model, gemini_model, claude_model"
-        )
+        .select("openrouter_model")
         .eq("owner_id" as never, userId)
         .maybeSingle(),
       supabase
@@ -88,32 +87,14 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
   const projects = (projectsData ?? []) as unknown as ProjectOption[];
 
   const aiSettingsRow = aiSettingsData as unknown as {
-    active_service: string | null;
-    openai_api_key: string | null;
-    gemini_api_key: string | null;
-    claude_api_key: string | null;
-    openai_model: string | null;
-    gemini_model: string | null;
-    claude_model: string | null;
+    openrouter_model: string | null;
   } | null;
-
-  let hasAiConfigured = false;
-  if (aiSettingsRow?.active_service) {
-    const keyField = `${aiSettingsRow.active_service}_api_key` as keyof typeof aiSettingsRow;
-    hasAiConfigured = !!aiSettingsRow[keyField];
-  }
 
   const role = (profile as { type?: string | null } | null)?.type ?? null;
   const isAdminOrManager = role === "admin" || role === "manager";
 
   const aiSettings: UserAiSettingsClient = {
-    activeService: (aiSettingsRow?.active_service as AiService) ?? null,
-    openaiKeySet: !!aiSettingsRow?.openai_api_key,
-    geminiKeySet: !!aiSettingsRow?.gemini_api_key,
-    claudeKeySet: !!aiSettingsRow?.claude_api_key,
-    openaiModel: aiSettingsRow?.openai_model ?? "gpt-4.1",
-    geminiModel: aiSettingsRow?.gemini_model ?? "gemini-2.5-flash",
-    claudeModel: aiSettingsRow?.claude_model ?? "claude-sonnet-4-20250514",
+    model: aiSettingsRow?.openrouter_model ?? DEFAULT_OPENROUTER_MODEL,
   };
 
   // If an idea is selected, fetch full data for refinement steps
@@ -141,7 +122,6 @@ export default async function SandboxPlannerPage({ searchParams }: PageProps) {
         currentUserId={userId}
         isAdminOrManager={isAdminOrManager}
         selectedProjectId={projectParam}
-        hasAiConfigured={hasAiConfigured}
         aiSettings={aiSettings}
       />
     </PageShell>

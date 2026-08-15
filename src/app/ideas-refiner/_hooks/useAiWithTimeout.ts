@@ -15,12 +15,10 @@ const AI_TIMEOUT_MS = 240_000; // 4 minutes — heavy prompts (e.g. Report) can 
 /** Toast shown when an AI call returns a non-timeout error. */
 function showErrorToast(message: string) {
   toast.error("AI generation failed", {
-    description:
-      message +
-      " — Try switching to a different AI model in Settings → AI Configuration.",
+    description: message + " — Try switching to a different AI model.",
     duration: 10_000,
     action: {
-      label: "Go to Settings",
+      label: "Change model",
       onClick: () => {
         openAiConfigModal();
       },

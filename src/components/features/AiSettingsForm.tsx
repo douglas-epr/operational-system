@@ -2,19 +2,11 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import type {
-  AiService,
-  UserAiSettingsClient,
-  SaveAiSettingsPayload,
-} from "@/types/settings";
-import {
-  AI_SERVICE_LABELS,
-  AI_SERVICE_VALUES,
-  DEFAULT_MODELS,
-} from "@/types/settings";
+import type { UserAiSettingsClient, SaveAiSettingsPayload } from "@/types/settings";
+import { OPENROUTER_MODELS } from "@/types/settings";
 
 interface AiSettingsFormProps {
-  /** Current settings (keys masked to booleans). */
+  /** Current settings. */
   initialSettings: UserAiSettingsClient;
   /** Server action to save settings. */
   onSave: (payload: SaveAiSettingsPayload) => Promise<{ error?: string }>;
@@ -30,17 +22,7 @@ export default function AiSettingsForm({
   onSuccess,
   submitLabel = "Save Settings",
 }: AiSettingsFormProps) {
-  const [activeService, setActiveService] = useState<AiService | "">(
-    initialSettings.activeService ?? ""
-  );
-  const [openaiModel, setOpenaiModel] = useState(initialSettings.openaiModel);
-  const [geminiModel, setGeminiModel] = useState(initialSettings.geminiModel);
-  const [claudeModel, setClaudeModel] = useState(initialSettings.claudeModel);
-
-  const [openaiKey, setOpenaiKey] = useState("");
-  const [geminiKey, setGeminiKey] = useState("");
-  const [claudeKey, setClaudeKey] = useState("");
-
+  const [model, setModel] = useState(initialSettings.model);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -51,40 +33,7 @@ export default function AiSettingsForm({
     setError(null);
     setSuccess(false);
 
-    const trimmedOpenai = openaiKey.trim();
-    const trimmedGemini = geminiKey.trim();
-    const trimmedClaude = claudeKey.trim();
-
-    // Guard against double-paste into the password field (invisible input makes
-    // it easy to accidentally paste twice, storing key+key as one string).
-    if (trimmedOpenai && (trimmedOpenai.length > 300 || !trimmedOpenai.startsWith("sk-"))) {
-      setError("Invalid OpenAI API key — it looks like the key was pasted twice or is malformed. Please clear the field and paste once.");
-      setIsSubmitting(false);
-      return;
-    }
-    if (trimmedGemini && trimmedGemini.length > 200) {
-      setError("Invalid Gemini API key — it looks like the key was pasted twice or is malformed. Please clear the field and paste once.");
-      setIsSubmitting(false);
-      return;
-    }
-    if (trimmedClaude && (trimmedClaude.length > 300 || !trimmedClaude.startsWith("sk-ant-"))) {
-      setError("Invalid Claude API key — it looks like the key was pasted twice or is malformed. Please clear the field and paste once.");
-      setIsSubmitting(false);
-      return;
-    }
-
-    const payload: SaveAiSettingsPayload = {
-      activeService: activeService || null,
-      openaiModel,
-      geminiModel,
-      claudeModel,
-    };
-
-    if (trimmedOpenai) payload.openaiApiKey = trimmedOpenai;
-    if (trimmedGemini) payload.geminiApiKey = trimmedGemini;
-    if (trimmedClaude) payload.claudeApiKey = trimmedClaude;
-
-    const result = await onSave(payload);
+    const result = await onSave({ model });
     setIsSubmitting(false);
 
     if (result.error) {
@@ -96,129 +45,46 @@ export default function AiSettingsForm({
     onSuccess?.();
   }
 
-  const inputClass = cn(
-    "w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-base text-text-primary placeholder:text-text-muted",
-    "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
-    "disabled:opacity-50"
-  );
-
   const selectClass = cn(
     "w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-base text-text-primary",
     "focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent",
     "disabled:opacity-50"
   );
 
+  const isKnownModel = OPENROUTER_MODELS.some((m) => m.id === model);
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Active Service */}
+      <div className="rounded-lg border border-border bg-surface p-4">
+        <p className="text-sm font-medium text-text-primary">Provider: OpenRouter</p>
+        <p className="text-xs text-text-muted mt-1">
+          AI is provided by the platform — no API key needed. Pick the model you want your
+          generations to run on.
+        </p>
+      </div>
+
       <div>
         <label
-          htmlFor="ai-active-service"
+          htmlFor="ai-model"
           className="block text-sm font-medium text-text-primary mb-1.5"
         >
-          Active AI Service
+          Model
         </label>
         <select
-          id="ai-active-service"
-          value={activeService}
-          onChange={(e) => setActiveService(e.target.value as AiService | "")}
+          id="ai-model"
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
           disabled={isSubmitting}
           className={selectClass}
         >
-          <option value="">None (disabled)</option>
-          {AI_SERVICE_VALUES.map((s) => (
-            <option key={s} value={s}>
-              {AI_SERVICE_LABELS[s]}
+          {!isKnownModel && <option value={model}>{model}</option>}
+          {OPENROUTER_MODELS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
             </option>
           ))}
         </select>
       </div>
-
-      {/* Per-service config sections */}
-      {AI_SERVICE_VALUES.map((service) => {
-        const keySet =
-          service === "openai"
-            ? initialSettings.openaiKeySet
-            : service === "gemini"
-              ? initialSettings.geminiKeySet
-              : initialSettings.claudeKeySet;
-        void keySet;
-        const keyValue =
-          service === "openai" ? openaiKey : service === "gemini" ? geminiKey : claudeKey;
-        const setKeyValue =
-          service === "openai" ? setOpenaiKey : service === "gemini" ? setGeminiKey : setClaudeKey;
-        const modelValue =
-          service === "openai" ? openaiModel : service === "gemini" ? geminiModel : claudeModel;
-        const setModelValue =
-          service === "openai"
-            ? setOpenaiModel
-            : service === "gemini"
-              ? setGeminiModel
-              : setClaudeModel;
-        const isActive = activeService === service;
-
-        return (
-          <fieldset
-            key={service}
-            className={cn(
-              "rounded-lg border p-4 space-y-4 transition-opacity",
-              isActive ? "border-accent/50 bg-accent/5" : "border-border opacity-60"
-            )}
-          >
-            <legend className="px-2 text-sm font-semibold text-text-primary">
-              {AI_SERVICE_LABELS[service]}
-              {isActive && (
-                <span className="ml-2 text-xs font-normal text-accent">Active</span>
-              )}
-            </legend>
-
-            <div>
-              <label
-                htmlFor={`ai-key-${service}`}
-                className="block text-xs font-medium text-text-secondary mb-1"
-              >
-                API Key
-              </label>
-              <input
-                id={`ai-key-${service}`}
-                type="password"
-                value={keyValue}
-                onChange={(e) => setKeyValue(e.target.value)}
-                placeholder={
-                  keySet
-                    ? "Leave blank to keep current key"
-                    : `Enter ${AI_SERVICE_LABELS[service]} API key...`
-                }
-                disabled={isSubmitting}
-                className={inputClass}
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor={`ai-model-${service}`}
-                className="block text-xs font-medium text-text-secondary mb-1"
-              >
-                Model
-              </label>
-              <select
-                id={`ai-model-${service}`}
-                value={modelValue}
-                onChange={(e) => setModelValue(e.target.value)}
-                disabled={isSubmitting}
-                className={selectClass}
-              >
-                {modelValue && !DEFAULT_MODELS[service].includes(modelValue) && (
-                  <option value={modelValue}>{modelValue}</option>
-                )}
-                {DEFAULT_MODELS[service].map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
-          </fieldset>
-        );
-      })}
 
       {error && (
         <p className="text-sm text-red-400" role="alert">

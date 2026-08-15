@@ -8,12 +8,10 @@
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Idea, ProjectOption } from "@/types/idea-refiner";
-import type { UserAiSettingsClient } from "@/types/settings";
 import type { UserProfile } from "@/types/projects";
 import type { UserMultiSelectOption } from "@/components/ui/UserMultiSelect";
 import { cn } from "@/lib/utils";
 import CreateIdeaModal from "./CreateIdeaModal";
-import AiSettingsModal from "./AiSettingsModal";
 import ConfirmDeleteModal from "@/app/projects/_components/modals/ConfirmDeleteModal";
 import ConfirmCopyModal from "./ConfirmCopyModal";
 import { deleteIdea, duplicateIdea, buildProjectFromIdea } from "../actions";
@@ -28,10 +26,6 @@ interface IdeasGridProps {
   onSelectIdea: (ideaId: string) => void;
   /** Current project filter from URL ?project= param. null = show all. */
   selectedProjectId: string | null;
-  /** Whether the user has a configured AI service with a valid key. */
-  hasAiConfigured: boolean;
-  /** Masked AI settings for the settings modal form. */
-  aiSettings: UserAiSettingsClient;
 }
 
 /** Renders the ideas overview: project filter, header, and card grid. */
@@ -44,8 +38,6 @@ export default function IdeasGrid({
   isAdminOrManager,
   onSelectIdea,
   selectedProjectId,
-  hasAiConfigured,
-  aiSettings,
 }: IdeasGridProps) {
   const profileOptions: UserMultiSelectOption[] = profiles.map((p) => ({
     id: p.id,
@@ -56,34 +48,12 @@ export default function IdeasGrid({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [modalOpen, setModalOpen] = useState(false);
-  const [aiModalOpen, setAiModalOpen] = useState(false);
-  const [pendingIdeaId, setPendingIdeaId] = useState<string | null>(null);
   const [deletingIdea, setDeletingIdea] = useState<Idea | null>(null);
   const [editingIdea, setEditingIdea] = useState<Idea | null>(null);
   const [copyingIdea, setCopyingIdea] = useState<Idea | null>(null);
   const [buildingIdea, setBuildingIdea] = useState<Idea | null>(null);
   const [buildError, setBuildError] = useState<string | null>(null);
   const [buildSubmitting, setBuildSubmitting] = useState(false);
-
-  /** Gate "See Refinement" — show AI settings modal if not configured. */
-  function handleSelectIdea(ideaId: string) {
-    if (!hasAiConfigured) {
-      setPendingIdeaId(ideaId);
-      setAiModalOpen(true);
-      return;
-    }
-    onSelectIdea(ideaId);
-  }
-
-  /** After AI settings are saved, proceed to the pending idea. */
-  function handleAiConfigured() {
-    setAiModalOpen(false);
-    if (pendingIdeaId) {
-      onSelectIdea(pendingIdeaId);
-      setPendingIdeaId(null);
-    }
-    router.refresh();
-  }
 
   // Filter ideas by selected project
   const filteredIdeas = useMemo(() => {
@@ -195,7 +165,7 @@ export default function IdeasGrid({
                   idea={idea}
                   profiles={profiles}
                   isCreator={idea.created_by === currentUserId}
-                  onSelect={() => handleSelectIdea(idea.id)}
+                  onSelect={() => onSelectIdea(idea.id)}
                   onDeleteClick={() => setDeletingIdea(idea)}
                   onEditClick={() => setEditingIdea(idea)}
                   onCopyClick={() => setCopyingIdea(idea)}
@@ -225,17 +195,6 @@ export default function IdeasGrid({
         idea={editingIdea}
         currentUserId={currentUserId}
         isAdminOrManager={isAdminOrManager}
-      />
-
-      {/* AI Settings Modal — shown when user needs to configure AI before refinement */}
-      <AiSettingsModal
-        open={aiModalOpen}
-        onClose={() => {
-          setAiModalOpen(false);
-          setPendingIdeaId(null);
-        }}
-        initialSettings={aiSettings}
-        onConfigured={handleAiConfigured}
       />
 
       {/* Delete Idea confirm modal */}

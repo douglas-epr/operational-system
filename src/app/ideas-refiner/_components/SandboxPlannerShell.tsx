@@ -45,7 +45,6 @@ interface SandboxPlannerShellProps {
   currentUserId: string;
   isAdminOrManager: boolean;
   selectedProjectId: string | null;
-  hasAiConfigured: boolean;
   aiSettings: UserAiSettingsClient;
 }
 
@@ -156,7 +155,6 @@ export default function SandboxPlannerShell({
   currentUserId,
   isAdminOrManager,
   selectedProjectId,
-  hasAiConfigured,
   aiSettings,
 }: SandboxPlannerShellProps) {
   const router = useRouter();
@@ -255,8 +253,6 @@ export default function SandboxPlannerShell({
           isAdminOrManager={isAdminOrManager}
           onSelectIdea={selectIdea}
           selectedProjectId={selectedProjectId}
-          hasAiConfigured={hasAiConfigured}
-          aiSettings={aiSettings}
         />
         <AiConfigModal
           isOpen={showAiConfigModal}
@@ -333,8 +329,6 @@ export default function SandboxPlannerShell({
             isAdminOrManager={isAdminOrManager}
             onSelectIdea={selectIdea}
             selectedProjectId={selectedProjectId}
-            hasAiConfigured={hasAiConfigured}
-            aiSettings={aiSettings}
           />
         )}
         {activeTab === "structure_align" && (

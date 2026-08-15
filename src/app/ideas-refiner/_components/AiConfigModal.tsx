@@ -1,7 +1,7 @@
 /**
  * Inline AI Configuration Modal.
- * Opens from the timeout toast "Go to Settings" action so the user can
- * update their AI provider/model without leaving the Sandbox Planner.
+ * Opens from the error toast "Change model" action so the user can switch
+ * OpenRouter model without leaving the Sandbox Planner.
  * Wraps the shared AiSettingsForm component.
  */
 "use client";
@@ -38,7 +38,7 @@ export default function AiConfigModal({
           <div>
             <h2 className="text-xl font-bold text-white">AI Configuration</h2>
             <p className="text-sm text-gray-400 mt-0.5">
-              Update your AI provider, API key, and model selection.
+              Choose which OpenRouter model your generations run on.
             </p>
           </div>
           <button

@@ -3,7 +3,8 @@ import PageShell from "@/components/layout/PageShell";
 import PageHeader from "@/components/layout/PageHeader";
 import SettingsShell from "./_components/SettingsShell";
 import { getAgency } from "./actions";
-import type { UserAiSettingsClient, AiService } from "@/types/settings";
+import type { UserAiSettingsClient } from "@/types/settings";
+import { DEFAULT_OPENROUTER_MODEL } from "@/types/settings";
 import type { ThemeChoice } from "@/components/theme/ThemeProvider";
 
 export default async function SettingsPage() {
@@ -24,22 +25,14 @@ export default async function SettingsPage() {
       .single(),
     supabase
       .from("user_ai_settings" as never)
-      .select(
-        "active_service, openai_api_key, gemini_api_key, claude_api_key, openai_model, gemini_model, claude_model"
-      )
+      .select("openrouter_model")
       .eq("owner_id" as never, userId)
       .maybeSingle(),
     getAgency(),
   ]);
 
   const settingsRow = settings as unknown as {
-    active_service: string | null;
-    openai_api_key: string | null;
-    gemini_api_key: string | null;
-    claude_api_key: string | null;
-    openai_model: string | null;
-    gemini_model: string | null;
-    claude_model: string | null;
+    openrouter_model: string | null;
   } | null;
 
   const profileRow = profile as unknown as {
@@ -56,13 +49,7 @@ export default async function SettingsPage() {
   const isAdmin = role === "admin";
 
   const clientSettings: UserAiSettingsClient = {
-    activeService: (settingsRow?.active_service as AiService) ?? null,
-    openaiKeySet: !!settingsRow?.openai_api_key,
-    geminiKeySet: !!settingsRow?.gemini_api_key,
-    claudeKeySet: !!settingsRow?.claude_api_key,
-    openaiModel: settingsRow?.openai_model ?? "gpt-4.1",
-    geminiModel: settingsRow?.gemini_model ?? "gemini-2.5-flash",
-    claudeModel: settingsRow?.claude_model ?? "claude-sonnet-4-20250514",
+    model: settingsRow?.openrouter_model ?? DEFAULT_OPENROUTER_MODEL,
   };
 
   return (

@@ -4277,6 +4277,7 @@ export type Database = {
           gemini_model: string | null
           openai_api_key: string | null
           openai_model: string | null
+          openrouter_model: string
           owner_id: string
           updated_at: string
         }
@@ -4289,6 +4290,7 @@ export type Database = {
           gemini_model?: string | null
           openai_api_key?: string | null
           openai_model?: string | null
+          openrouter_model?: string
           owner_id: string
           updated_at?: string
         }
@@ -4301,6 +4303,7 @@ export type Database = {
           gemini_model?: string | null
           openai_api_key?: string | null
           openai_model?: string | null
+          openrouter_model?: string
           owner_id?: string
           updated_at?: string
         }

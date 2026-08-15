@@ -1,6 +1,6 @@
 /**
  * Server actions for the Settings page:
- *   - Per-user AI config (`user_ai_settings`)
+ *   - Per-user AI model preference (`user_ai_settings`)
  *   - Agency record (`agency`) — admin-only edit
  */
 "use server";
@@ -8,28 +8,15 @@
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type {
-  AiService,
   SaveAgencyInfoPayload,
   SaveAiSettingsPayload,
   Agency,
 } from "@/types/settings";
+import { OPENROUTER_MODELS } from "@/types/settings";
 
 const PATH = "/settings";
 const TABLE = "user_ai_settings" as never;
 const AGENCY_TABLE = "agency" as never;
-
-/** Row shape for user_ai_settings (until generated types are updated). */
-interface AiSettingsRow {
-  // Renamed from user_id → owner_id (Part 2 item 3).
-  owner_id: string;
-  active_service: string | null;
-  openai_api_key: string | null;
-  gemini_api_key: string | null;
-  claude_api_key: string | null;
-  openai_model: string | null;
-  gemini_model: string | null;
-  claude_model: string | null;
-}
 
 /** Persist the user's theme preference (light | dark) to their profile row. */
 export async function saveTheme(
@@ -48,7 +35,7 @@ export async function saveTheme(
   return {};
 }
 
-/** Save (upsert) the user's AI settings. */
+/** Save (upsert) the user's preferred OpenRouter model. */
 export async function saveAiSettings(
   payload: SaveAiSettingsPayload
 ): Promise<{ error?: string }> {
@@ -58,50 +45,18 @@ export async function saveAiSettings(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
-  const row: Record<string, unknown> = {
-    owner_id: user.id,
-    active_service: payload.activeService,
-    openai_model: payload.openaiModel,
-    gemini_model: payload.geminiModel,
-    claude_model: payload.claudeModel,
-  };
-
-  // Only update key fields that were explicitly provided
-  if (payload.openaiApiKey !== undefined) {
-    row.openai_api_key = payload.openaiApiKey || null;
-  }
-  if (payload.geminiApiKey !== undefined) {
-    row.gemini_api_key = payload.geminiApiKey || null;
-  }
-  if (payload.claudeApiKey !== undefined) {
-    row.claude_api_key = payload.claudeApiKey || null;
+  // Only allow models the app actually offers — the slug is sent to OpenRouter verbatim.
+  if (!OPENROUTER_MODELS.some((m) => m.id === payload.model)) {
+    return { error: "Unknown model." };
   }
 
-  // Check if row exists (column renamed user_id → owner_id, item 3)
-  const { data: existing } = await supabase
+  const { error } = await supabase
     .from(TABLE)
-    .select("owner_id")
-    .eq("owner_id" as never, user.id)
-    .maybeSingle();
-
-  if (existing) {
-    // Don't include owner_id in the update payload
-    const { owner_id: _, ...updateData } = row;
-    const { error } = await supabase
-      .from(TABLE)
-      .update(updateData as never)
-      .eq("owner_id" as never, user.id);
-    if (error) return { error: (error as { message: string }).message };
-  } else {
-    // For insert, we need all key fields — default missing ones to null
-    if (row.openai_api_key === undefined) row.openai_api_key = null;
-    if (row.gemini_api_key === undefined) row.gemini_api_key = null;
-    if (row.claude_api_key === undefined) row.claude_api_key = null;
-    const { error } = await supabase
-      .from(TABLE)
-      .insert(row as never);
-    if (error) return { error: (error as { message: string }).message };
-  }
+    .upsert(
+      { owner_id: user.id, openrouter_model: payload.model } as never,
+      { onConflict: "owner_id" } as never
+    );
+  if (error) return { error: (error as { message: string }).message };
 
   revalidatePath(PATH);
   revalidatePath("/ideas-refiner");
@@ -168,51 +123,6 @@ export async function saveAgencyInfo(
 
   revalidatePath(PATH);
   return {};
-}
-
-/**
- * Get the active AI service config for the current user.
- * Returns the API key, model, and service name.
- * Server-only — never exposed to client.
- */
-export async function getAiSettingsForGeneration(): Promise<{
-  service: AiService;
-  apiKey: string;
-  model: string;
-} | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data } = await supabase
-    .from(TABLE)
-    .select(
-      "active_service, openai_api_key, gemini_api_key, claude_api_key, openai_model, gemini_model, claude_model"
-    )
-    .eq("owner_id" as never, user.id)
-    .maybeSingle();
-
-  const settings = data as unknown as AiSettingsRow | null;
-  if (!settings?.active_service) return null;
-
-  const service = settings.active_service as AiService;
-  const keyMap: Record<AiService, string | null> = {
-    openai: settings.openai_api_key,
-    gemini: settings.gemini_api_key,
-    claude: settings.claude_api_key,
-  };
-  const modelMap: Record<AiService, string> = {
-    openai: settings.openai_model ?? "gpt-4.1",
-    gemini: settings.gemini_model ?? "gemini-2.5-flash",
-    claude: settings.claude_model ?? "claude-sonnet-4-20250514",
-  };
-
-  const apiKey = keyMap[service];
-  if (!apiKey) return null;
-
-  return { service, apiKey, model: modelMap[service] };
 }
 
 // ── Account: email & password ───────────────────────────────────────────────

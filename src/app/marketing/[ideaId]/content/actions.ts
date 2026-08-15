@@ -576,7 +576,7 @@ export async function generateContentDraft(
     const design = r3.data as ImageDesignerOutput;
     imageBrief = design.image_prompt ?? "";
     if (imageBrief) {
-      const keys = await resolveImageKeys(ctx.supabase, ctx.user.id);
+      const keys = await resolveImageKeys();
       const img = await generatePostImage(ctx.supabase, ideaId, imageBrief, keys);
       if (img.url) imageUrl = img.url;
       else imageError = img.error;

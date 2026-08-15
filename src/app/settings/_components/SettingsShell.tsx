@@ -61,8 +61,9 @@ export default function SettingsShell({
         <div className="mb-3">
           <h2 className="text-lg font-semibold text-text-primary">AI Configuration</h2>
           <p className="text-sm text-text-muted mt-1">
-            Your personal AI service, keys, and preferred models. Used when generating
-            content in the Sandbox Planner, the chatbots, and the "Import tasks from idea" tool.
+            AI runs on the platform's OpenRouter account — no API key needed. Choose the
+            model used when generating content in the Sandbox Planner, the chatbots, and
+            the &quot;Import tasks from idea&quot; tool.
           </p>
         </div>
         <AiSettingsForm
