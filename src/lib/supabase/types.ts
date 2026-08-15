@@ -4269,40 +4269,19 @@ export type Database = {
       }
       user_ai_settings: {
         Row: {
-          active_service: Database["public"]["Enums"]["os_ai_service"] | null
-          claude_api_key: string | null
-          claude_model: string | null
           created_at: string
-          gemini_api_key: string | null
-          gemini_model: string | null
-          openai_api_key: string | null
-          openai_model: string | null
           openrouter_model: string
           owner_id: string
           updated_at: string
         }
         Insert: {
-          active_service?: Database["public"]["Enums"]["os_ai_service"] | null
-          claude_api_key?: string | null
-          claude_model?: string | null
           created_at?: string
-          gemini_api_key?: string | null
-          gemini_model?: string | null
-          openai_api_key?: string | null
-          openai_model?: string | null
           openrouter_model?: string
           owner_id: string
           updated_at?: string
         }
         Update: {
-          active_service?: Database["public"]["Enums"]["os_ai_service"] | null
-          claude_api_key?: string | null
-          claude_model?: string | null
           created_at?: string
-          gemini_api_key?: string | null
-          gemini_model?: string | null
-          openai_api_key?: string | null
-          openai_model?: string | null
           openrouter_model?: string
           owner_id?: string
           updated_at?: string
@@ -4472,7 +4451,6 @@ export type Database = {
         | "proposal_quotation"
         | "service_agreement"
         | "launch_handoff"
-      os_ai_service: "gemini" | "claude" | "openai"
       os_ai_status: "pending" | "in_progress" | "done"
       os_company_sector: "organizational" | "operational" | "marketing"
       os_docs_type:
@@ -4927,7 +4905,6 @@ export const Constants = {
         "service_agreement",
         "launch_handoff",
       ],
-      os_ai_service: ["gemini", "claude", "openai"],
       os_ai_status: ["pending", "in_progress", "done"],
       os_company_sector: ["organizational", "operational", "marketing"],
       os_docs_type: [

@@ -1,14 +1,14 @@
 /**
- * Types for user AI settings.
- * Maps to the `user_ai_settings` table and `os_ai_service` enum.
+ * Types for user AI settings. Maps to the `user_ai_settings` table.
  *
  * Since 2026-08-14 the platform routes ALL AI generation through OpenRouter
  * using a single platform-owned key — users no longer supply their own keys.
- * The only per-user preference left is which OpenRouter model to use.
+ * The only per-user preference left is which OpenRouter model to use, so the
+ * old `os_ai_service` enum and the per-provider key columns are gone.
  */
 
-/** AI service enum — matches PostgreSQL `os_ai_service`. */
-export type AiService = "openai" | "gemini" | "claude" | "openrouter";
+/** The single provider the app generates through. */
+export type AiService = "openrouter";
 
 /** The only provider the app talks to. */
 export const AI_SERVICE: AiService = "openrouter";
