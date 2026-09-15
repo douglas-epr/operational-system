@@ -5,15 +5,16 @@
  * Client component because Recharts hooks into the DOM for sizing.
  */
 
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from "recharts";
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/ui";
+
+// Recharts is heavy and client-only — lazy-load just the bar chart piece,
+// not the card chrome or the conversion-rate strip below it (design-system.md
+// "Charts, PDF & DOCX").
+const FunnelBarChartInner = dynamic(() => import("./FunnelBarChartInner"), {
+  ssr: false,
+  loading: () => <Skeleton variant="rect" h={180} />,
+});
 
 // ── Funnel bar chart ──────────────────────────────────────────────────────────
 
@@ -23,45 +24,10 @@ interface FunnelChartProps {
 }
 
 export function FunnelBarChart({ title, stages }: FunnelChartProps) {
-  const max = Math.max(1, ...stages.map((s) => s.value));
-
   return (
     <section className="card">
       <h2 className="text-heading-3 text-text-primary mb-4">{title}</h2>
-      <ResponsiveContainer width="100%" height={180}>
-        <BarChart
-          data={stages}
-          layout="vertical"
-          margin={{ top: 0, right: 24, left: 0, bottom: 0 }}
-        >
-          <XAxis type="number" domain={[0, max]} hide />
-          <YAxis
-            type="category"
-            dataKey="label"
-            width={90}
-            tick={{ fontSize: 11, fill: "var(--text-muted)" }}
-          />
-          <Tooltip
-            cursor={{ fill: "var(--surface)" }}
-            contentStyle={{
-              background: "var(--elevated)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            formatter={(v) => [(v as number).toLocaleString(), "Count"]}
-          />
-          <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={20}>
-            {stages.map((s, i) => (
-              <Cell
-                key={i}
-                fill={s.color ?? "var(--accent)"}
-                fillOpacity={0.75}
-              />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+      <FunnelBarChartInner stages={stages} />
 
       {/* Conversion rates below the chart */}
       <div className="flex gap-4 mt-3 flex-wrap">

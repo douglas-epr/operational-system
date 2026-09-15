@@ -14,6 +14,7 @@
 import { useRef, useState } from "react";
 import Modal from "@/app/projects/_components/modals/Modal";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { exportElementToPdf } from "../_lib/exportPdf";
 
 export interface PrdPreviewSection {
@@ -189,7 +190,7 @@ ${bodyHtml}
                 {s.html ? (
                   <div
                     className="prd-section-content"
-                    dangerouslySetInnerHTML={{ __html: s.html }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(s.html) }}
                   />
                 ) : (
                   <p style={{ color: "#999", fontStyle: "italic" }}>(empty)</p>
@@ -202,8 +203,7 @@ ${bodyHtml}
 
       {/* Scope styles for the injected rich text so lists, links, etc. render cleanly without oklch. */}
       <style
-        dangerouslySetInnerHTML={{
-          __html: `
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(`
             .prd-section-content p,
             .prd-section-content li,
             .prd-section-content tr,
@@ -224,7 +224,7 @@ ${bodyHtml}
               background: #f3f4f6; padding: 2px 4px; border-radius: 3px;
               font-family: 'Courier New', monospace; font-size: 13px;
             }
-          `,
+          `),
         }}
       />
     </Modal>

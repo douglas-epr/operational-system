@@ -5,7 +5,6 @@ export type Json =
   | null
   | { [key: string]: Json | undefined }
   | Json[]
-
 export type Database = {
   graphql_public: {
     Tables: {
@@ -763,6 +762,8 @@ export type Database = {
           current_blocks_updating: string | null
           description: string | null
           id: string
+          jurisdiction: string | null
+          location: string | null
           name: string
           project_id: string | null
           score: number | null
@@ -781,6 +782,8 @@ export type Database = {
           current_blocks_updating?: string | null
           description?: string | null
           id?: string
+          jurisdiction?: string | null
+          location?: string | null
           name: string
           project_id?: string | null
           score?: number | null
@@ -799,6 +802,8 @@ export type Database = {
           current_blocks_updating?: string | null
           description?: string | null
           id?: string
+          jurisdiction?: string | null
+          location?: string | null
           name?: string
           project_id?: string | null
           score?: number | null
@@ -1102,6 +1107,121 @@ export type Database = {
           },
           {
             foreignKeyName: "idea_icp_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      idea_location_legislation: {
+        Row: {
+          compliance_timeline: string | null
+          created_at: string
+          data_privacy_rules: string | null
+          id: string
+          idea_id: string
+          key_legislation: string | null
+          licensing_requirements: string | null
+          red_flags: string | null
+          regulatory_bodies: string | null
+          regulatory_moat: string | null
+        }
+        Insert: {
+          compliance_timeline?: string | null
+          created_at?: string
+          data_privacy_rules?: string | null
+          id?: string
+          idea_id: string
+          key_legislation?: string | null
+          licensing_requirements?: string | null
+          red_flags?: string | null
+          regulatory_bodies?: string | null
+          regulatory_moat?: string | null
+        }
+        Update: {
+          compliance_timeline?: string | null
+          created_at?: string
+          data_privacy_rules?: string | null
+          id?: string
+          idea_id?: string
+          key_legislation?: string | null
+          licensing_requirements?: string | null
+          red_flags?: string | null
+          regulatory_bodies?: string | null
+          regulatory_moat?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "idea_location_legislation_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      idea_market_opportunity: {
+        Row: {
+          billing_model: string | null
+          cac_estimate: string | null
+          created_at: string
+          data_sources: string | null
+          growth_drivers: string | null
+          id: string
+          idea_id: string
+          ltv_estimate: string | null
+          market_risks: string | null
+          price_point: string | null
+          sam_description: string | null
+          sam_estimate: string | null
+          segment_filter_logic: string | null
+          som_description: string | null
+          som_estimate: string | null
+          tam_description: string | null
+          tam_estimate: string | null
+        }
+        Insert: {
+          billing_model?: string | null
+          cac_estimate?: string | null
+          created_at?: string
+          data_sources?: string | null
+          growth_drivers?: string | null
+          id?: string
+          idea_id: string
+          ltv_estimate?: string | null
+          market_risks?: string | null
+          price_point?: string | null
+          sam_description?: string | null
+          sam_estimate?: string | null
+          segment_filter_logic?: string | null
+          som_description?: string | null
+          som_estimate?: string | null
+          tam_description?: string | null
+          tam_estimate?: string | null
+        }
+        Update: {
+          billing_model?: string | null
+          cac_estimate?: string | null
+          created_at?: string
+          data_sources?: string | null
+          growth_drivers?: string | null
+          id?: string
+          idea_id?: string
+          ltv_estimate?: string | null
+          market_risks?: string | null
+          price_point?: string | null
+          sam_description?: string | null
+          sam_estimate?: string | null
+          segment_filter_logic?: string | null
+          som_description?: string | null
+          som_estimate?: string | null
+          tam_description?: string | null
+          tam_estimate?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "idea_market_opportunity_idea_id_fkey"
             columns: ["idea_id"]
             isOneToOne: false
             referencedRelation: "idea"
@@ -1482,6 +1602,10 @@ export type Database = {
           agreed_solution: string | null
           alignment: Json | null
           area_scores: Json | null
+          brief_generated_at: string | null
+          brief_html: string | null
+          brief_subtitle: string | null
+          brief_title: string | null
           completeness_score: number | null
           created_at: string
           debate_meta: Json | null
@@ -1506,6 +1630,10 @@ export type Database = {
           agreed_solution?: string | null
           alignment?: Json | null
           area_scores?: Json | null
+          brief_generated_at?: string | null
+          brief_html?: string | null
+          brief_subtitle?: string | null
+          brief_title?: string | null
           completeness_score?: number | null
           created_at?: string
           debate_meta?: Json | null
@@ -1530,6 +1658,10 @@ export type Database = {
           agreed_solution?: string | null
           alignment?: Json | null
           area_scores?: Json | null
+          brief_generated_at?: string | null
+          brief_html?: string | null
+          brief_subtitle?: string | null
+          brief_title?: string | null
           completeness_score?: number | null
           created_at?: string
           debate_meta?: Json | null
@@ -1554,6 +1686,56 @@ export type Database = {
             foreignKeyName: "idea_report_idea_id_fkey"
             columns: ["idea_id"]
             isOneToOne: true
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      idea_risk_and_validation: {
+        Row: {
+          agreed_problem: string | null
+          agreed_solution: string | null
+          created_at: string
+          debate_meta: Json | null
+          debate_transcript: Json | null
+          demand_evidence: Json | null
+          id: string
+          idea_id: string
+          risk_register: Json | null
+          validation_test: Json | null
+          why_we_win: Json | null
+        }
+        Insert: {
+          agreed_problem?: string | null
+          agreed_solution?: string | null
+          created_at?: string
+          debate_meta?: Json | null
+          debate_transcript?: Json | null
+          demand_evidence?: Json | null
+          id?: string
+          idea_id: string
+          risk_register?: Json | null
+          validation_test?: Json | null
+          why_we_win?: Json | null
+        }
+        Update: {
+          agreed_problem?: string | null
+          agreed_solution?: string | null
+          created_at?: string
+          debate_meta?: Json | null
+          debate_transcript?: Json | null
+          demand_evidence?: Json | null
+          id?: string
+          idea_id?: string
+          risk_register?: Json | null
+          validation_test?: Json | null
+          why_we_win?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "idea_risk_and_validation_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
             referencedRelation: "idea"
             referencedColumns: ["id"]
           },
@@ -1935,72 +2117,6 @@ export type Database = {
           },
         ]
       }
-      internal_project_work_feedback: {
-        Row: {
-          blockers: string | null
-          created_at: string
-          created_by: string
-          current_state: string | null
-          current_work: string | null
-          date: string
-          end_date: string | null
-          id: string
-          internal_project_id: string
-          next_work: string | null
-          start_date: string | null
-          total_time: number | null
-          updated_at: string
-          video_and_links: string | null
-        }
-        Insert: {
-          blockers?: string | null
-          created_at?: string
-          created_by: string
-          current_state?: string | null
-          current_work?: string | null
-          date: string
-          end_date?: string | null
-          id?: string
-          internal_project_id: string
-          next_work?: string | null
-          start_date?: string | null
-          total_time?: number | null
-          updated_at?: string
-          video_and_links?: string | null
-        }
-        Update: {
-          blockers?: string | null
-          created_at?: string
-          created_by?: string
-          current_state?: string | null
-          current_work?: string | null
-          date?: string
-          end_date?: string | null
-          id?: string
-          internal_project_id?: string
-          next_work?: string | null
-          start_date?: string | null
-          total_time?: number | null
-          updated_at?: string
-          video_and_links?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "internal_project_daily_feedback_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "internal_project_daily_feedback_internal_project_id_fkey"
-            columns: ["internal_project_id"]
-            isOneToOne: false
-            referencedRelation: "internal_project"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       internal_project_file: {
         Row: {
           attachments: Json
@@ -2369,19 +2485,99 @@ export type Database = {
           },
         ]
       }
+      internal_project_work_feedback: {
+        Row: {
+          blockers: string | null
+          conversation_internal_project_message_id: string | null
+          created_at: string
+          created_by: string
+          current_state: string | null
+          current_work: string | null
+          date: string
+          emails: string[]
+          end_date: string | null
+          id: string
+          internal_project_id: string
+          next_work: string | null
+          start_date: string | null
+          total_time: number | null
+          updated_at: string
+          video_and_links: string | null
+        }
+        Insert: {
+          blockers?: string | null
+          conversation_internal_project_message_id?: string | null
+          created_at?: string
+          created_by: string
+          current_state?: string | null
+          current_work?: string | null
+          date: string
+          emails?: string[]
+          end_date?: string | null
+          id?: string
+          internal_project_id: string
+          next_work?: string | null
+          start_date?: string | null
+          total_time?: number | null
+          updated_at?: string
+          video_and_links?: string | null
+        }
+        Update: {
+          blockers?: string | null
+          conversation_internal_project_message_id?: string | null
+          created_at?: string
+          created_by?: string
+          current_state?: string | null
+          current_work?: string | null
+          date?: string
+          emails?: string[]
+          end_date?: string | null
+          id?: string
+          internal_project_id?: string
+          next_work?: string | null
+          start_date?: string | null
+          total_time?: number | null
+          updated_at?: string
+          video_and_links?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_project_daily_feedba_conversation_internal_projec_fkey"
+            columns: ["conversation_internal_project_message_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_internal_project_message"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_project_daily_feedback_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_project_daily_feedback_internal_project_id_fkey"
+            columns: ["internal_project_id"]
+            isOneToOne: false
+            referencedRelation: "internal_project"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice: {
         Row: {
           account_details: string | null
           address: string | null
           client_name: string | null
           code: string
-          currency: string | null
           company_or_user_name: string | null
           created_at: string
           created_by: string
+          currency: string | null
           document_number: string | null
           due_date: string | null
           email: string | null
+          emails: string[]
           end_date: string | null
           iban_code: string | null
           id: string
@@ -2406,6 +2602,7 @@ export type Database = {
           document_number?: string | null
           due_date?: string | null
           email?: string | null
+          emails?: string[]
           end_date?: string | null
           iban_code?: string | null
           id?: string
@@ -2430,6 +2627,7 @@ export type Database = {
           document_number?: string | null
           due_date?: string | null
           email?: string | null
+          emails?: string[]
           end_date?: string | null
           iban_code?: string | null
           id?: string
@@ -3582,72 +3780,6 @@ export type Database = {
           },
         ]
       }
-      project_work_feedback: {
-        Row: {
-          blockers: string | null
-          created_at: string
-          created_by: string
-          current_state: string | null
-          current_work: string | null
-          date: string
-          end_date: string | null
-          id: string
-          next_work: string | null
-          project_id: string | null
-          start_date: string | null
-          total_time: number | null
-          updated_at: string
-          video_and_links: string | null
-        }
-        Insert: {
-          blockers?: string | null
-          created_at?: string
-          created_by: string
-          current_state?: string | null
-          current_work?: string | null
-          date: string
-          end_date?: string | null
-          id?: string
-          next_work?: string | null
-          project_id?: string | null
-          start_date?: string | null
-          total_time?: number | null
-          updated_at: string
-          video_and_links?: string | null
-        }
-        Update: {
-          blockers?: string | null
-          created_at?: string
-          created_by?: string
-          current_state?: string | null
-          current_work?: string | null
-          date?: string
-          end_date?: string | null
-          id?: string
-          next_work?: string | null
-          project_id?: string | null
-          start_date?: string | null
-          total_time?: number | null
-          updated_at?: string
-          video_and_links?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "project_daily_feedback_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "project_daily_feedback_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "project"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       project_file: {
         Row: {
           attachments: Json
@@ -4072,6 +4204,85 @@ export type Database = {
           },
         ]
       }
+      project_work_feedback: {
+        Row: {
+          blockers: string | null
+          conversation_project_external_message_id: string | null
+          created_at: string
+          created_by: string
+          current_state: string | null
+          current_work: string | null
+          date: string
+          emails: string[]
+          end_date: string | null
+          id: string
+          next_work: string | null
+          project_id: string | null
+          start_date: string | null
+          total_time: number | null
+          updated_at: string
+          video_and_links: string | null
+        }
+        Insert: {
+          blockers?: string | null
+          conversation_project_external_message_id?: string | null
+          created_at?: string
+          created_by: string
+          current_state?: string | null
+          current_work?: string | null
+          date: string
+          emails?: string[]
+          end_date?: string | null
+          id?: string
+          next_work?: string | null
+          project_id?: string | null
+          start_date?: string | null
+          total_time?: number | null
+          updated_at: string
+          video_and_links?: string | null
+        }
+        Update: {
+          blockers?: string | null
+          conversation_project_external_message_id?: string | null
+          created_at?: string
+          created_by?: string
+          current_state?: string | null
+          current_work?: string | null
+          date?: string
+          emails?: string[]
+          end_date?: string | null
+          id?: string
+          next_work?: string | null
+          project_id?: string | null
+          start_date?: string | null
+          total_time?: number | null
+          updated_at?: string
+          video_and_links?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_daily_feedback_conversation_project_external_messa_fkey"
+            columns: ["conversation_project_external_message_id"]
+            isOneToOne: false
+            referencedRelation: "conversation_project_external_message"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_daily_feedback_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_daily_feedback_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "project"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prompt: {
         Row: {
           created_at: string
@@ -4269,20 +4480,38 @@ export type Database = {
       }
       user_ai_settings: {
         Row: {
+          active_service: Database["public"]["Enums"]["os_ai_service"] | null
+          claude_api_key: string | null
+          claude_model: string | null
           created_at: string
-          openrouter_model: string
+          gemini_api_key: string | null
+          gemini_model: string | null
+          openai_api_key: string | null
+          openai_model: string | null
           owner_id: string
           updated_at: string
         }
         Insert: {
+          active_service?: Database["public"]["Enums"]["os_ai_service"] | null
+          claude_api_key?: string | null
+          claude_model?: string | null
           created_at?: string
-          openrouter_model?: string
+          gemini_api_key?: string | null
+          gemini_model?: string | null
+          openai_api_key?: string | null
+          openai_model?: string | null
           owner_id: string
           updated_at?: string
         }
         Update: {
+          active_service?: Database["public"]["Enums"]["os_ai_service"] | null
+          claude_api_key?: string | null
+          claude_model?: string | null
           created_at?: string
-          openrouter_model?: string
+          gemini_api_key?: string | null
+          gemini_model?: string | null
+          openai_api_key?: string | null
+          openai_model?: string | null
           owner_id?: string
           updated_at?: string
         }
@@ -4300,15 +4529,15 @@ export type Database = {
     Views: {
       dashboard_member_project_hours: {
         Row: {
-          member_id: string | null
-          first_name: string | null
-          last_name: string | null
-          month: string | null
-          project_kind: string | null
-          project_id: string | null
-          project_name: string | null
-          hours: number | null
           entries: number | null
+          first_name: string | null
+          hours: number | null
+          last_name: string | null
+          member_id: string | null
+          month: string | null
+          project_id: string | null
+          project_kind: string | null
+          project_name: string | null
         }
         Relationships: []
       }
@@ -4451,6 +4680,7 @@ export type Database = {
         | "proposal_quotation"
         | "service_agreement"
         | "launch_handoff"
+      os_ai_service: "gemini" | "claude" | "openai"
       os_ai_status: "pending" | "in_progress" | "done"
       os_company_sector: "organizational" | "operational" | "marketing"
       os_docs_type:
@@ -4466,6 +4696,8 @@ export type Database = {
         | "structure_align"
         | "refining_icp"
         | "product_definition_flows"
+        | "location_legislation"
+        | "market_opportunity"
         | "strategic_frameworks"
         | "benchmarking"
         | "prd"
@@ -4473,6 +4705,7 @@ export type Database = {
         | "visual_styles"
         | "milestones_and_tasks"
         | "report"
+        | "risk_and_validation"
         | "playbook"
       os_idea_chatbot_message_type: "user" | "chatbot"
       os_idea_field:
@@ -4728,11 +4961,8 @@ export type Database = {
     }
   }
 }
-
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
-
 type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
-
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
@@ -4761,7 +4991,6 @@ export type Tables<
       ? R
       : never
     : never
-
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
@@ -4786,7 +5015,6 @@ export type TablesInsert<
       ? I
       : never
     : never
-
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
@@ -4811,7 +5039,6 @@ export type TablesUpdate<
       ? U
       : never
     : never
-
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
@@ -4828,7 +5055,6 @@ export type Enums<
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
-
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
@@ -4845,7 +5071,6 @@ export type CompositeTypes<
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
-
 export const Constants = {
   graphql_public: {
     Enums: {},
@@ -4905,6 +5130,7 @@ export const Constants = {
         "service_agreement",
         "launch_handoff",
       ],
+      os_ai_service: ["gemini", "claude", "openai"],
       os_ai_status: ["pending", "in_progress", "done"],
       os_company_sector: ["organizational", "operational", "marketing"],
       os_docs_type: [
@@ -4921,6 +5147,8 @@ export const Constants = {
         "structure_align",
         "refining_icp",
         "product_definition_flows",
+        "location_legislation",
+        "market_opportunity",
         "strategic_frameworks",
         "benchmarking",
         "prd",
@@ -4928,6 +5156,7 @@ export const Constants = {
         "visual_styles",
         "milestones_and_tasks",
         "report",
+        "risk_and_validation",
         "playbook",
       ],
       os_idea_chatbot_message_type: ["user", "chatbot"],
@@ -5198,4 +5427,3 @@ export const Constants = {
     },
   },
 } as const
-

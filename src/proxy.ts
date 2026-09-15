@@ -77,7 +77,16 @@ export async function proxy(request: NextRequest) {
   }
 
   // Referrer users are clamped to their own dashboard.
-  if (user) {
+  // The `profiles` query only exists to answer "is this user a referrer",
+  // and that answer only ever matters when the path is OUTSIDE the
+  // referrer allow-list (inside it, the clamp could never redirect either
+  // way). Skip the query entirely on allow-listed paths — this is the
+  // common case for staff too, since /projects, /profile etc. are shared
+  // landing pages.
+  const pathIsReferrerAllowed = REFERRER_ALLOW_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  );
+  if (user && !pathIsReferrerAllowed) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("type")
@@ -85,26 +94,33 @@ export async function proxy(request: NextRequest) {
       .single();
 
     if (profile?.type === "referrer") {
-      const allowed = REFERRER_ALLOW_PREFIXES.some(
-        (p) => pathname === p || pathname.startsWith(p + "/")
+      return NextResponse.redirect(
+        new URL("/projects", request.url)
       );
-      if (!allowed) {
-        return NextResponse.redirect(
-          new URL("/projects", request.url)
-        );
-      }
     }
   }
 
   return supabaseResponse;
 }
 
+// Deferred optimization (tracked in .specs/project/ROADMAP.md): move
+// `user_type` into a JWT custom claim via a Supabase Auth Hook. That would
+// let the referrer clamp read the role straight off the already-verified
+// session token, removing this DB query from middleware entirely instead
+// of just narrowing when it runs.
 export const config = {
   matcher: [
     /*
-     * Match all request paths except static files and images.
-     * This is the recommended pattern from the Supabase SSR docs.
+     * Match all request paths except static files, images, and routes that
+     * do their own auth (or need none):
+     *  - _next/*  → framework internals, never need a session
+     *  - api/*    → route handlers authenticate themselves (bearer/HMAC/
+     *               service-role) and don't read the middleware-refreshed
+     *               cookie
+     *  - m, m/*   → public marketing-validation landing pages, anonymous
+     * This is the recommended pattern from the Supabase SSR docs, extended
+     * to exclude the routes above.
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/|api/|m(?:/|$)|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

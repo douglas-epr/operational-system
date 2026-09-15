@@ -13,7 +13,7 @@ import Modal from "@/app/projects/_components/modals/Modal";
 import type { Idea, ProjectOption } from "@/types/idea-refiner";
 import { createIdea, updateIdea } from "../actions";
 import { cn } from "@/lib/utils";
-import RichTextEditor from "./RichTextEditor";
+import RichTextEditor from "./RichTextEditor.lazy";
 import { isBlankHtml } from "../_hooks/useAutoTriggerAi";
 import UserMultiSelect from "@/components/ui/UserMultiSelect";
 import type { UserMultiSelectOption } from "@/components/ui/UserMultiSelect";

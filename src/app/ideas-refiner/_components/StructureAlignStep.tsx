@@ -10,8 +10,9 @@ import { useState, useEffect } from "react";
 import type { IdeaFull } from "@/types/idea-refiner";
 import { saveStructureAlign, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import AiLoadingOverlay from "./AiLoadingOverlay";
-import RichTextEditor from "./RichTextEditor";
+import RichTextEditor from "./RichTextEditor.lazy";
 import { isBlankHtml } from "../_hooks/useAutoTriggerAi";
 import { useRegenerate } from "../_hooks/useRegenerate";
 import { createPortal } from "react-dom";
@@ -91,7 +92,7 @@ export default function StructureAlignStep({ ideaFull }: StructureAlignStepProps
             </h4>
             <div
               className="prose prose-sm prose-invert max-w-none text-sm text-text-secondary"
-              dangerouslySetInnerHTML={{ __html: idea.description ?? "<p>No description provided.</p>" }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(idea.description ?? "<p>No description provided.</p>") }}
             />
           </div>
         </div>

@@ -14,6 +14,7 @@ import type {
 } from "@/types/docs";
 import { AGREEMENT_STATUS_LABELS } from "@/types/docs";
 import { createAgreement, updateAgreement } from "../../actions";
+import { sanitizeHtml } from "@/lib/sanitize";
 
 interface Props {
   projectId: string;
@@ -201,10 +202,10 @@ export default function AgreementFormModal({
             ProseMirror editor normally inherits the dark theme via
             `var(--text-primary)` / transparent background. We force white
             bg + near-black text so the Edit-agreement content area reads
-            like real paper. */}
+            like real paper. Static CSS template (no interpolated data) —
+            sanitizeHtml applied for uniform coverage. */}
         <style
-          dangerouslySetInnerHTML={{
-            __html: `
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(`
               .agreement-paper-editor .tiptap-content,
               .agreement-paper-editor .tiptap-content .ProseMirror {
                 background: #ffffff !important;
@@ -238,7 +239,7 @@ export default function AgreementFormModal({
               .agreement-paper-editor .tiptap-content .ProseMirror td {
                 border-color: #d1d5db !important;
               }
-            `,
+            `),
           }}
         />
 

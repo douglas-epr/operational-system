@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import type { UserProfile } from "@/types/projects";
 import type {
   AgreementTemplate,
@@ -291,7 +292,7 @@ export default function AgreementDrawer({
               <div
                 className="agreement-paper-content prose max-w-none text-sm"
                 style={{ color: "#111827" }}
-                dangerouslySetInnerHTML={{ __html: displayContent }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(displayContent) }}
               />
             ) : (
               <p className="text-sm" style={{ color: "#6b7280" }}>No content.</p>
@@ -310,10 +311,10 @@ export default function AgreementDrawer({
         </div>
 
         {/* Scope the paper-style typography so dark-theme variables don't
-            bleed into the white content column. */}
+            bleed into the white content column. Static CSS template (no
+            interpolated data) — sanitizeHtml applied for uniform coverage. */}
         <style
-          dangerouslySetInnerHTML={{
-            __html: `
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(`
               .agreement-paper-content,
               .agreement-paper-content p,
               .agreement-paper-content li,
@@ -332,7 +333,7 @@ export default function AgreementDrawer({
                 background: #f3f4f6; color: #111827;
                 padding: 2px 4px; border-radius: 3px;
               }
-            `,
+            `),
           }}
         />
 

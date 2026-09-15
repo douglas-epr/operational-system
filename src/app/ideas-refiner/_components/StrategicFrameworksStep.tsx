@@ -11,9 +11,10 @@ import { useState, useMemo, useEffect } from "react";
 import type { IdeaFull, IdeaIcp, IdeaOptimizationSuggestion } from "@/types/idea-refiner";
 import { triggerAiGeneration, saveStrategicFramework } from "../actions";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import IcpPillSelector from "./IcpPillSelector";
 import AiLoadingOverlay from "./AiLoadingOverlay";
-import RichTextEditor from "./RichTextEditor";
+import RichTextEditor from "./RichTextEditor.lazy";
 import { useRegenerate } from "../_hooks/useRegenerate";
 import { createPortal } from "react-dom";
 import { useStepActions } from "../_context/StepActionsContext";
@@ -567,7 +568,7 @@ function EditableIcpArchitectCard({
       {icp.score_rationale && (
         <div
           className="mb-3 text-xs text-text-muted prose prose-invert prose-xs max-w-none [&_*]:!text-xs"
-          dangerouslySetInnerHTML={{ __html: icp.score_rationale }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(icp.score_rationale) }}
         />
       )}
 

@@ -53,8 +53,14 @@ export function prospectVars(p: MktProspect): Record<string, string> {
 function secret(): string {
   // No hardcoded fallback — a predictable "dev" key would let anyone forge
   // unsubscribe tokens for any (idea, email) pair and mass-suppress prospects.
-  const s = process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!s) throw new Error("Missing env: CRON_SECRET or SUPABASE_SERVICE_ROLE_KEY (required to sign unsubscribe tokens)");
+  // Deliberately never falls back to the Supabase service-role secret: using
+  // the project's highest-privilege credential as an HMAC signing key would
+  // mean a leaked unsubscribe-link signature could be traded against DB
+  // access. UNSUBSCRIBE_SIGNING_SECRET is the dedicated, purpose-built
+  // secret; CRON_SECRET is the documented fallback (already a private, long
+  // random secret used only for the cron worker's own auth).
+  const s = process.env.UNSUBSCRIBE_SIGNING_SECRET || process.env.CRON_SECRET;
+  if (!s) throw new Error("Missing env: UNSUBSCRIBE_SIGNING_SECRET or CRON_SECRET (required to sign unsubscribe tokens)");
   return s;
 }
 

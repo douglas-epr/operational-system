@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { getCurrentUserWithRole } from "@/lib/auth/current-user";
 import type { Json } from "@/lib/supabase/types";
 import type {
   DocsAttachment,
@@ -16,10 +17,13 @@ import { generateAiTextResponse } from "@/lib/api/ai-dispatcher";
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 async function getUserIdOrError() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated" as const };
-  return { user, supabase };
+  // Request-scoped, React-cache()-wrapped lookup — see current-user.ts.
+  // De-dupes the getUser() round-trip with any other gate called in this
+  // same request. `user` here is a minimal shim ({ id }) — every call site
+  // only ever reads `.id` off it.
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" as const };
+  return { user: { id: current.userId }, supabase: current.supabase };
 }
 
 // ── Playbook versions ──────────────────────────────────────────────────────────

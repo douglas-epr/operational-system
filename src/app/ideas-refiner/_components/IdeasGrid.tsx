@@ -11,6 +11,7 @@ import type { Idea, ProjectOption } from "@/types/idea-refiner";
 import type { UserProfile } from "@/types/projects";
 import type { UserMultiSelectOption } from "@/components/ui/UserMultiSelect";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import CreateIdeaModal from "./CreateIdeaModal";
 import ConfirmDeleteModal from "@/app/projects/_components/modals/ConfirmDeleteModal";
 import ConfirmCopyModal from "./ConfirmCopyModal";
@@ -364,9 +365,7 @@ function IdeaCard({ idea, profiles, isCreator, onSelect, onDeleteClick, onEditCl
       )}
       <div
         className="text-xs text-text-muted line-clamp-3 flex-1 prose prose-invert max-w-none [&_*]:!text-xs [&_*]:!leading-snug [&_p]:!my-0"
-        dangerouslySetInnerHTML={{
-          __html: idea.description ?? "<em>No description yet.</em>",
-        }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(idea.description ?? "<em>No description yet.</em>") }}
       />
 
       {/* Member avatars — creator first, then authorized users */}

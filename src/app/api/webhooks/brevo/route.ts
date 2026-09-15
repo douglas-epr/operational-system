@@ -1,6 +1,9 @@
 /**
  * Brevo event webhook — updates outreach rows from delivery events.
- * Configure in Brevo: send transactional events to /api/webhooks/brevo.
+ * Configure in Brevo: send transactional events to
+ * /api/webhooks/brevo?token=<BREVO_WEBHOOK_SECRET> (Brevo's webhook UI also
+ * supports a custom header, so `X-Brevo-Token` is accepted too — whichever
+ * the configured Brevo plan supports).
  * Matches events to mkt_outreach by message-id.
  *
  * Events handled: opened/unique_opened → opened_at; hard_bounce/soft_bounce →
@@ -11,6 +14,8 @@
  */
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { secretEquals } from "@/lib/auth/secretCompare";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/rate-limit";
 
 interface BrevoEvent {
   event?: string;
@@ -19,7 +24,38 @@ interface BrevoEvent {
   email?: string;
 }
 
+/** Mirrors the calcom/tally webhooks: fail closed in production, warn-once in dev. */
+let warnedMissingSecretOnce = false;
+function isAuthorized(req: Request): boolean {
+  const secret = process.env.BREVO_WEBHOOK_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") return false;
+    if (!warnedMissingSecretOnce) {
+      warnedMissingSecretOnce = true;
+      console.warn(
+        "[webhooks/brevo] BREVO_WEBHOOK_SECRET is not set — allowing unauthenticated requests in development only."
+      );
+    }
+    return true;
+  }
+  const url = new URL(req.url);
+  const provided = req.headers.get("X-Brevo-Token") ?? url.searchParams.get("token");
+  return secretEquals(provided, secret);
+}
+
 export async function POST(req: Request) {
+  if (!isAuthorized(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rl = checkRateLimit(`brevo-webhook:${clientIpFromRequest(req)}`, { limit: 120, windowMs: 60_000 });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+    );
+  }
+
   let body: BrevoEvent;
   try {
     body = await req.json();

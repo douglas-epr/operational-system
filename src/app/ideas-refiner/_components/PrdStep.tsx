@@ -10,7 +10,7 @@ import type { IdeaFull } from "@/types/idea-refiner";
 import { savePrd, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
 import AiLoadingOverlay from "./AiLoadingOverlay";
-import RichTextEditor from "./RichTextEditor";
+import RichTextEditor from "./RichTextEditor.lazy";
 import PrdPreviewModal from "./PrdPreviewModal";
 import { isBlankHtml } from "../_hooks/useAutoTriggerAi";
 import { useRegenerate } from "../_hooks/useRegenerate";

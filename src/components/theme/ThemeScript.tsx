@@ -36,6 +36,9 @@ export default function ThemeScript() {
   return (
     <script
       // The script runs synchronously in <head>, before any React hydration.
+      // Not routed through sanitizeHtml: SCRIPT is a static, module-level
+      // constant with no interpolated/runtime data — there is nothing here
+      // for an attacker to inject (security-p0 S3 audit, 2026-09-15).
       dangerouslySetInnerHTML={{ __html: SCRIPT }}
     />
   );

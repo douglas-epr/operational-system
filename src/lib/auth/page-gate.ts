@@ -21,7 +21,8 @@
  */
 
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserWithRole } from "@/lib/auth/current-user";
+import type { createClient } from "@/lib/supabase/server";
 
 export type UserRole =
   | "admin"
@@ -83,30 +84,26 @@ interface PageAccess {
 export async function requirePageAccess(
   allowed: UserRole[] | { allowAll: true } | { denyRoles: UserRole[] }
 ): Promise<PageAccess> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/signin");
+  // Request-scoped, React-cache()-wrapped lookup — see current-user.ts.
+  // De-dupes the getUser()+profiles round-trip with any other gate called
+  // in the same page render; does NOT cache across requests.
+  const current = await getCurrentUserWithRole();
+  if (!current) redirect("/signin");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("type")
-    .eq("id", user.id)
-    .single();
-  const role = (profile as { type?: string | null } | null)?.type as UserRole | null;
+  const { supabase, userId, role: rawRole } = current;
+  const role = rawRole as UserRole | null;
   if (!role) redirect("/signin");
 
   // Allowlist
   if (Array.isArray(allowed)) {
     if (!allowed.includes(role)) redirectForRole(role);
-    return { supabase, userId: user.id, role };
+    return { supabase, userId, role };
   }
   // Blocklist
   if ("denyRoles" in allowed) {
     if (allowed.denyRoles.includes(role)) redirectForRole(role);
-    return { supabase, userId: user.id, role };
+    return { supabase, userId, role };
   }
   // allowAll
-  return { supabase, userId: user.id, role };
+  return { supabase, userId, role };
 }

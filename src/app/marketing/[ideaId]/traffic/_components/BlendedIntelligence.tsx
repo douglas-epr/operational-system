@@ -1,15 +1,16 @@
 "use client";
 
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/ui";
 import type { TrafficOverview } from "../actions";
+
+// Recharts is heavy and client-only — lazy-load just the area chart, not
+// the KPI chips or recommendations around it (design-system.md "Charts,
+// PDF & DOCX").
+const SessionsCapturesAreaChart = dynamic(() => import("./SessionsCapturesAreaChart"), {
+  ssr: false,
+  loading: () => <Skeleton variant="rect" h={200} />,
+});
 
 function fmt(cents: number): string {
   const dollars = cents / 100;
@@ -165,62 +166,7 @@ export default function BlendedIntelligence({ overview, landingPublished, hasSeo
         </div>
 
         {hasData ? (
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart
-              data={chartData}
-              margin={{ top: 4, right: 16, left: 0, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient id="gradSessions" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="gradCaptures" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 10, fill: "var(--text-muted)" }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis
-                tick={{ fontSize: 10, fill: "var(--text-muted)" }}
-                tickLine={false}
-                axisLine={false}
-                width={30}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: "var(--elevated)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
-              />
-              <Legend
-                iconType="circle"
-                iconSize={8}
-                wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }}
-              />
-              <Area
-                type="monotone"
-                dataKey="Sessions"
-                stroke="var(--accent)"
-                strokeWidth={1.5}
-                fill="url(#gradSessions)"
-              />
-              <Area
-                type="monotone"
-                dataKey="Captures"
-                stroke="#f59e0b"
-                strokeWidth={1.5}
-                fill="url(#gradCaptures)"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <SessionsCapturesAreaChart data={chartData} />
         ) : (
           <div className="h-32 flex items-center justify-center text-sm text-text-muted">
             No session or capture data yet — drive traffic to your landing page.

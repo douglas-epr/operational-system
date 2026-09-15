@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Modal from "@/app/projects/_components/modals/Modal";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import type { IdeaReport } from "@/types/idea-refiner";
 import { exportElementToPdf } from "../_lib/exportPdf";
 
@@ -176,7 +177,7 @@ ${body}
             {activeBriefHtml ? (
               <div
                 className="brief-body"
-                dangerouslySetInnerHTML={{ __html: activeBriefHtml }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(activeBriefHtml) }}
               />
             ) : (
               <p style={{ color: "#999", fontStyle: "italic" }}>No brief generated yet.</p>
@@ -185,8 +186,7 @@ ${body}
         </div>
       </div>
       <style
-        dangerouslySetInnerHTML={{
-          __html: `
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(`
             .brief-body p, .brief-body li, .brief-body tr, .brief-body blockquote {
               break-inside: avoid; page-break-inside: avoid;
             }
@@ -201,7 +201,7 @@ ${body}
             .brief-body th { background: #f3f4f6; padding: 8px 10px; text-align: left; font-weight: 600; border: 1px solid #d1d5db; }
             .brief-body td { padding: 7px 10px; border: 1px solid #d1d5db; vertical-align: top; }
             .brief-body blockquote { border-left: 3px solid #d1d5db; padding-left: 12px; color: #555; margin: 10px 0; }
-          `,
+          `),
         }}
       />
     </Modal>

@@ -13,6 +13,7 @@
 import { useRef, useState } from "react";
 import Modal from "@/app/projects/_components/modals/Modal";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { exportElementToPdf } from "../../ideas-refiner/_lib/exportPdf";
 import type { UserProfile } from "@/types/projects";
 import type { AgreementVersion } from "@/types/docs";
@@ -216,7 +217,7 @@ export default function DocumentPreviewModal({
             {html ? (
               <div
                 className="docs-preview-content"
-                dangerouslySetInnerHTML={{ __html: html }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
               />
             ) : (
               <p style={{ color: "#999", fontStyle: "italic" }}>(empty)</p>
@@ -224,17 +225,18 @@ export default function DocumentPreviewModal({
             {signaturesHtml && (
               <div
                 className="docs-preview-content"
-                dangerouslySetInnerHTML={{ __html: signaturesHtml }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(signaturesHtml) }}
               />
             )}
           </div>
         </div>
       </div>
 
-      {/* Scope clean print-friendly styles for the injected rich text. */}
+      {/* Scope clean print-friendly styles for the injected rich text. This
+          template is a static, hardcoded CSS string (no interpolated data) —
+          sanitizeHtml is applied for uniform coverage across the file. */}
       <style
-        dangerouslySetInnerHTML={{
-          __html: `
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(`
             .docs-preview-content p,
             .docs-preview-content li,
             .docs-preview-content tr,
@@ -261,7 +263,7 @@ export default function DocumentPreviewModal({
               background: transparent !important;
               border-bottom: none !important;
             }
-          `,
+          `),
         }}
       />
     </Modal>

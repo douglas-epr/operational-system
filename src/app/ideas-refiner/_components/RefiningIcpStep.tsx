@@ -12,9 +12,10 @@ import { useState, useEffect } from "react";
 import type { IdeaIcp, IdeaFull } from "@/types/idea-refiner";
 import { saveIcpProfile, triggerAiGeneration, createIcp, deleteIcp } from "../actions";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import IcpPillSelector from "./IcpPillSelector";
 import AiLoadingOverlay from "./AiLoadingOverlay";
-import RichTextEditor from "./RichTextEditor";
+import RichTextEditor from "./RichTextEditor.lazy";
 import { isBlankHtml } from "../_hooks/useAutoTriggerAi";
 import { useRegenerate } from "../_hooks/useRegenerate";
 import { createPortal } from "react-dom";
@@ -245,7 +246,7 @@ export default function RefiningIcpStep({ ideaFull }: RefiningIcpStepProps) {
             </h3>
             <div
               className="tiptap-content rounded-lg border border-border bg-surface p-4 prose prose-sm prose-invert max-w-none text-sm text-text-secondary"
-              dangerouslySetInnerHTML={{ __html: idea.description ?? "<p>No description provided.</p>" }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(idea.description ?? "<p>No description provided.</p>") }}
             />
           </div>
 
@@ -255,7 +256,7 @@ export default function RefiningIcpStep({ ideaFull }: RefiningIcpStepProps) {
             </h3>
             <div
               className="tiptap-content rounded-lg border border-border bg-surface p-4 prose prose-sm prose-invert max-w-none text-sm text-text-secondary"
-              dangerouslySetInnerHTML={{ __html: structureAlign?.core_problem ?? "<p>Not defined yet. Complete the Structure &amp; Align step first.</p>" }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(structureAlign?.core_problem ?? "<p>Not defined yet. Complete the Structure &amp; Align step first.</p>") }}
             />
           </div>
 

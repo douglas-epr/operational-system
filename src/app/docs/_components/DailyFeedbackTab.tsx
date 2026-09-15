@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { sanitizeHtml } from "@/lib/sanitize";
 import type { Project, UserProfile } from "@/types/projects";
 import type { ProjectDailyFeedback } from "@/types/docs";
 import { deleteDailyFeedback } from "../actions";
@@ -210,7 +211,7 @@ function FeedbackBlock({
         <div
           className="prose prose-sm prose-invert max-w-none text-xs text-text-primary"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: html ?? "" }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(html ?? "") }}
         />
       )}
     </div>

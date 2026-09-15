@@ -9,7 +9,7 @@ import { useState, useEffect } from "react";
 import type { IdeaFull } from "@/types/idea-refiner";
 import { saveDatabase, triggerAiGeneration } from "../actions";
 import AiLoadingOverlay from "./AiLoadingOverlay";
-import RichTextEditor from "./RichTextEditor";
+import RichTextEditor from "./RichTextEditor.lazy";
 import { useRegenerate } from "../_hooks/useRegenerate";
 import { createPortal } from "react-dom";
 import { useStepActions } from "../_context/StepActionsContext";

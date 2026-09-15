@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserWithRole } from "@/lib/auth/current-user";
 import type {
   InternalGoal,
   InternalGoalStatus,
@@ -13,25 +13,16 @@ import type {
 const INTERNAL_TYPES = ["admin", "manager", "operational"] as const;
 
 async function requireInternalStaff() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated" as const };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("type")
-    .eq("id", user.id)
-    .single();
-  if (
-    !profile ||
-    !profile.type ||
-    !(INTERNAL_TYPES as readonly string[]).includes(profile.type)
-  ) {
+  // Request-scoped, React-cache()-wrapped lookup — see current-user.ts.
+  // De-dupes the getUser()+profiles round-trip with any other gate called
+  // in this same request.
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" as const };
+  const { supabase, userId, role } = current;
+  if (!role || !(INTERNAL_TYPES as readonly string[]).includes(role)) {
     return { error: "Forbidden" as const };
   }
-  return { supabase, userId: user.id };
+  return { supabase, userId };
 }
 
 // ── Goals ─────────────────────────────────────────────────────────────────────
@@ -43,8 +34,12 @@ export async function createGoal(
   if ("error" in gate) return { error: gate.error };
   const { supabase, userId } = gate;
 
-  const { data: existing } = await supabase.from("internal_goal").select("order");
-  const maxOrder = Math.max(0, ...((existing ?? []).map((g: any) => g.order ?? 0)));
+  const { data: last } = await supabase
+    .from("internal_goal")
+    .select("order")
+    .order("order", { ascending: false })
+    .limit(1);
+  const maxOrder = last?.[0]?.order ?? 0;
 
   const { data, error } = await supabase
     .from("internal_goal")
@@ -103,14 +98,13 @@ export async function createKeyResult(
   if ("error" in gate) return { error: gate.error };
   const { supabase, userId } = gate;
 
-  const { data: siblings } = await supabase
+  const { data: last } = await supabase
     .from("internal_key_result")
     .select("order")
-    .eq("internal_goal_id", goalId);
-  const maxOrder = Math.max(
-    0,
-    ...((siblings ?? []).map((k: any) => k.order ?? 0))
-  );
+    .eq("internal_goal_id", goalId)
+    .order("order", { ascending: false })
+    .limit(1);
+  const maxOrder = last?.[0]?.order ?? 0;
 
   const { data, error } = await supabase
     .from("internal_key_result")

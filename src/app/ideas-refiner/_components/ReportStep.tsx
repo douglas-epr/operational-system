@@ -9,6 +9,7 @@ import { useState, useCallback } from "react";
 import type { IdeaFull, IdeaReportArea, IdeaReportPenalty, IdeaReportAlignment, IdeaReportDebateTurn } from "@/types/idea-refiner";
 import { triggerAiGeneration, assembleIdeaBrief } from "../actions";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import ReportPreviewModal from "./ReportPreviewModal";
 import BriefPreviewModal from "./BriefPreviewModal";
@@ -391,7 +392,7 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
                 {report.next_steps && (
                   <div
                     className="mt-3 text-xs text-text-secondary border-t border-border pt-3 [&_button]:hidden [&_a.btn]:hidden [&_a[role=button]]:hidden [&_ul]:hidden [&_ol]:hidden"
-                    dangerouslySetInnerHTML={{ __html: report.next_steps }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(report.next_steps) }}
                   />
                 )}
               </div>
@@ -516,7 +517,7 @@ export default function ReportStep({ ideaFull }: ReportStepProps) {
             </div>
             <div
               className="px-6 py-5 prose prose-sm prose-invert max-w-none [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-text-primary [&_h2]:mt-4 [&_h2]:mb-1 [&_p]:text-text-secondary [&_p]:leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: report.revised_description }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(report.revised_description) }}
             />
           </div>
         )}

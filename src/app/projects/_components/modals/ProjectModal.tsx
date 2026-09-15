@@ -10,7 +10,7 @@ import {
   updateProject,
   type ProjectInput,
 } from "../../actions";
-import RichTextEditor from "@/app/ideas-refiner/_components/RichTextEditor";
+import RichTextEditor from "@/app/ideas-refiner/_components/RichTextEditor.lazy";
 import { UserMultiSelect } from "@/components/ui";
 
 type TaskProgress = { totalEst: number; doneOrQaEst: number; doneEst: number };

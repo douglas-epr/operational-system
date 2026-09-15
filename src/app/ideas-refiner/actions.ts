@@ -1254,7 +1254,7 @@ export async function triggerAiGeneration(
     // Fetch idea data
     const { data: idea } = await supabase
       .from("idea")
-      .select("*")
+      .select("id, name, description, success_metrics, location, jurisdiction")
       .eq("id", ideaId)
       .single();
     if (!idea) return { error: "Idea not found" };
@@ -1262,11 +1262,15 @@ export async function triggerAiGeneration(
     // Fetch structure & align data if needed
     const { data: structureAlign } = await supabase
       .from("idea_structure_and_align")
-      .select("*")
+      .select("id, idea_id, core_problem, target_audience, success_metrics, product_overview_text, essential_features_text")
       .eq("idea_id", ideaId)
       .maybeSingle();
 
-    // Fetch existing ICPs if needed
+    // Fetch existing ICPs if needed. Kept as select("*"): icps is forwarded
+    // into ~6 downstream generate* functions and prompt-builder helpers that
+    // read dynamic icp[k] keys (scoring/pitch/JTBD fields) rather than a
+    // fixed set — see P2 report. Revisit if icps ever gets a single typed
+    // consumer instead of the current fan-out.
     const { data: icps } = await supabase
       .from("idea_icp")
       .select("*")
@@ -1275,13 +1279,13 @@ export async function triggerAiGeneration(
     // Fetch product definition and PRD for later steps
     const { data: productDef } = await supabase
       .from("idea_product_definition_and_flows")
-      .select("*")
+      .select("id, idea_id, summary, features, business_model")
       .eq("idea_id", ideaId)
       .maybeSingle();
 
     const { data: prdData } = await supabase
       .from("idea_prd" as never)
-      .select("*")
+      .select("id, idea_id, description")
       .eq("idea_id", ideaId)
       .maybeSingle();
 
@@ -1302,9 +1306,17 @@ export async function triggerAiGeneration(
     let marketRow: any = null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let riskRow: any = null;
+    // benchmarkingRow/locationRow/marketRow/riskRow are kept as select("*"):
+    // each is renamed (benchmarking/location/market/risk) and re-cast to
+    // Record<string, unknown> inside generatePrdContent/generateReport/
+    // generateMarketOpportunity/generateRiskAndValidation, which read fields
+    // dynamically by key across several large prompt-builder helpers. A
+    // hand-written column list here could not be verified with certainty
+    // against every consumer without a much larger read — see P2 report.
+    // Revisit if any of these four gets a single, narrowly-typed consumer.
     if (step === "report" || step === "prd" || step === "risk_and_validation" || step === "market_opportunity") {
       const [sugRes, benchRes, locRes, mktRes, riskRes] = await Promise.all([
-        supabase.from("idea_optimization_suggestion").select("*").eq("idea_id", ideaId),
+        supabase.from("idea_optimization_suggestion").select("id, idea_id, name, description").eq("idea_id", ideaId),
         supabase.from("idea_benchmarking" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
         supabase.from("idea_location_legislation" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
         supabase.from("idea_market_opportunity" as never).select("*").eq("idea_id", ideaId).maybeSingle(),
@@ -1556,7 +1568,7 @@ async function assemblePlaybookVersion(
         .maybeSingle(),
       supabase
         .from("idea_styles" as never)
-        .select("*")
+        .select("id, idea_id, logo_branding, color_palette, product_feeling, brand_voice, iconography_style, motion_principles, primary_color, secondary_color, accent_color, neutral_color, color_tokens, typography, spacing, border_radius, shadows")
         .eq("idea_id", ideaId)
         .maybeSingle(),
       supabase
@@ -3920,6 +3932,8 @@ export async function generateIdeaBrief(ideaId: string): Promise<{ error?: strin
   ] = await Promise.all([
     supabase.from("idea" as never).select("name, description, success_metrics").eq("id", ideaId).maybeSingle(),
     supabase.from("idea_structure_and_align" as never).select("core_problem, target_audience, success_metrics").eq("idea_id", ideaId).maybeSingle(),
+    // select("*"): same dynamic icp[k] key access pattern as the icps fetch
+    // above (strategicBlock below reads it via a "g(k)" helper) — see P2 report.
     supabase.from("idea_icp" as never).select("*").eq("idea_id", ideaId),
     supabase.from("idea_optimization_suggestion" as never).select("name, description").eq("idea_id", ideaId),
     supabase.from("idea_product_definition_and_flows" as never).select("summary, business_model, features, go_to_market").eq("idea_id", ideaId).maybeSingle(),

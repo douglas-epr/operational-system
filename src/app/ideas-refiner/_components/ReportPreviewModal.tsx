@@ -11,6 +11,7 @@
 import { useRef, useState } from "react";
 import Modal from "@/app/projects/_components/modals/Modal";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import type { IdeaReport } from "@/types/idea-refiner";
 import { exportElementToPdf } from "../_lib/exportPdf";
 
@@ -201,7 +202,7 @@ ${body}
             {report?.playbook_html ? (
               <div
                 className="playbook-body"
-                dangerouslySetInnerHTML={{ __html: report.playbook_html }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(report.playbook_html) }}
               />
             ) : (
               <p style={{ color: "#999", fontStyle: "italic" }}>No playbook generated yet.</p>
@@ -210,8 +211,7 @@ ${body}
         </div>
       </div>
       <style
-        dangerouslySetInnerHTML={{
-          __html: `
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(`
             .playbook-body p, .playbook-body li, .playbook-body tr, .playbook-body blockquote {
               break-inside: avoid; page-break-inside: avoid;
             }
@@ -224,7 +224,7 @@ ${body}
             .playbook-body em { font-style: italic; }
             .playbook-body a { color: #1d4ed8; text-decoration: underline; }
             .playbook-body blockquote { border-left: 3px solid #d1d5db; padding-left: 12px; color: #555; margin: 10px 0; }
-          `,
+          `),
         }}
       />
     </Modal>

@@ -8,6 +8,7 @@ import {
   type RichTextEditorSelection,
 } from "@/components/editor/RichTextEditor";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { CommentMarkExtension } from "./CommentMarkExtension";
 import DocumentPreviewModal from "./DocumentPreviewModal";
 import {
@@ -373,16 +374,17 @@ export default function PlaybookEditor({
           This requires no data-status stamping and works immediately on render,
           avoiding all timing/paint-function race conditions. */}
       <style
-        dangerouslySetInnerHTML={{
-          __html: !showResolved
-            ? allComments
-                .filter((c) => c.status === "solved")
-                .map(
-                  (c) =>
-                    `span[data-comment-id="${c.id}"]{background:transparent!important;border-bottom:none!important;cursor:inherit!important;pointer-events:none!important;}`
-                )
-                .join("")
-            : "",
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(
+            !showResolved
+              ? allComments
+                  .filter((c) => c.status === "solved")
+                  .map(
+                    (c) =>
+                      `span[data-comment-id="${c.id}"]{background:transparent!important;border-bottom:none!important;cursor:inherit!important;pointer-events:none!important;}`
+                  )
+                  .join("")
+              : ""
+          ),
         }}
       />
       <RichTextEditor

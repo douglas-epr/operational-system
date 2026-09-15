@@ -116,15 +116,25 @@ export default function ConversationsSidebar({
   }, [activeBlock, activeConversationId]);
 
   useEffect(() => {
-    const t = setInterval(() => {
+    function tick() {
+      // Skip while the tab is hidden — a backgrounded tab shouldn't keep
+      // polling every block's conversation list.
+      if (document.visibilityState !== "visible") return;
       setRefreshTickByBlock((prev) => ({
         projects: prev.projects + 1,
         internal_projects: prev.internal_projects + 1,
         private: prev.private + 1,
         chatbot: prev.chatbot + 1,
       }));
-    }, 20_000);
-    return () => clearInterval(t);
+    }
+    const t = setInterval(tick, 20_000);
+    // Refresh immediately on returning to the tab so the list isn't stale
+    // for up to a full interval after regaining focus.
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, []);
 
   // Stable callback per block so the lists don't refetch on every render.

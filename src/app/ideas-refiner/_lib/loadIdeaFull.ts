@@ -36,6 +36,27 @@ import type { PlaybookVersion } from "@/types/docs";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySupabase = any;
 
+// Column lists for the single-row idea_* blocks whose shape is flat, stable
+// (one migration, never revised) and mirrored exactly by the named
+// src/types/idea-refiner.ts interface — named so the same list isn't
+// retyped if these are ever read from a second call site.
+const LOCATION_LEGISLATION_SELECT =
+  "id, idea_id, regulatory_bodies, key_legislation, licensing_requirements, data_privacy_rules, compliance_timeline, regulatory_moat, red_flags, created_at";
+const MARKET_OPPORTUNITY_SELECT =
+  "id, idea_id, tam_description, tam_estimate, sam_description, sam_estimate, som_description, som_estimate, data_sources, segment_filter_logic, growth_drivers, market_risks, price_point, billing_model, cac_estimate, ltv_estimate, created_at";
+const BENCHMARKING_SELECT =
+  "id, idea_id, overview, comparison, possible_business_models, takeaways, created_at";
+const PRD_SELECT = "id, idea_id, description, created_at";
+const DATABASE_SELECT = "id, idea_id, tables_schema, relationships, notes, created_at";
+const MILESTONES_AND_TASKS_SELECT = "id, idea_id, content, created_at";
+
+// idea_risk_and_validation, idea_styles and idea_report intentionally keep
+// select("*"): each has been revised by multiple independent migrations
+// (debate/demand-evidence fields, design-token JSONB blobs, build-brief
+// fields) and is cast wholesale into its interface — a hand-written column
+// list here would silently go stale the next time either drifts, which is
+// worse than the extra bytes. See P2 report notes.
+
 export async function loadIdeaFull(
   supabase: AnySupabase,
   ideaId: string,
@@ -104,17 +125,17 @@ export async function loadIdeaFull(
       .order("created_at", { ascending: true }),
     supabase
       .from("idea_location_legislation" as never)
-      .select("*")
+      .select(LOCATION_LEGISLATION_SELECT)
       .eq("idea_id", ideaId)
       .maybeSingle(),
     supabase
       .from("idea_market_opportunity" as never)
-      .select("*")
+      .select(MARKET_OPPORTUNITY_SELECT)
       .eq("idea_id", ideaId)
       .maybeSingle(),
     supabase
       .from("idea_benchmarking" as never)
-      .select("*")
+      .select(BENCHMARKING_SELECT)
       .eq("idea_id", ideaId)
       .maybeSingle(),
     supabase
@@ -124,12 +145,12 @@ export async function loadIdeaFull(
       .maybeSingle(),
     supabase
       .from("idea_prd" as never)
-      .select("*")
+      .select(PRD_SELECT)
       .eq("idea_id", ideaId)
       .maybeSingle(),
     supabase
       .from("idea_database" as never)
-      .select("*")
+      .select(DATABASE_SELECT)
       .eq("idea_id", ideaId)
       .maybeSingle(),
     supabase
@@ -139,7 +160,7 @@ export async function loadIdeaFull(
       .maybeSingle(),
     supabase
       .from("idea_milestones_and_tasks" as never)
-      .select("*")
+      .select(MILESTONES_AND_TASKS_SELECT)
       .eq("idea_id", ideaId)
       .maybeSingle(),
     supabase

@@ -14,7 +14,8 @@
  */
 
 import { revalidatePath } from "next/cache";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
+import { getCurrentUserWithRole } from "@/lib/auth/current-user";
 import {
   BLOCK_TABLES,
   CHAT_ALLOWED_ROLES,
@@ -51,21 +52,16 @@ import {
 // ── Auth helper ─────────────────────────────────────────────────────────────
 
 async function requireChatUser() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated" as const };
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, type")
-    .eq("id", user.id)
-    .single();
-  const t = profile?.type ?? null;
-  if (!t || !CHAT_ALLOWED_ROLES.includes(t as (typeof CHAT_ALLOWED_ROLES)[number])) {
+  // Request-scoped, React-cache()-wrapped lookup — see current-user.ts.
+  // De-dupes the getUser()+profiles round-trip across the other gates
+  // (and other requireChatUser call sites) invoked in this same action.
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" as const };
+  const { supabase, userId, role } = current;
+  if (!role || !CHAT_ALLOWED_ROLES.includes(role as (typeof CHAT_ALLOWED_ROLES)[number])) {
     return { error: "Forbidden" as const };
   }
-  return { supabase, userId: user.id, userType: t };
+  return { supabase, userId, userType: role };
 }
 
 // ── Unread count helpers ────────────────────────────────────────────────────

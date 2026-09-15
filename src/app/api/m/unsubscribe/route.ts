@@ -5,6 +5,7 @@
  */
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifyUnsubscribeToken } from "@/lib/marketing/outreach";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/rate-limit";
 
 function page(message: string, ok: boolean): Response {
   const html = `<!doctype html><html><head><meta charset="utf-8"/>
@@ -23,6 +24,14 @@ h1{font-size:20px;margin:0 0 8px}p{color:#a1a1aa;font-size:14px;line-height:1.6}
 }
 
 export async function GET(req: Request) {
+  const rl = checkRateLimit(`m-unsubscribe:${clientIpFromRequest(req)}`, { limit: 20, windowMs: 60_000 });
+  if (!rl.ok) {
+    return new Response("Too many requests", {
+      status: 429,
+      headers: { "Retry-After": String(rl.retryAfterSeconds) },
+    });
+  }
+
   const url = new URL(req.url);
   const ideaId = url.searchParams.get("p") ?? "";
   const email = (url.searchParams.get("e") ?? "").toLowerCase();

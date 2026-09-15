@@ -16,6 +16,7 @@
 import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { checkRateLimit, clientIpFromRequest } from "@/lib/rate-limit";
 
 interface TallyField {
   key: string;
@@ -70,6 +71,14 @@ function answersMap(fields: TallyField[]): Record<string, unknown> {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(`tally-webhook:${clientIpFromRequest(req)}`, { limit: 120, windowMs: 60_000 });
+  if (!rl.ok) {
+    return Response.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+    );
+  }
+
   const rawBody = await req.text();
 
   if (!verifySignature(rawBody, req.headers.get("X-Tally-Signature"))) {

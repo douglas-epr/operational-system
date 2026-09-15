@@ -33,18 +33,8 @@
  */
 
 import Link from "next/link";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/ui";
 import KpiCard from "@/components/ui/KpiCard";
 import TeamWorkloadChart from "./TeamWorkloadChart";
 import {
@@ -58,6 +48,19 @@ import {
   type ProjectStatus,
 } from "../_lib/constants";
 import type { DashboardMetrics } from "../_lib/queries";
+
+// Recharts (~ideas trend line + active-hours bar) is a heavy client-only
+// library — lazy-load it out of the initial dashboard bundle. Each chart's
+// outer sizing wrapper (`h-64` / inline `height`) stays in this file so the
+// Skeleton fallback fills the exact same box (no layout shift).
+const IdeasTrendChart = dynamic(() => import("./IdeasTrendChart"), {
+  ssr: false,
+  loading: () => <Skeleton variant="rect" h="100%" />,
+});
+const ActiveHoursChart = dynamic(() => import("./ActiveHoursChart"), {
+  ssr: false,
+  loading: () => <Skeleton variant="rect" h="100%" />,
+});
 
 interface Props {
   metrics: DashboardMetrics;
@@ -173,41 +176,7 @@ export default function DashboardOverview({ metrics, viewerName }: Props) {
             <ChartEmpty message="No ideas created in the past 6 months." />
           ) : (
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={ideas_trend}
-                  margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
-                >
-                  <CartesianGrid stroke="#27272a" strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 11, fill: "#71717a" }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 11, fill: "#71717a" }}
-                    allowDecimals={false}
-                    width={32}
-                  />
-                  <Tooltip content={<IdeasTooltip />} cursor={{ stroke: "#3f3f46" }} />
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    name="Ideas"
-                    stroke="#6366f1"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4, fill: "#6366f1" }}
-                  />
-                  <Legend
-                    iconType="circle"
-                    wrapperStyle={{ fontSize: 11, color: "#a1a1aa", paddingTop: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <IdeasTrendChart data={ideas_trend} />
             </div>
           )}
         </DashCard>
@@ -363,35 +332,7 @@ export default function DashboardOverview({ metrics, viewerName }: Props) {
             <ChartEmpty message="No projects in progress right now." />
           ) : (
             <div style={{ height: Math.max(220, active_hours.length * 36) }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  layout="vertical"
-                  data={active_hours}
-                  margin={{ top: 4, right: 16, left: 4, bottom: 0 }}
-                  barCategoryGap={6}
-                >
-                  <CartesianGrid stroke="#27272a" strokeDasharray="3 3" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 11, fill: "#71717a" }}
-                    tickFormatter={(v) => `${v}h`}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    width={140}
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 11, fill: "#a1a1aa" }}
-                  />
-                  <Tooltip content={<HoursTooltip />} cursor={{ fill: "#27272a55" }} />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: 11, color: "#a1a1aa", paddingTop: 4 }} />
-                  <Bar dataKey="estimated_hours" name="Estimated" fill="#3f3f46" radius={[0, 3, 3, 0]} />
-                  <Bar dataKey="real_hours"       name="Real"      fill="#6366f1" radius={[0, 3, 3, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <ActiveHoursChart data={active_hours} />
             </div>
           )}
         </DashCard>
@@ -491,55 +432,3 @@ function MarketingStatRow({
   );
 }
 
-// ── Tooltip sub-components ────────────────────────────────────────────────────
-
-interface RechartsTooltipPayload<T = Record<string, unknown>> {
-  active?: boolean;
-  payload?: Array<{ value: number; name?: string; color?: string; payload: T }>;
-  label?: string | number;
-}
-
-function IdeasTooltip({ active, payload, label }: RechartsTooltipPayload) {
-  if (!active || !payload || payload.length === 0) return null;
-  return (
-    <div className="rounded-md border border-border bg-elevated/95 backdrop-blur px-2.5 py-1.5 text-[11px] shadow-xl min-w-[120px]">
-      <div className="text-text-primary mb-1">{label}</div>
-      {payload.map((p) => (
-        <div key={p.name} className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.color }} />
-          <span className="text-text-muted">{p.name}</span>
-          <span className="ml-auto tabular-nums text-text-primary">{p.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function HoursTooltip({
-  active,
-  payload,
-  label,
-}: RechartsTooltipPayload<{
-  name: string;
-  estimated_hours: number;
-  real_hours: number;
-  burn: number;
-}>) {
-  if (!active || !payload || payload.length === 0) return null;
-  const burn = payload[0]?.payload.burn ?? 0;
-  return (
-    <div className="rounded-md border border-border bg-elevated/95 backdrop-blur px-2.5 py-1.5 text-[11px] shadow-xl">
-      <div className="text-text-primary mb-1">{label}</div>
-      {payload.map((p) => (
-        <div key={p.name} className="flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.color }} />
-          <span className="text-text-muted">{p.name}</span>
-          <span className="ml-auto tabular-nums text-text-primary">{Math.round(p.value)}h</span>
-        </div>
-      ))}
-      <div className={`mt-1 pt-1 border-t border-border tabular-nums ${burn > 1 ? "text-rose-400" : "text-emerald-400"}`}>
-        Burn: {(burn * 100).toFixed(0)}%
-      </div>
-    </div>
-  );
-}

@@ -24,7 +24,7 @@ import {
   createTaskComment,
   type TaskInput,
 } from "../../actions";
-import RichTextEditor from "@/app/ideas-refiner/_components/RichTextEditor";
+import RichTextEditor from "@/app/ideas-refiner/_components/RichTextEditor.lazy";
 import UserPicker from "@/components/UserPicker";
 import TaskChat from "./TaskChat";
 

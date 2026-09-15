@@ -12,7 +12,8 @@ import { useState, useEffect } from "react";
 import type { IdeaFull } from "@/types/idea-refiner";
 import { saveProductDefinition, triggerAiGeneration } from "../actions";
 import { cn } from "@/lib/utils";
-import RichTextEditor from "./RichTextEditor";
+import { sanitizeHtml } from "@/lib/sanitize";
+import RichTextEditor from "./RichTextEditor.lazy";
 import AiLoadingOverlay from "./AiLoadingOverlay";
 import { isBlankHtml } from "../_hooks/useAutoTriggerAi";
 import { useRegenerate } from "../_hooks/useRegenerate";
@@ -80,7 +81,7 @@ export default function ProductDefinitionStep({ ideaFull }: ProductDefinitionSte
               <h4 className="text-sm font-bold text-text-primary mb-2">{idea.name}</h4>
               <div
                 className="prose prose-sm prose-invert max-w-none text-sm text-text-secondary"
-                dangerouslySetInnerHTML={{ __html: idea.description ?? "<p>No description provided.</p>" }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(idea.description ?? "<p>No description provided.</p>") }}
               />
             </div>
           </div>
@@ -89,7 +90,7 @@ export default function ProductDefinitionStep({ ideaFull }: ProductDefinitionSte
             <h3 className="text-sm font-semibold text-text-primary mb-1">Finalized Core Problem*</h3>
             <div
               className="tiptap-content rounded-lg border border-border bg-surface p-4 prose prose-sm prose-invert max-w-none text-sm text-text-secondary"
-              dangerouslySetInnerHTML={{ __html: structureAlign?.core_problem ?? "<p>Not defined yet.</p>" }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(structureAlign?.core_problem ?? "<p>Not defined yet.</p>") }}
             />
           </div>
 

@@ -30,7 +30,7 @@ interface State {
   unreadByTaskId: Record<string, number>;
 }
 
-const POLL_MS = 2000;
+const POLL_MS = 5000;
 
 export default function TaskRequestsKanbanWrapper({
   projectId,

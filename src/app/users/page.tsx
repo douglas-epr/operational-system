@@ -5,6 +5,12 @@ import PageShell from "@/components/layout/PageShell";
 import PageHeader from "@/components/layout/PageHeader";
 import UsersList from "./_components/UsersList";
 
+// Matches auth.admin.listUsers's perPage below. Not pagination — just a cap
+// so this page can't outrun the admin API page size. Real pagination for
+// both the profiles list and the auth admin listing is a follow-up if the
+// user count ever approaches this number.
+const USERS_LIMIT = 1000;
+
 export default async function UsersPage() {
   // Gate: admin only. Other roles (incl. manager) get role-specific
   // redirects via the shared helper (manager → /dashboard, operational →
@@ -22,11 +28,14 @@ export default async function UsersPage() {
   const { data: profilesData } = await supabase
     .from("profiles")
     .select("id, first_name, last_name, picture, type, country, created_at")
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(USERS_LIMIT);
 
   // Fetch all auth users to get emails (requires service role)
   const admin = createServiceClient();
-  const { data: authData } = await admin.auth.admin.listUsers({ perPage: 1000 });
+  const { data: authData } = await admin.auth.admin.listUsers({
+    perPage: USERS_LIMIT,
+  });
   const emailMap = new Map<string, string>(
     (authData?.users ?? []).map((u) => [u.id, u.email ?? ""])
   );

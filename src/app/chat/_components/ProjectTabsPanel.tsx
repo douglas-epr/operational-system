@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { RichTextEditor, type RichTextEditorHandle } from "@/components/editor/RichTextEditor";
 import DatePicker from "@/components/DatePicker";
+import { sanitizeHtml } from "@/lib/sanitize";
 
 /** Shared compact textarea for the optional resource description field. */
 function DescriptionField({
@@ -68,7 +69,7 @@ import {
 
 const FILE_BUCKET = "project-files";
 const MAX_FILE_MB = 50;
-const POLL_MS = 2000;
+const POLL_MS = 5000;
 
 interface Profile {
   id: string;
@@ -716,7 +717,7 @@ function FeedbackBlock({ label, html }: { label: string; html: string | null }) 
         <div
           className="prose prose-sm prose-invert max-w-none text-xs text-text-primary"
           // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: html ?? "" }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(html ?? "") }}
         />
       )}
     </div>
