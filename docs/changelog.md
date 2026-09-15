@@ -5,6 +5,22 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-09-15] — Fix: dashboard hydration mismatch in production (React #418)
+
+Found by testing the deployed app rather than localhost.
+
+- **`src/app/dashboard/_components/DashboardOverview.tsx`** raised React error #418 (hydration text
+  mismatch) on every production dashboard load. `greeting()` and `todayLabel()` both read
+  `new Date()`, and although the file is `"use client"`, Next.js still server-renders it for the
+  initial HTML. On Vercel the server runs in UTC while the reader's browser does not, so at 19:00
+  UTC the server rendered "Good evening" and a browser in America/Sao_Paulo rendered
+  "Good afternoon" — a legitimate difference that React reports as a mismatch.
+- Fixed with `suppressHydrationWarning` on the two time-dependent elements. The browser's value is
+  the correct one to display, so this is the sanctioned escape hatch rather than pinning a timezone.
+- **This could not be reproduced locally**: a dev machine's server and browser share one timezone,
+  so the two render passes always agreed. Recorded in `CHALLENGES.md` as a class of defect that
+  requires testing the deployed build.
+
 ## [2026-09-15] — Server-action auth gates, prod index apply, local DB repair, live verification
 
 Completes the six items left open by the earlier pass in this session.

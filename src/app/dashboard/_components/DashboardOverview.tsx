@@ -124,8 +124,22 @@ export default function DashboardOverview({ metrics, viewerName }: Props) {
       {/* Header */}
       <header className="flex items-end justify-between flex-wrap gap-4 mb-7 fade-up">
         <div>
-          <h1 className="text-heading-1 text-text-primary">{greeting(viewerName)}</h1>
-          <p className="text-sm text-text-muted mt-1">{todayLabel()}</p>
+          {/*
+            suppressHydrationWarning: both of these read the wall clock, and this
+            client component is also server-rendered for the initial HTML. On Vercel
+            the server runs in UTC while the reader's browser does not, so the two
+            passes legitimately produce different text ("Good evening" at 19:00 UTC
+            vs "Good afternoon" at 16:00 in America/Sao_Paulo). That mismatch raised
+            React error #418 on every production dashboard load. The browser's value
+            is the correct one to show, so the difference is expected rather than
+            something to fix by pinning a timezone.
+          */}
+          <h1 className="text-heading-1 text-text-primary" suppressHydrationWarning>
+            {greeting(viewerName)}
+          </h1>
+          <p className="text-sm text-text-muted mt-1" suppressHydrationWarning>
+            {todayLabel()}
+          </p>
         </div>
         <div className="flex items-center gap-3 text-[11px] text-text-muted">
           <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-elevated border border-border">

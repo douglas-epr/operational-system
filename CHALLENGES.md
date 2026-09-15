@@ -101,3 +101,31 @@ Self-learning log of friction hit while operating on this repo (per `app-update-
 - **Seeded local data carries double-encoded UTF-8.** Idea titles render as `E2E Test â€” AI Recipe
   App` (an em dash encoded twice). Cosmetic and confined to local seed rows, but it will look like a
   rendering bug to anyone testing locally.
+
+## [2026-09-15] — Fifth pass: testing against production
+
+- **A whole class of bug only appears in production.** The dashboard raised React error #418
+  (hydration text mismatch) on every production load, and local testing could never have caught it:
+  `greeting()` and `todayLabel()` in `DashboardOverview.tsx` read `new Date()` during both the
+  server render and the client render. On Vercel the server runs in UTC while the reader's browser
+  does not, so at 19:00 UTC the server produced "Good evening" and a São Paulo browser produced
+  "Good afternoon". On a dev machine the server and browser share one timezone, so the strings
+  always matched. Fixed with `suppressHydrationWarning` on the two time-dependent elements, which
+  is the sanctioned escape hatch for text that is *meant* to differ per client.
+  Lesson: any `new Date()`, `Intl`, `Math.random()` or `window`-derived value rendered by a
+  `"use client"` component is still server-rendered for the initial HTML and must be treated as a
+  hydration hazard.
+- **Vercel adds its own HSTS header, so it is useless as a deploy marker.** `vercel.app` responses
+  carry `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` from the platform,
+  which is byte-identical to a common app-level value and includes `preload` even though this app's
+  config deliberately omits it. Confirming a deploy needs a header the app alone emits — here
+  `Content-Security-Policy-Report-Only`.
+- **A successful `git push` is not a deploy.** The repo has no `.github/` workflows, so deployment
+  depends entirely on Vercel's Git integration. There is no Vercel token on this machine
+  (`com.vercel.cli/Data/auth.json` is absent), so build status cannot be read and a deploy cannot be
+  triggered from here. Verify a deploy by polling for an app-specific response header, and treat the
+  push as "deploy requested", never "deploy done".
+- **Never sign into production to test it.** Production accounts belong to real people. Live testing
+  was kept to the public surface, signed-out redirect behaviour, and read-only navigation using the
+  session already present in the browser profile — no writes, and no POSTs to endpoints that would
+  insert real rows.
