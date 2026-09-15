@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserWithRole } from "@/lib/auth/current-user";
+import { pick } from "@/lib/pick";
 import { resolveAiConfig } from "@/lib/api/ai-config";
 import { generateAiJsonResponse } from "@/lib/api/ai-dispatcher";
 
@@ -62,16 +64,42 @@ export async function createInvoice(
   return { invoice: row };
 }
 
+// Columns `updateInvoice` may write on `invoice` — exactly the fields on
+// `InvoicePayload`. Excludes `id`/`created_by` (neither is part of the
+// payload type to begin with, but the allow-list is the runtime backstop
+// now that the declared type can no longer be trusted as the only guard).
+const INVOICE_WRITABLE_COLUMNS = [
+  "code",
+  "company_or_user_name",
+  "document_number",
+  "address",
+  "phone",
+  "email",
+  "client_name",
+  "service_price",
+  "due_date",
+  "service_title",
+  "service_description",
+  "account_details",
+  "currency",
+  "start_date",
+  "end_date",
+  "total_time",
+] as const;
+
 export async function updateInvoice(
   id: string,
   patch: Partial<InvoicePayload>
 ): Promise<{ error?: string }> {
-  const supabase: AnySupabase = await createClient();
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const [k, v] of Object.entries(patch)) {
-    if (v !== undefined) {
-      updates[k] = k === "service_description" ? sanitizeInvoiceHtml(v as string | null) : v;
-    }
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const supabase: AnySupabase = current.supabase;
+  const updates: Record<string, unknown> = {
+    ...pick(patch, INVOICE_WRITABLE_COLUMNS),
+    updated_at: new Date().toISOString(),
+  };
+  if (updates.service_description !== undefined) {
+    updates.service_description = sanitizeInvoiceHtml(updates.service_description as string | null);
   }
   const { error } = await supabase.from("invoice").update(updates).eq("id", id);
   if (error) return { error: error.message };
@@ -80,7 +108,9 @@ export async function updateInvoice(
 }
 
 export async function deleteInvoice(id: string): Promise<{ error?: string }> {
-  const supabase: AnySupabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const supabase: AnySupabase = current.supabase;
   const { error } = await supabase.from("invoice").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/invoices");

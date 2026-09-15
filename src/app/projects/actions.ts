@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserWithRole } from "@/lib/auth/current-user";
+import { pick } from "@/lib/pick";
 import type {
   ProjectStatus,
   TaskStatus,
@@ -117,15 +119,37 @@ export async function createTask(data: TaskInput): Promise<{ error?: string; id?
   return { id: row.id };
 }
 
+// Columns `updateTask` may write on `project_task`. Deliberately excludes
+// `project_id` (re-parenting a task to another project is not a supported
+// edit — every legitimate caller already sends the task's current
+// `project_id` unchanged) alongside `id`/`created_by`. `assignees`,
+// `priority_level`, and `category` are merged in separately below.
+const TASK_UPDATE_WRITABLE_COLUMNS = [
+  "name",
+  "parent_task_id",
+  "type",
+  "level",
+  "status",
+  "estimated_time",
+  "start_date_estimated",
+  "end_date_estimated",
+  "start_date_real",
+  "end_date_real",
+  "order",
+  "description",
+] as const;
+
 export async function updateTask(
   id: string,
   data: Partial<TaskInput>
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { assignee_ids, priority_level, category, ...taskData } = data;
 
   // Merge the assignees write into the same UPDATE — one round-trip.
-  const updatePayload: Record<string, unknown> = { ...taskData };
+  const updatePayload: Record<string, unknown> = pick(taskData, TASK_UPDATE_WRITABLE_COLUMNS);
   if (assignee_ids !== undefined) updatePayload.assignees = assignee_ids;
   if (priority_level !== undefined) updatePayload.priority_level = priority_level;
   if (category !== undefined) updatePayload.category = category;
@@ -148,7 +172,9 @@ export async function updateTask(
 }
 
 export async function deleteTask(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
 
   // 1. Fetch task to get project_id
   const { data: task } = await supabase.from("project_task").select("id, project_id").eq("id", id).single();
@@ -211,7 +237,9 @@ export async function deleteTask(id: string): Promise<{ error?: string }> {
  * `qa_tester_estimated_time` is user-entered and never overwritten here.
  */
 export async function recalculateAggregates(projectId: string): Promise<void> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return;
+  const { supabase } = current;
 
   // Fetch project flags + the user-entered aggregate estimates
   const { data: project } = await supabase
@@ -370,7 +398,9 @@ export async function recalculateAggregates(projectId: string): Promise<void> {
  * time_track / qa_time_track state — no gating flag.
  */
 export async function recalculateRealTime(projectId: string): Promise<void> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return;
+  const { supabase } = current;
 
   const { data: tasks } = await supabase
     .from("project_task")
@@ -513,7 +543,9 @@ export async function updateProjectAggregateEstimate(
   field: ProjectAggregateEstField,
   value: number | null
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase
     .from("project")
     .update({ [field]: value })
@@ -576,7 +608,9 @@ export async function upsertTimeEntry(entry: TimeEntryInput): Promise<{ error?: 
 }
 
 export async function deleteTimeEntry(id: string, projectId: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase.from("project_task_time_track").delete().eq("id", id);
   if (error) return { error: error.message };
   await recalculateRealTime(projectId);
@@ -625,7 +659,9 @@ export async function updateTaskComment(
   message: string,
   attachments: import("@/types/projects").TaskCommentAttachment[]
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase
     .from("project_task_comment")
     .update({
@@ -640,7 +676,9 @@ export async function updateTaskComment(
 }
 
 export async function markTaskCommentsViewed(taskId: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase.rpc("mark_task_comments_viewed", { p_task_id: taskId });
   if (error) return { error: error.message };
   revalidatePath("/projects");
@@ -648,7 +686,9 @@ export async function markTaskCommentsViewed(taskId: string): Promise<{ error?: 
 }
 
 export async function deleteTaskComment(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: existing } = await supabase
     .from("project_task_comment")
     .select("attachments")

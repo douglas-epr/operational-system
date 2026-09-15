@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getCurrentUserWithRole } from "@/lib/auth/current-user";
+import { pick } from "@/lib/pick";
 import type { Json } from "@/lib/supabase/types";
 import type {
   DocsAttachment,
@@ -47,8 +48,9 @@ export async function savePlaybookVersion(
 
 export async function deletePlaybookVersion(versionId: string): Promise<{ error?: string }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = await createClient() as any;
-  const { error } = await supabase.from("idea_playbook_version").delete().eq("id", versionId);
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase.from("idea_playbook_version").delete().eq("id", versionId);
   if (error) return { error: error.message };
   revalidatePath("/docs");
   revalidatePath("/ideas-refiner");
@@ -198,11 +200,12 @@ export async function editPlaybookCommentReply(
   patch: { message?: string; attachments?: DocsAttachment[] }
 ): Promise<{ error?: string }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = await createClient() as any;
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.message !== undefined) updates.message = patch.message;
   if (patch.attachments !== undefined) updates.attachments = patch.attachments as unknown as Json;
-  const { error } = await supabase
+  const { error } = await result.supabase
     .from("idea_playbook_comment_reply")
     .update(updates)
     .eq("id", id);
@@ -213,8 +216,9 @@ export async function editPlaybookCommentReply(
 
 export async function deletePlaybookCommentReply(id: string): Promise<{ error?: string }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = await createClient() as any;
-  const { error } = await supabase
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase
     .from("idea_playbook_comment_reply")
     .delete()
     .eq("id", id);
@@ -226,8 +230,10 @@ export async function deletePlaybookCommentReply(id: string): Promise<{ error?: 
 // ── Viewed-by helpers (RPC) ────────────────────────────────────────────────────
 
 export async function markPlaybookCommentsViewed(playbookId: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("mark_playbook_comments_viewed", {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase.rpc("mark_playbook_comments_viewed", {
     p_playbook_id: playbookId,
   });
   if (error) return { error: error.message };
@@ -237,8 +243,10 @@ export async function markPlaybookCommentsViewed(playbookId: string): Promise<{ 
 export async function markPlaybookCommentRepliesViewed(
   commentId: string
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("mark_playbook_comment_replies_viewed", {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase.rpc("mark_playbook_comment_replies_viewed", {
     p_comment_id: commentId,
   });
   if (error) return { error: error.message };
@@ -274,11 +282,13 @@ export async function updateAgreementTemplate(
   id: string,
   patch: { name?: string; content?: string }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.name !== undefined) updates.name = patch.name;
   if (patch.content !== undefined) updates.content = patch.content;
-  const { error } = await supabase
+  const { error } = await result.supabase
     .from("agreement_template")
     .update(updates)
     .eq("id", id);
@@ -288,8 +298,10 @@ export async function updateAgreementTemplate(
 }
 
 export async function deleteAgreementTemplate(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("agreement_template").delete().eq("id", id);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase.from("agreement_template").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/docs");
   return {};
@@ -332,6 +344,32 @@ export async function createAgreement(input: {
   return { agreement: data };
 }
 
+// Columns `updateAgreement` may write on `project_agreement_version`.
+// Deliberately EXCLUDES `authorized_users` and `required_signers` — those
+// are authorization columns (who may view / who must sign) and must not be
+// settable through this general-purpose "edit agreement" action. If a
+// legitimate flow needs to change them, that belongs in its own explicitly
+// role-gated action, not a silent side effect of an edit form. (Flagged for
+// the caller — see report.)
+// What this allow-list is for: blocking columns a caller must never set through a
+// generic patch — `id`, `project_id`, `created_by`, `created_at`. A server action is
+// a public HTTP endpoint and the declared TS param type is erased at runtime, so the
+// filter has to exist in code.
+//
+// `authorized_users` and `required_signers` ARE included: they are the agreement's own
+// editable fields and AgreementFormModal sends both on every edit, so excluding them
+// silently broke changing an agreement's viewers and signers. Who may update the row
+// at all remains enforced by RLS, which is the right layer for that.
+const AGREEMENT_WRITABLE_COLUMNS = [
+  "name",
+  "type",
+  "content",
+  "google_docs_url",
+  "status",
+  "authorized_users",
+  "required_signers",
+] as const;
+
 export async function updateAgreement(
   id: string,
   patch: {
@@ -344,12 +382,14 @@ export async function updateAgreement(
     required_signers?: string[];
   }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const [k, v] of Object.entries(patch)) {
-    if (v !== undefined) updates[k] = v;
-  }
-  const { error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const updates: Record<string, unknown> = {
+    ...pick(patch, AGREEMENT_WRITABLE_COLUMNS),
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await result.supabase
     .from("project_agreement_version")
     .update(updates)
     .eq("id", id);
@@ -359,8 +399,10 @@ export async function updateAgreement(
 }
 
 export async function deleteAgreement(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase
     .from("project_agreement_version")
     .delete()
     .eq("id", id);
@@ -466,12 +508,14 @@ export async function updateProjectFile(
   id: string,
   patch: { name?: string; description?: string | null; attachments?: DocsAttachment[] }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.name !== undefined) updates.name = patch.name;
   if (patch.description !== undefined) updates.description = patch.description;
   if (patch.attachments !== undefined) updates.attachments = patch.attachments as unknown as Json;
-  const { error } = await supabase
+  const { error } = await result.supabase
     .from("project_file")
     .update(updates)
     .eq("id", id);
@@ -481,8 +525,10 @@ export async function updateProjectFile(
 }
 
 export async function deleteProjectFile(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("project_file").delete().eq("id", id);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase.from("project_file").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/docs");
   return {};
@@ -521,12 +567,14 @@ export async function updateProjectLink(
   id: string,
   patch: { name?: string; description?: string | null; url?: string }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.name !== undefined) updates.name = patch.name;
   if (patch.description !== undefined) updates.description = patch.description;
   if (patch.url !== undefined) updates.url = patch.url;
-  const { error } = await supabase
+  const { error } = await result.supabase
     .from("project_link")
     .update(updates)
     .eq("id", id);
@@ -536,8 +584,10 @@ export async function updateProjectLink(
 }
 
 export async function deleteProjectLink(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("project_link").delete().eq("id", id);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase.from("project_link").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/docs");
   return {};
@@ -576,12 +626,14 @@ export async function updateProjectVideo(
   id: string,
   patch: { name?: string; description?: string | null; url?: string }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.name !== undefined) updates.name = patch.name;
   if (patch.description !== undefined) updates.description = patch.description;
   if (patch.url !== undefined) updates.url = patch.url;
-  const { error } = await supabase
+  const { error } = await result.supabase
     .from("project_video")
     .update(updates)
     .eq("id", id);
@@ -591,8 +643,10 @@ export async function updateProjectVideo(
 }
 
 export async function deleteProjectVideo(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("project_video").delete().eq("id", id);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase.from("project_video").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/docs");
   return {};
@@ -710,6 +764,21 @@ export async function createDailyFeedback(input: {
   return { feedback: data };
 }
 
+// Columns `updateDailyFeedback` may write on `project_work_feedback`.
+// Excludes `id`, `project_id`, `created_by`, and the linked-chat-message id
+// (`conversation_project_external_message_id`, owned by `createDailyFeedback`
+// / the sync step below, never by the caller's edit form).
+const DAILY_FEEDBACK_WRITABLE_COLUMNS = [
+  "start_date",
+  "end_date",
+  "total_time",
+  "current_state",
+  "current_work",
+  "next_work",
+  "blockers",
+  "video_and_links",
+] as const;
+
 export async function updateDailyFeedback(
   id: string,
   patch: {
@@ -723,11 +792,14 @@ export async function updateDailyFeedback(
     video_and_links?: string | null;
   }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const [k, v] of Object.entries(patch)) {
-    if (v !== undefined) updates[k] = v;
-  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { supabase } = result;
+  const updates: Record<string, unknown> = {
+    ...pick(patch, DAILY_FEEDBACK_WRITABLE_COLUMNS),
+    updated_at: new Date().toISOString(),
+  };
   // Keep the legacy `date` column aligned with the work-period start.
   if (patch.start_date !== undefined && patch.start_date) {
     updates.date = patch.start_date;
@@ -760,8 +832,10 @@ export async function updateDailyFeedback(
 }
 
 export async function deleteDailyFeedback(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("project_work_feedback").delete().eq("id", id);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = (await getUserIdOrError()) as any;
+  if (result.error) return { error: result.error };
+  const { error } = await result.supabase.from("project_work_feedback").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/docs");
   return {};
@@ -1055,7 +1129,11 @@ export async function buildPlaybookFromIdea(
   error?: string;
   version?: { id: string; version_name: string | null; created_at: string; updated_at: string };
 }> {
-  const supabase = await createClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const gate = (await getUserIdOrError()) as any;
+  if (gate.error) return { error: gate.error };
+  const { supabase, user } = gate;
+
   const bundle = await loadIdeaFull(supabase, ideaId);
   if (!bundle) return { error: "Idea not found or not accessible." };
 
@@ -1080,11 +1158,7 @@ export async function buildPlaybookFromIdea(
   const rawHtml = compileIdeaToPlaybookHtml(bundle);
 
   // Resolve AI config for the caller; fall back to raw compilation if unavailable.
-  const supabaseUser = await createClient();
-  const { data: { user } } = await supabaseUser.auth.getUser();
-  if (!user) return { error: "Not authenticated" };
-
-  const ai = await resolveAiConfig(supabaseUser, user.id);
+  const ai = await resolveAiConfig(supabase, user.id);
   if (!ai) {
     // No AI configured — save the raw compiled HTML directly.
     return createIdeaPlaybookVersion(ideaId, rawHtml);

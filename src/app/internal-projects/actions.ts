@@ -454,7 +454,13 @@ export async function deleteInternalTaskComment(
 export async function markInternalTaskCommentsViewed(
   internalTaskId: string
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  // Authentication only (not `requireInternalStaff`) — this action is
+  // read/no-op for any signed-in caller and existing RLS already scopes the
+  // underlying row; adding a role check here would be an authorization
+  // change, out of scope for this pass.
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase.rpc("mark_internal_task_comments_viewed", {
     p_internal_task_id: internalTaskId,
   });

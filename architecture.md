@@ -183,7 +183,38 @@ The security audit of 2026-09-15 recorded the following. Hardening work is track
 
 #### Rate limiting: where the real limit lives
 
-`src/lib/rate-limit.ts` holds its counters in module memory, which on Vercel means **per serverless instance**. A client that lands on a different instance gets a fresh window, so treat it as a best-effort courtesy layer, not a control. The authoritative limit belongs in a **Vercel Firewall rate-limit rule** on each public path — `/api/m/event`, `/api/m/[slug]/capture`, and `/api/webhooks/*` — configured in the Vercel dashboard for the project. Configure those rules before relying on any published rate-limit number.
+`src/lib/rate-limit.ts` holds its counters in module memory, which on Vercel means **per serverless
+instance**. A client that lands on a different instance gets a fresh window, so treat it as a
+best-effort courtesy layer, not a control. The authoritative limit belongs in **Vercel Firewall
+rate-limit rules**, which run at the edge before a function is invoked.
+
+These rules cannot be created from the repository — they need either the dashboard or an
+authenticated API token, and no token is stored locally. Project: `move37-operational-system`
+(`prj_S58WjOsmcw0CQMQV6xWvAmG8FHQo`). Create them under **Project → Firewall → Rate Limiting**,
+matching the in-code limits so behaviour is consistent when a request does reach a function:
+
+| Rule name | Path matches | Limit | Window | Key | Action |
+|---|---|---|---|---|---|
+| `mkt-capture` | `/api/m/*/capture` | 5 | 60s | IP | Deny (429) |
+| `mkt-event` | `/api/m/event` | 60 | 60s | IP | Deny (429) |
+| `mkt-unsubscribe` | `/api/m/unsubscribe` | 20 | 60s | IP | Deny (429) |
+| `webhooks` | `/api/webhooks/*` | 120 | 60s | IP | Deny (429) |
+
+Leave the three `/api/mkt/cron/*` routes unlimited: they are called by Vercel Cron on a schedule and
+already require a bearer `CRON_SECRET`.
+
+After creating them, verify from a shell — the 6th request inside a minute should return 429:
+
+```bash
+for i in $(seq 1 6); do
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST \
+    -H 'content-type: application/json' -d '{}' \
+    https://<your-domain>/api/m/some-slug/capture
+done
+```
+
+Until those rules exist, the published limits are advisory: a determined client can exceed them by
+spreading requests across instances.
 
 Related in-flight and completed work: `.specs/features/auth-roundtrips/` (redundant `getUser()` round-trips per request), `.specs/features/server-action-guards/` (uniform auth + column allow-lists across the mutation layer), `.specs/features/db-indexes/` (indexes on FK and RLS-predicate columns), `.specs/features/bundle-and-boundaries/` (code splitting and route boundaries).
 

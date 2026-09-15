@@ -170,3 +170,33 @@ _Severity: 🔴 high · 🟠 medium · 🟡 low. Each item cites file:line evide
 - `package.json` lists `@types/dompurify` under `dependencies`, not `devDependencies` — a types-only
   package that ships no runtime code but is bundled into the deploy graph unnecessarily.
 - **Fix:** move to `devDependencies` in a routine dependency-cleanup pass.
+
+## Added 2026-09-15 (from the production Supabase advisor, after the index migration)
+
+These are **pre-existing production** findings surfaced by `get_advisors` once the FK-index
+migration was applied. None was caused by that migration. They were not in the original audit
+because the earlier pass read migration files rather than querying the live database.
+
+- 🔴 **31 `SECURITY DEFINER` functions are executable by the `anon` role** via
+  `/rest/v1/rpc/<name>`, i.e. callable with no sign-in. The ones that look most consequential are
+  `update_talent_by_code(p_code text, p_payload jsonb)`, `get_talent_by_code(p_code text)`,
+  `sign_agreement(p_agreement_id uuid)`, `public_table_list()` and
+  `public_table_columns(p_table text)` — the last two enumerate schema. The same 31 are also
+  callable by `authenticated`. Fix: `REVOKE EXECUTE ... FROM anon` (and from `authenticated` where
+  only the server should call it), or switch to `SECURITY INVOKER`, or move them out of the exposed
+  `public` schema. **Not changed in this session**: revoking a grant can break a live flow, and it
+  was outside the approved scope. Verify each function's real callers first — the `/m` landing pages
+  use the service-role client rather than anon RPC, so most of these are likely revocable.
+  Reference: https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable
+- 🟠 **`public.project_internal_chatbot_message` has RLS enabled but zero policies**, so it denies
+  everything. Fail-safe rather than a leak, but it means the table is unusable through the API and
+  is probably an oversight. Decide whether it needs a policy or should be dropped.
+- 🟡 **8 trigger functions have a mutable `search_path`**: `handle_updated_at`,
+  `idea_auto_version_name`, `feedback_set_updated_at`, `idea_update_version_on_project_change`,
+  `project_agreement_version_auto_complete`, `project_invoice_set_updated_at`,
+  `talent_set_updated_at`, `touch_project_chatbot_updated_at`. **Verified all 8 are
+  `SECURITY INVOKER`** (`pg_proc.prosecdef = false`), so they run with the caller's own rights and
+  the severity is low — the repo-wide claim that every `SECURITY DEFINER` function pins
+  `search_path` still holds. Worth pinning anyway for consistency.
+- 🟡 **Leaked-password protection is disabled** in Supabase Auth. Enabling the HaveIBeenPwned check
+  is a dashboard toggle under Authentication → Policies.

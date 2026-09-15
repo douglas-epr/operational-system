@@ -1,6 +1,6 @@
 # Spec: Server Action Guards — authorization, allow-lists, cron & env reconciliation
 
-Status: in progress 2026-09-15
+Status: implemented 2026-09-15 (local + production; 53 gates, 6 allow-lists)
 
 Source: approved plan `1-please-update-all-wondrous-pixel.md`, Phase 4b "Security — P1" (items S9–S12).
 

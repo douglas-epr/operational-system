@@ -5,6 +5,20 @@ _Initialized 2026-06-21 from git history + changelog._
 
 ## Decisions
 
+- **2026-09-15 — Poll interval confirmed at 5s, measured live.** The 2s → 5s change was an
+  assumption flagged for veto; it is now verified in the running app (8 `POST /chat` requests in a
+  22-second window, where 2s polling produced roughly 22). Kept.
+- **2026-09-15 — Archived logs are kept, not deleted.** `archive/legacy-logs/` holds three former
+  root logs (~820 KB), already preserved in git history. Nothing depends on the space, so they stay;
+  remove with `git rm -r archive/legacy-logs` whenever you want them gone.
+- **2026-09-15 — Vercel Firewall rules are blocked, not skipped.** No Vercel token is stored on this
+  machine, so edge rate-limit rules cannot be created from the repo. The exact rule table and a
+  verification command live in `architecture.md`. Until they exist the published rate limits are
+  advisory, because `src/lib/rate-limit.ts` counts per serverless instance.
+- **2026-09-15 — Production index migration applied directly.** Every target table was under 50 kB,
+  so a plain `CREATE INDEX` holds its lock for well under a millisecond and the
+  `CREATE INDEX CONCURRENTLY` path documented in the migration header was unnecessary. Applied
+  through `apply_migration` so production migration history stays in step with the repo.
 - **2026-09-15 — Hardening decisions.** Rate limiting: an in-memory per-instance limiter
   (`src/lib/rate-limit.ts`) plus Vercel Firewall rules as the authoritative control — chosen over
   Upstash Redis to avoid a paid dependency; the limiter is explicitly best-effort and says so.

@@ -75,9 +75,9 @@ Hardening specs live under `.specs/features/`; the pre-change gate baseline is
 
 - ✅ `security-p0` — Brevo webhook secret, server-safe `isomorphic-dompurify` sanitizer, every HTML sink sanitized, `/m` iframe sandbox isolation with server-injected UTM, dedicated unsubscribe signing secret, in-memory rate limiter on all public routes, `server-only` guard on the service-role module, HSTS + CSP-Report-Only. Implemented 2026-09-15.
 - ✅ `auth-roundtrips` — middleware excluded from `/api/*` and `/m/*`, conditional profile lookup, request-scoped `cache()` auth helper, visibility-gated and slower chat polling. Implemented 2026-09-15.
-- ✅ `db-indexes` — 39 foreign-key indexes added, 4 duplicate index pairs dropped, unbounded list queries bounded, `max(order)` pushed into the database. Migration applied **locally only**; production apply is pending.
+- ✅ `db-indexes` — 39 foreign-key indexes added, 4 duplicate index pairs dropped, unbounded list queries bounded, `max(order)` pushed into the database. **Applied to local and production** (2026-09-15); verified 17 `idea_id` + 6 `created_by` indexes live, all 4 duplicate twins dropped.
 - ✅ `bundle-and-boundaries` — TipTap and Recharts behind `next/dynamic`, route-level loading/error/not-found boundaries added, `removeConsole` in production.
-- 🟡 `server-action-guards` — explicit authentication gates on the server actions that previously relied on RLS alone, plus column allow-lists on unfiltered updates. In flight.
+- ✅ `server-action-guards` — 53 explicit authentication gates added across 7 modules (0 ungated writers remain), 6 column allow-lists closing all 7 mass-assignment sites, plus a real ordering bug fixed in `buildPlaybookFromIdea` where an unauthenticated write ran before its auth check. Implemented 2026-09-15.
 
 ## Documentation
 

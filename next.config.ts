@@ -39,7 +39,16 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.supabase.co https://openrouter.ai https://api.brevo.com",
+              // The local Supabase stack is served over http on 127.0.0.1, so in
+              // development it must be allowed explicitly or every query reports a
+              // violation and buries the real ones. Production only ever talks to
+              // the hosted *.supabase.co origin.
+              [
+                "connect-src 'self' https://*.supabase.co https://openrouter.ai https://api.brevo.com",
+                process.env.NODE_ENV === "production" ? "" : "http://127.0.0.1:54321 http://localhost:54321",
+              ]
+                .filter(Boolean)
+                .join(" "),
               "frame-src 'self' blob:",
               "object-src 'none'",
               "base-uri 'self'",

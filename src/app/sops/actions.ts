@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUserWithRole } from "@/lib/auth/current-user";
 
 // ── Create SOP ─────────────────────────────────────────────────────────────────
 
@@ -122,7 +123,9 @@ export async function saveAsNewVersion(
 // ── Rename version ────────────────────────────────────────────────────────────
 
 export async function renameVersion(versionId: string, name: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase
     .from("sop_version")
     .update({ version_name: name.trim() })
@@ -135,7 +138,9 @@ export async function renameVersion(versionId: string, name: string): Promise<{ 
 // ── Delete version ────────────────────────────────────────────────────────────
 
 export async function deleteVersion(versionId: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase.from("sop_version").delete().eq("id", versionId);
   if (error) return { error: error.message };
   revalidatePath("/sops");
@@ -148,7 +153,9 @@ export async function updateVersion(
   versionId: string,
   content: string
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase
     .from("sop_version")
     .update({ content })
@@ -162,7 +169,9 @@ export async function updateVersion(
 // ── Create tag ─────────────────────────────────────────────────────────────────
 
 export async function createTag(name: string): Promise<{ error?: string; tag?: { id: string; name: string } }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data, error } = await supabase
     .from("sop_tag")
     .insert({ name: name.trim() })
@@ -176,7 +185,9 @@ export async function createTag(name: string): Promise<{ error?: string; tag?: {
 // ── Delete tag ─────────────────────────────────────────────────────────────────
 
 export async function deleteTag(id: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase.from("sop_tag").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/sops");

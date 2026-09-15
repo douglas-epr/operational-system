@@ -18,18 +18,18 @@ _Snapshot 2026-09-15. Status mirrors `docs/project_status.md`._
 | **2026-09-15 — Documentation + spec workspace**: root docs reconciled with the code, `database.md` / `design-system.md` / `hooks.example.md` / `CHALLENGES.md` added, `.specs/{features,evaluations}` established, 6 project subagents authored, repo root reorganized | ✅ |
 | **2026-09-15 — security-p0**: Brevo webhook secret, server-safe sanitizer on every HTML sink, `/m` iframe sandbox isolation, dedicated unsubscribe signing secret, rate limiting on public routes, `server-only` service-role guard, HSTS + CSP-Report-Only | ✅ |
 | **2026-09-15 — auth-roundtrips**: middleware off `/api/*` and `/m/*`, conditional profile lookup, request-scoped `cache()` auth helper, visibility-gated + slower chat polling | ✅ |
-| **2026-09-15 — db-indexes**: 39 FK indexes added, 4 duplicate pairs dropped, list queries bounded, `max(order)` pushed into the database (applied locally only) | ✅ |
+| **2026-09-15 — db-indexes**: 39 FK indexes added, 4 duplicate pairs dropped, list queries bounded, `max(order)` pushed into the database (applied to local and production) | ✅ |
 | **2026-09-15 — bundle-and-boundaries**: TipTap + Recharts behind `next/dynamic`, route loading/error/not-found boundaries, `removeConsole` in production | ✅ |
 
 ## In Progress / Next
 
 | Item | Status | Notes |
 |---|---|---|
-| **server-action-guards** (server actions relying on RLS alone get an explicit authentication gate; column allow-lists on unfiltered updates) | 🟠 | `.specs/features/server-action-guards/spec.md` |
-| Apply `20260915000000_fk_indexes.sql` to production | 🟠 | Local only so far. Re-issue as `CREATE INDEX CONCURRENTLY` outside a transaction, or use a maintenance window |
-| Repair local migration history | 🟠 | `supabase_migrations.schema_migrations` has gaps; `mkt_seo_keyword` / `mkt_seo_rank_history` were never applied locally, so they are absent from generated types |
+| ~~**server-action-guards**~~ | ✅ | Done 2026-09-15: 53 gates, 6 allow-lists, 0 ungated writers remaining |
+| ~~Apply `20260915000000_fk_indexes.sql` to production~~ | ✅ | Applied 2026-09-15. Every target table was under 50 kB so a plain `CREATE INDEX` locked for under a millisecond; `CONCURRENTLY` was unnecessary at this size |
+| ~~Repair local migration history~~ | ✅ | Repaired 2026-09-15: 14 migrations applied, 2 marked applied via `migration repair`, 0 unrecorded remaining, types regenerated |
 | CSP enforce mode with a per-request nonce | 🟡 | Report-Only is live; enforcement needs a nonce for the inline theme script and the `/m` `srcDoc` iframe |
-| Vercel Firewall rate-limit rules | 🟡 | `src/lib/rate-limit.ts` is per-instance and best-effort; the authoritative limit belongs in the dashboard |
+| Vercel Firewall rate-limit rules | 🟠 | Blocked on dashboard access — no Vercel token is stored locally. Exact rule table and a verify command are in `architecture.md` under "Rate limiting: where the real limit lives" |
 | Lazy-load the ref-based rich-text callers | 🟡 | `next/dynamic` does not forward refs, so these need an imperative-handle-free editor API first |
 | Stripe pre-order capture | 🟡 | Quiz + waitlist live; preorder stubbed (deferred per decision) |
 | A/B landing variants + decision-log pivot taxonomy (P2) | 🟡 | Partial |

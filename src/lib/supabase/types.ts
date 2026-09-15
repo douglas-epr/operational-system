@@ -1508,6 +1508,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          features_per_page: string | null
           id: string
           idea_id: string
           updated_at: string
@@ -1516,6 +1517,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          features_per_page?: string | null
           id?: string
           idea_id: string
           updated_at?: string
@@ -1524,6 +1526,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          features_per_page?: string | null
           id?: string
           idea_id?: string
           updated_at?: string
@@ -2494,7 +2497,6 @@ export type Database = {
           current_state: string | null
           current_work: string | null
           date: string
-          emails: string[]
           end_date: string | null
           id: string
           internal_project_id: string
@@ -2512,7 +2514,6 @@ export type Database = {
           current_state?: string | null
           current_work?: string | null
           date: string
-          emails?: string[]
           end_date?: string | null
           id?: string
           internal_project_id: string
@@ -2530,7 +2531,6 @@ export type Database = {
           current_state?: string | null
           current_work?: string | null
           date?: string
-          emails?: string[]
           end_date?: string | null
           id?: string
           internal_project_id?: string
@@ -2577,7 +2577,6 @@ export type Database = {
           document_number: string | null
           due_date: string | null
           email: string | null
-          emails: string[]
           end_date: string | null
           iban_code: string | null
           id: string
@@ -2602,7 +2601,6 @@ export type Database = {
           document_number?: string | null
           due_date?: string | null
           email?: string | null
-          emails?: string[]
           end_date?: string | null
           iban_code?: string | null
           id?: string
@@ -2627,7 +2625,6 @@ export type Database = {
           document_number?: string | null
           due_date?: string | null
           email?: string | null
-          emails?: string[]
           end_date?: string | null
           iban_code?: string | null
           id?: string
@@ -3206,6 +3203,82 @@ export type Database = {
             columns: ["idea_id"]
             isOneToOne: false
             referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_seo_keyword: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          idea_id: string
+          keyword: string
+          last_checked_at: string | null
+          last_rank: number | null
+          last_url: string | null
+          target_domain: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id: string
+          keyword: string
+          last_checked_at?: string | null
+          last_rank?: number | null
+          last_url?: string | null
+          target_domain?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          idea_id?: string
+          keyword?: string
+          last_checked_at?: string | null
+          last_rank?: number | null
+          last_url?: string | null
+          target_domain?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_seo_keyword_idea_id_fkey"
+            columns: ["idea_id"]
+            isOneToOne: false
+            referencedRelation: "idea"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mkt_seo_rank_history: {
+        Row: {
+          checked_at: string
+          id: string
+          keyword_id: string
+          rank: number | null
+          url: string | null
+        }
+        Insert: {
+          checked_at?: string
+          id?: string
+          keyword_id: string
+          rank?: number | null
+          url?: string | null
+        }
+        Update: {
+          checked_at?: string
+          id?: string
+          keyword_id?: string
+          rank?: number | null
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mkt_seo_rank_history_keyword_id_fkey"
+            columns: ["keyword_id"]
+            isOneToOne: false
+            referencedRelation: "mkt_seo_keyword"
             referencedColumns: ["id"]
           },
         ]
@@ -4213,7 +4286,6 @@ export type Database = {
           current_state: string | null
           current_work: string | null
           date: string
-          emails: string[]
           end_date: string | null
           id: string
           next_work: string | null
@@ -4231,7 +4303,6 @@ export type Database = {
           current_state?: string | null
           current_work?: string | null
           date: string
-          emails?: string[]
           end_date?: string | null
           id?: string
           next_work?: string | null
@@ -4249,7 +4320,6 @@ export type Database = {
           current_state?: string | null
           current_work?: string | null
           date?: string
-          emails?: string[]
           end_date?: string | null
           id?: string
           next_work?: string | null
@@ -4480,38 +4550,20 @@ export type Database = {
       }
       user_ai_settings: {
         Row: {
-          active_service: Database["public"]["Enums"]["os_ai_service"] | null
-          claude_api_key: string | null
-          claude_model: string | null
           created_at: string
-          gemini_api_key: string | null
-          gemini_model: string | null
-          openai_api_key: string | null
-          openai_model: string | null
+          openrouter_model: string
           owner_id: string
           updated_at: string
         }
         Insert: {
-          active_service?: Database["public"]["Enums"]["os_ai_service"] | null
-          claude_api_key?: string | null
-          claude_model?: string | null
           created_at?: string
-          gemini_api_key?: string | null
-          gemini_model?: string | null
-          openai_api_key?: string | null
-          openai_model?: string | null
+          openrouter_model?: string
           owner_id: string
           updated_at?: string
         }
         Update: {
-          active_service?: Database["public"]["Enums"]["os_ai_service"] | null
-          claude_api_key?: string | null
-          claude_model?: string | null
           created_at?: string
-          gemini_api_key?: string | null
-          gemini_model?: string | null
-          openai_api_key?: string | null
-          openai_model?: string | null
+          openrouter_model?: string
           owner_id?: string
           updated_at?: string
         }
@@ -4680,7 +4732,6 @@ export type Database = {
         | "proposal_quotation"
         | "service_agreement"
         | "launch_handoff"
-      os_ai_service: "gemini" | "claude" | "openai"
       os_ai_status: "pending" | "in_progress" | "done"
       os_company_sector: "organizational" | "operational" | "marketing"
       os_docs_type:
@@ -5130,7 +5181,6 @@ export const Constants = {
         "service_agreement",
         "launch_handoff",
       ],
-      os_ai_service: ["gemini", "claude", "openai"],
       os_ai_status: ["pending", "in_progress", "done"],
       os_company_sector: ["organizational", "operational", "marketing"],
       os_docs_type: [

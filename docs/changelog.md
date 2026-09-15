@@ -5,6 +5,71 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-09-15] — Server-action auth gates, prod index apply, local DB repair, live verification
+
+Completes the six items left open by the earlier pass in this session.
+
+### Server-action authentication gates (`server-action-guards`)
+
+- **53 authentication gates** added across `docs`, `ideas-refiner`, `projects`, `sops`, `invoices`
+  and `internal-projects`. Every mutating server action that previously relied on Row Level Security
+  alone now fails fast with `{ error: "Not authenticated" }`. 0 ungated writers remain. Gates route
+  through the request-scoped `getCurrentUserWithRole()` so they add no Supabase round-trip.
+- **Authentication only, deliberately not authorization.** RLS remains the authority on which rows a
+  user may touch. Adding role checks here would change who can do what, which is a product decision;
+  candidates are listed in `.specs/features/server-action-guards/spec.md`.
+- **Real bug fixed**: `buildPlaybookFromIdea` ran an unauthenticated `idea.update({ project_id })`
+  *before* its own `auth.getUser()` check. The gate moved to the top of the function.
+- **6 column allow-lists** close all 7 mass-assignment sites, four of which laundered their payload
+  through `Object.entries` or a rest spread and so were invisible to a `.update(data)` grep. New
+  shared helper `src/lib/pick.ts` drops any key not explicitly permitted, because a declared
+  TypeScript parameter type is erased at runtime and a server action is a public HTTP endpoint.
+  `id`, `project_id`, `created_by` and `created_at` are excluded everywhere.
+- The agreement allow-list **does** include `authorized_users` and `required_signers`: they are the
+  agreement's own editable fields and the edit modal sends both, so excluding them silently broke
+  changing an agreement's viewers and signers. Caught in review before shipping.
+
+### Database
+
+- **Index migration applied to production.** 39 foreign-key and RLS-predicate indexes created, 4
+  duplicate index pairs dropped, verified live (17 `idea_id`, 6 `created_by`). Every target table was
+  under 50 kB, so a plain `CREATE INDEX` locked for well under a millisecond and the
+  `CREATE INDEX CONCURRENTLY` path in the migration header was unnecessary.
+- **Local migration history repaired.** Local was missing both OpenRouter migrations, the
+  `mkt_seo_keyword` / `mkt_seo_rank_history` tables and the `profiles_guard_type_change` security
+  trigger while production had all of them. 14 migrations applied, 2 applied-but-unrecorded marked
+  via `migration repair`; 0 unrecorded remain. `src/lib/supabase/types.ts` regenerated — it had been
+  missing `idea.location`, `idea.jurisdiction` and three whole tables.
+
+### Security and configuration
+
+- `vercel.json` declares the three `/api/mkt/cron/*` schedules, staggered hourly.
+- CSP `connect-src` now allows the local Supabase origin in development only. Without it every local
+  query reported a violation, which would have buried real ones.
+- Vercel Firewall rate-limit rules are documented in `architecture.md` with an exact rule table and a
+  verification command. They cannot be created from the repo: no Vercel token is stored locally, so
+  the in-repo limiter stays per-instance and best-effort until those rules exist.
+- Recorded four pre-existing production findings from the Supabase advisor in
+  `.specs/codebase/CONCERNS.md`, the notable one being **31 `SECURITY DEFINER` functions executable
+  by the `anon` role** over `/rest/v1/rpc/`. Not changed here: revoking a grant can break a live flow.
+
+### Verified in the running app (Playwright + curl, local stack)
+
+- All 11 routes render with 0 console errors; signed-out access to each protected route redirects to
+  `/signin`; the public zone stays reachable.
+- Brevo webhook: missing token 401, wrong token 401, correct token 200.
+- Rate limiter: `/api/m/[slug]/capture` allows 5 requests then returns 429 with `Retry-After`.
+- CORS preflight on the two public capture endpoints returns 204 with the expected headers.
+- `/m/[slug]` sandbox no longer carries `allow-same-origin`; UTM values are injected server-side and
+  the cross-origin `parent.location` read is gone.
+- Middleware no longer runs on `/api/*` or `/m/*` — `/projects` logs `proxy.ts: 54ms` while
+  `/m/clearday` logs no middleware phase at all.
+- Chat polling measured at 8 requests per 22 seconds, consistent with the 5s interval rather than 2s.
+- Route boundaries: the new not-found page renders with a working link; charts and both rich-text
+  editors load through `next/dynamic` without sticking on their skeletons.
+- Gates: `tsc` 0 errors, `eslint` 80 problems (44 errors, 36 warnings — below the 82-problem
+  baseline), `next build` passes with all 40 routes.
+
 ## [2026-09-15] — Documentation refresh, spec workspace, project agents, repo reorganization
 
 Context: every root document and every file in `.specs/` still described the pre-OpenRouter AI

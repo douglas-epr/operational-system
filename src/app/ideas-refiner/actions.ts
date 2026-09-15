@@ -6,6 +6,8 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { getCurrentUserWithRole } from "@/lib/auth/current-user";
+import { pick } from "@/lib/pick";
 import type {
   IdeaBlock,
   IdeaChatbotMessage,
@@ -328,7 +330,9 @@ export async function saveStructureAlign(
   ideaId: string,
   data: { core_problem: string; target_audience: string; success_metrics: string }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
 
   // Check if a row already exists
   const { data: existing } = await supabase
@@ -365,13 +369,31 @@ export async function saveStructureAlign(
 
 // ── ICP CRUD ─────────────────────────────────────────────────────────────────
 
+// Columns `saveIcpProfile` may write on `idea_icp` — the narrative ICP-profile
+// fields edited from RefiningIcpStep. Deliberately excludes `id`, `idea_id`,
+// and the Strategic-Frameworks-owned columns (see `STRATEGIC_FRAMEWORK_WRITABLE_COLUMNS`
+// below) so a crafted payload can't re-parent the row or overwrite the other
+// step's fields.
+const ICP_PROFILE_WRITABLE_COLUMNS = [
+  "name",
+  "description",
+  "day_in_life",
+  "pain_points",
+  "how_problems_are_solved",
+  "how_problems_could_be_solved",
+  "our_solution_value",
+] as const;
+
 /** Save ICP profile fields (day_in_life, pain_points, etc.). */
 export async function saveIcpProfile(
   icpId: string,
   data: Record<string, unknown>
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("idea_icp").update(data).eq("id", icpId);
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
+  const updates: Record<string, unknown> = pick(data, ICP_PROFILE_WRITABLE_COLUMNS);
+  const { error } = await supabase.from("idea_icp").update(updates).eq("id", icpId);
   if (error) return { error: error.message };
   revalidatePath(PATH);
   return {};
@@ -382,7 +404,9 @@ export async function createIcp(
   ideaId: string,
   data: { name: string; description?: string }
 ): Promise<{ error?: string; id?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: row, error } = await supabase
     .from("idea_icp")
     .insert({ idea_id: ideaId, name: data.name, description: data.description || null })
@@ -395,7 +419,9 @@ export async function createIcp(
 
 /** Delete an ICP. */
 export async function deleteIcp(icpId: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase.from("idea_icp").delete().eq("id", icpId);
   if (error) return { error: error.message };
   revalidatePath(PATH);
@@ -443,13 +469,38 @@ export async function saveProductDefinition(
 
 // ── Strategic Frameworks / Optimization Suggestions ──────────────────────────
 
+// Columns `saveStrategicFramework` may write on `idea_icp` — the AI-scored
+// archetype fields edited from StrategicFrameworksStep. Deliberately excludes
+// `id`, `idea_id`, `score`/`score_rationale` (AI-generation-owned), and the
+// ICP-profile-owned columns above.
+const STRATEGIC_FRAMEWORK_WRITABLE_COLUMNS = [
+  "title",
+  "subtitle",
+  "picture",
+  "tags",
+  "jtbd",
+  "pitch_need",
+  "pitch_approach",
+  "pitch_benefit",
+  "pitch_competition",
+  "psychographics",
+  "firmographics",
+  "value_proposition_icp_pains",
+  "value_proposition_value_map_solutions",
+  "value_proposition_icp_gains",
+  "value_proposition_value_map_gain_creators",
+] as const;
+
 /** Save strategic framework fields on an ICP. */
 export async function saveStrategicFramework(
   icpId: string,
   data: Record<string, unknown>
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.from("idea_icp").update(data).eq("id", icpId);
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
+  const updates: Record<string, unknown> = pick(data, STRATEGIC_FRAMEWORK_WRITABLE_COLUMNS);
+  const { error } = await supabase.from("idea_icp").update(updates).eq("id", icpId);
   if (error) return { error: error.message };
   revalidatePath(PATH);
   return {};
@@ -461,7 +512,9 @@ export async function createOptimizationSuggestion(
   icpId: string,
   data: { name: string; description?: string }
 ): Promise<{ error?: string; id?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: row, error } = await supabase
     .from("idea_optimization_suggestion")
     .insert({
@@ -477,15 +530,24 @@ export async function createOptimizationSuggestion(
   return { id: row.id };
 }
 
+// `data` is already narrowly typed (not `Record<string, unknown>`), but the
+// declared type is erased at runtime and this action is a public HTTP
+// endpoint — pick() re-asserts the same two columns at runtime so a crafted
+// payload can't add `idea_id`/`icp_id` re-parenting via this path either.
+const OPTIMIZATION_SUGGESTION_WRITABLE_COLUMNS = ["name", "description"] as const;
+
 /** Update an optimization suggestion. */
 export async function saveOptimizationSuggestion(
   id: string,
   data: { name?: string; description?: string }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
+  const updates = pick(data, OPTIMIZATION_SUGGESTION_WRITABLE_COLUMNS);
   const { error } = await supabase
     .from("idea_optimization_suggestion")
-    .update(data)
+    .update(updates)
     .eq("id", id);
   if (error) return { error: error.message };
   revalidatePath(PATH);
@@ -496,7 +558,9 @@ export async function saveOptimizationSuggestion(
 export async function deleteOptimizationSuggestion(
   id: string
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { error } = await supabase
     .from("idea_optimization_suggestion")
     .delete()
@@ -518,7 +582,9 @@ export async function saveRiskAndValidation(
     demand_evidence?: unknown;
   }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: existing } = await supabase
     .from("idea_risk_and_validation" as never)
     .select("id")
@@ -549,7 +615,9 @@ export async function saveBenchmarking(
   ideaId: string,
   data: { overview?: string; comparison?: string; possible_business_models?: string; takeaways?: string }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: existing } = await supabase
     .from("idea_benchmarking" as never)
     .select("id")
@@ -582,7 +650,9 @@ export async function savePrd(
     description?: string;
   }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: existing } = await supabase
     .from("idea_prd" as never)
     .select("id")
@@ -613,7 +683,9 @@ export async function saveDatabase(
   ideaId: string,
   data: { tables_schema?: string; relationships?: string; notes?: string }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: existing } = await supabase
     .from("idea_database" as never)
     .select("id")
@@ -660,7 +732,9 @@ export async function saveStyles(
     motion_principles?: string;
   }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: existing } = await supabase
     .from("idea_styles" as never)
     .select("id")
@@ -784,7 +858,9 @@ export async function saveMilestonesAndTasks(
   ideaId: string,
   data: { content?: string }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: existing } = await supabase
     .from("idea_milestones_and_tasks" as never)
     .select("id")
@@ -822,7 +898,9 @@ export async function saveReport(
     playbook_html?: string;
   }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: existing } = await supabase
     .from("idea_report" as never)
     .select("id")
@@ -3556,7 +3634,9 @@ function renderChatHistory(messages: IdeaChatbotMessage[]): string {
 export async function loadChatHistory(
   ideaId: string,
 ): Promise<{ messages?: IdeaChatbotMessage[]; error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data, error } = await supabase
     .from("idea_chatbot" as never)
     .select("id, idea_id, created_by, type, message, created_at, updated_at")
@@ -3788,7 +3868,9 @@ Your entire response must be a single valid json object of this exact shape: { "
 export async function loadDevilAdvocateChatHistory(
   ideaId: string,
 ): Promise<{ messages?: IdeaChatbotMessage[]; error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data, error } = await supabase
     .from("idea_chatbot_devil_advocate" as never)
     .select("id, idea_id, created_by, type, message, created_at, updated_at")
@@ -4281,7 +4363,9 @@ export async function saveLocationLegislation(
     red_flags?: string;
   }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: existing } = await supabase
     .from("idea_location_legislation" as never)
     .select("id")
@@ -4327,7 +4411,9 @@ export async function saveMarketOpportunity(
     ltv_estimate?: string;
   }
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
+  const current = await getCurrentUserWithRole();
+  if (!current) return { error: "Not authenticated" };
+  const { supabase } = current;
   const { data: existing } = await supabase
     .from("idea_market_opportunity" as never)
     .select("id")
