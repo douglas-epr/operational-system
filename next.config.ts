@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const nextConfig: NextConfig = {
+  // html-docx-js is written with legacy `with` statements, which cannot be
+  // bundled into an ESM output ("With statements cannot be used with the esm
+  // output format due to strict mode") — that breaks the Cloudflare Workers
+  // build. It is only ever reached from a browser click handler via
+  // `await import("html-docx-js/dist/html-docx")` in six export modals, so it
+  // never needs to be in the server bundle at all. Externalizing keeps it out.
+  serverExternalPackages: ["html-docx-js"],
   // Pin the workspace root to this project so Turbopack doesn't pick up
   // C:\Users\dougl\package-lock.json (which causes Tailwind v4 to scan files
   // outside the repo and choke on non-UTF-8 candidates — "Invalid code point"

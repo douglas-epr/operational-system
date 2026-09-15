@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "move37-operational-system",
+  "main": ".open-next/worker.js",
+
+  // 2025-03-01 or later is required by @opennextjs/cloudflare.
+  "compatibility_date": "2026-09-01",
+
+  // nodejs_compat is mandatory for this app, not optional:
+  //   - src/lib/auth/secretCompare.ts        -> node:crypto timingSafeEqual
+  //   - src/app/api/webhooks/calcom/route.ts -> node:crypto createHmac
+  //   - src/app/api/webhooks/tally/route.ts  -> node:crypto createHmac
+  //   - src/lib/marketing/outreach.ts        -> node:crypto createHmac
+  // global_fetch_strictly_public makes fetch() to our own hostname leave the
+  // Worker and come back through the edge, which is what Next expects when a
+  // server component fetches an absolute URL on this origin.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  "observability": {
+    "enabled": true
+  },
+
+  // Cron Triggers replace the `crons` block in vercel.json. Cloudflare invokes
+  // the Worker's scheduled() handler rather than fetching a path, so the
+  // schedules below are wired to the /api/mkt/cron/* routes in src/cron.ts and
+  // signed with CRON_SECRET, exactly as Vercel Cron did.
+  "triggers": {
+    "crons": ["0 * * * *", "15 * * * *", "30 * * * *"]
+  }
+}

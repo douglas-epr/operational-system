@@ -69,3 +69,6 @@ archive/legacy-logs/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 supabase/snippets/
+
+# Cloudflare Workers build output (@opennextjs/cloudflare)
+.open-next/
