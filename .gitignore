@@ -56,10 +56,16 @@ supabase/prod-full.sql
 # supabase CLI temp files (contain connection strings — never commit)
 supabase/.temp/
 
-.vercel
 
 # Playwright MCP test artifacts
 .playwright-mcp/
 
 # Local attachments folder (screenshots, files — not for source control)
 Attachments/
+
+# logs & local runtime artifacts
+*.log
+archive/legacy-logs/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+supabase/snippets/
