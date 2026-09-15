@@ -1,4 +1,5 @@
 "use client";
+import { loadHtmlDocx } from "@/lib/load-html-docx";
 
 import { useRef, useState } from "react";
 import Modal from "@/app/projects/_components/modals/Modal";
@@ -82,9 +83,7 @@ export default function BriefPreviewModal({
     setIsExportingDocx(true);
     setError(null);
     try {
-      const htmlDocxMod = await import("html-docx-js/dist/html-docx");
-      const asBlob = htmlDocxMod.asBlob ?? htmlDocxMod.default?.asBlob;
-      if (!asBlob) throw new Error("html-docx-js module shape unexpected");
+      const asBlob = await loadHtmlDocx();
       const title = briefTitleOverride ?? report?.brief_title ?? "Build Brief";
       const subtitle = briefSubtitleOverride ?? report?.brief_subtitle ?? `Generated for ${ideaName}`;
       const body = briefHtmlOverride ?? report?.brief_html ?? "<p><em>No brief generated yet.</em></p>";

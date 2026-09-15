@@ -7,6 +7,7 @@
  * html-docx-js for DOCX.
  */
 "use client";
+import { loadHtmlDocx } from "@/lib/load-html-docx";
 
 import { useRef, useState } from "react";
 import Modal from "@/app/projects/_components/modals/Modal";
@@ -84,9 +85,7 @@ export default function ReportPreviewModal({
     setIsExportingDocx(true);
     setError(null);
     try {
-      const htmlDocxMod = await import("html-docx-js/dist/html-docx");
-      const asBlob = htmlDocxMod.asBlob ?? htmlDocxMod.default?.asBlob;
-      if (!asBlob) throw new Error("html-docx-js module shape unexpected");
+      const asBlob = await loadHtmlDocx();
       const title = report?.playbook_title ?? "Product Strategy Playbook";
       const subtitle = report?.playbook_subtitle ?? `Generated for ${ideaName}`;
       const body = report?.playbook_html ?? "<p><em>No playbook generated yet.</em></p>";

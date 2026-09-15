@@ -1,4 +1,5 @@
 ﻿"use client";
+import { loadHtmlDocx } from "@/lib/load-html-docx";
 
 /**
  * Reusable white-paper preview modal with PDF + DOCX export.
@@ -111,9 +112,7 @@ export default function DocumentPreviewModal({
     setIsExportingDocx(true);
     setError(null);
     try {
-      const htmlDocxMod = await import("html-docx-js/dist/html-docx");
-      const asBlob = htmlDocxMod.asBlob ?? htmlDocxMod.default?.asBlob;
-      if (!asBlob) throw new Error("html-docx-js module shape unexpected");
+      const asBlob = await loadHtmlDocx();
 
       const fullHtml =
         `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${escapeHtml(

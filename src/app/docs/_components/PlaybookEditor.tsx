@@ -1,4 +1,5 @@
 ﻿"use client";
+import { loadHtmlDocx } from "@/lib/load-html-docx";
 
 import { useRef, useState, useTransition, useMemo, useCallback, useEffect, useLayoutEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -132,9 +133,7 @@ export default function PlaybookEditor({
     setIsExportingDocx(true);
     setExportError(null);
     try {
-      const htmlDocxMod = await import("html-docx-js/dist/html-docx");
-      const asBlob = htmlDocxMod.asBlob ?? htmlDocxMod.default?.asBlob;
-      if (!asBlob) throw new Error("html-docx-js not available");
+      const asBlob = await loadHtmlDocx();
       const fullHtml =
         `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${playbookTitle}</title></head>` +
         `<body style="font-family: Georgia, 'Times New Roman', serif; color: #111;">` +

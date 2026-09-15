@@ -1,4 +1,5 @@
 ﻿"use client";
+import { loadHtmlDocx } from "@/lib/load-html-docx";
 
 import { useState } from "react";
 import Link from "next/link";
@@ -113,9 +114,7 @@ export default function AgreementDrawer({
     setIsExportingDocx(true);
     setExportError(null);
     try {
-      const htmlDocxMod = await import("html-docx-js/dist/html-docx");
-      const asBlob = htmlDocxMod.asBlob ?? htmlDocxMod.default?.asBlob;
-      if (!asBlob) throw new Error("html-docx-js not available");
+      const asBlob = await loadHtmlDocx();
       const fullHtml =
         `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${agreementTitle}</title></head>` +
         `<body style="font-family: Georgia, 'Times New Roman', serif; color: #111;">` +
