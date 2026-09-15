@@ -5,10 +5,9 @@ _Spec-driven workspace initialized 2026-06-21 (brownfield)._
 ## Vision
 
 A role-gated internal operations platform for the Move37 studio. It is a modern, type-safe
-A modern Next.js + Supabase platform for running the studio's internal operations, extended
+Next.js + Supabase platform for running the studio's internal operations, extended
 with a greenfield demand-validation product (the Market Validation Engine). The codebase and
-this `.specs/` workspace are the source of truth. (The operational core was originally ported
-from a legacy Bubble.io app; that migration is complete and the Bubble export is no longer kept.)
+this `.specs/` workspace are the source of truth.
 
 ## Goals
 
@@ -23,8 +22,17 @@ from a legacy Bubble.io app; that migration is complete and the Bubble export is
 ## Non-Goals
 
 - No standalone backend service — all server logic is Next.js Server Actions / Route Handlers.
-- No agency-level AI key tier (removed); AI keys are per-user with an env fallback.
+- No per-user AI keys (removed 2026-08-14); every text/JSON generation runs through OpenRouter on
+  one platform-owned `OPENROUTER_API_KEY` — the only user setting left is which model to use.
 - The talent-pool / leads / recommended-projects features were removed and are not coming back.
+
+## Measurable Goals
+
+- **Performance:** first-load JS < 200 KB gzipped on `/projects` and `/chat`; ≤ 1 auth round-trip
+  (`getUser()` + profile lookup) per page render — see `.specs/features/auth-roundtrips/`.
+- **Security:** 0 unauthenticated write routes (all webhooks/cron verified; see `.specs/features/security-p0/`).
+- **Security:** 0 unsanitized HTML sinks (`dangerouslySetInnerHTML` sites all pass through a
+  server-safe sanitizer) — see `.specs/features/security-p0/`.
 
 ## Domains
 

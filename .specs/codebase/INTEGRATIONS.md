@@ -4,15 +4,19 @@ _Brownfield analysis — 2026-06-21. Clients live in `src/lib/api/`._
 
 ## AI providers
 
+_Since 2026-08-14, OpenRouter is the only path for text/JSON generation; `claude.ts` was deleted._
+
 | Service | File | Endpoint | Notes |
 |---|---|---|---|
-| OpenAI | `openai.ts` | `/v1/responses` | Responses API (not completions); `gpt-image-1` for images; 230s timeout |
-| Google Gemini | `gemini.ts` | `generativelanguage…:generateContent` | text + image (`gemini-2.5-flash-image`); `response_mime_type: application/json` |
-| Anthropic Claude | `claude.ts` | `/v1/messages` | retry (429/529/5xx) + exp backoff; model-alias resolution; default 8192 max_tokens |
+| OpenRouter | `openrouter.ts` | `/api/v1/chat/completions` | **All text/JSON generation.** Chat Completions schema (not Responses); platform `OPENROUTER_API_KEY`; per-user `openrouter_model` pref; treats HTTP 200 + `error` payload as failure; 230s timeout |
+| Google Gemini | `gemini.ts` | `generativelanguage…:generateContent` | **Image generation only** (`gemini-2.5-flash-image`) via `resolveImageKeys()`; `response_mime_type: application/json` |
+| OpenAI | `openai.ts` | `/v1/responses` | **Image generation only** (`gpt-image-1`) via `resolveImageKeys()`; Responses API; 230s timeout |
 
-`ai-config.ts` resolves provider keys (personal → env, no agency tier). `ai-dispatcher.ts` routes
-`generateAiJsonResponse` / `generateAiTextResponse`. All providers share a JSON-sanitisation state
-machine (escape bare control chars, strip code fences).
+`ai-config.ts` resolves the config: `resolveAiConfig()` for text/JSON (platform key + per-user model,
+no role gate), `resolveImageKeys()` for images (platform Gemini/OpenAI keys). `ai-dispatcher.ts` routes
+`generateAiJsonResponse` / `generateAiTextResponse` to `openrouter.ts` only. All AI code uses raw
+`fetch` — no AI SDK dependency. `openrouter.ts` and the legacy providers share the same
+JSON-sanitisation approach (escape bare control chars, strip code fences).
 
 ## Email — Brevo (`brevo.ts`)
 
@@ -42,11 +46,17 @@ machine (escape bare control chars, strip code fences).
 
 ## Webhooks & cron (`src/app/api/`)
 
-- `/api/m/[slug]/capture`, `/api/m/event` — public capture/event beacons (service-role writes).
-- `/api/webhooks/brevo` — opened/bounced/unsub → outreach + suppression.
-- `/api/webhooks/calcom` — booking → `meeting_booked` event + `mkt_interview` stub.
-- `/api/webhooks/tally` — survey response → `mkt_signal.survey_answers`.
-- `/api/mkt/cron/process-outreach|process-content|sync-sourcing` — `CRON_SECRET`-guarded workers.
+- `/api/m/[slug]/capture`, `/api/m/event` — public capture/event beacons (service-role writes, unauthenticated by design — anonymous visitors).
+- `/api/webhooks/brevo` (`route.ts:22-81`) — opened/bounced/unsub → outreach + suppression. **No
+  auth check at all** (no signature/secret verification) before the service-role write — see `.specs/codebase/CONCERNS.md`.
+- `/api/webhooks/calcom` — booking → `meeting_booked` event + `mkt_interview` stub. HMAC
+  (`X-Cal-Signature-256`, `CALCOM_WEBHOOK_SECRET`), constant-time compare, **fails closed** in production when the secret is unset.
+- `/api/webhooks/tally` — survey response → `mkt_signal.survey_answers`. HMAC (`X-Tally-Signature`,
+  `TALLY_WEBHOOK_SECRET`); if the secret is unset, verification is **skipped** (documented as dev-only).
+- `/api/mkt/apify-webhook` — one-shot callback registered per Apify run (`registerRunWebhook` in
+  `apify.ts`) fires on terminal run states to pull results without polling.
+- `/api/mkt/cron/process-outreach|process-content|sync-sourcing` — bearer `CRON_SECRET`, checked via
+  `hasBearerSecret`/`secretEquals` (`src/lib/auth/secretCompare.ts`, `timingSafeEqual`-based, fails closed). Not scheduled by Vercel today (`vercel.json` has no `crons` block) — needs a paid plan or an external scheduler.
 
 ## Supabase
 

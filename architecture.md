@@ -1,6 +1,6 @@
 ﻿# Architecture — Move37 Operational System
 
-Last updated: 2026-06-23
+Last updated: 2026-09-15
 
 ---
 
@@ -9,6 +9,7 @@ Last updated: 2026-06-23
 - [System Overview](#system-overview)
 - [Request Lifecycle](#request-lifecycle)
 - [Authentication & Authorization](#authentication--authorization)
+- [Security Layers](#security-layers)
 - [Database Architecture](#database-architecture)
 - [Feature Architecture by Domain](#feature-architecture-by-domain)
 - [AI Subsystem](#ai-subsystem)
@@ -139,11 +140,60 @@ The `project_task` table has an expanded model to support self-service by client
 
 ---
 
+## Security Layers
+
+Access control is defence-in-depth: five layers that each do a different job, plus a sixth in progress. Nothing relies on a single check.
+
+```
+Request
+  │
+  1. Edge middleware      src/proxy.ts              session refresh · public-zone allow-list · referrer clamp
+  │
+  2. Page gate            src/lib/auth/page-gate.ts requirePageAccess(roles) on every server component
+  │
+  3. Server-action gate   src/app/*/actions.ts      supabase.auth.getUser() + created_by = user.id
+  │
+  4. Database RLS         supabase/migrations/      row-level policies — the last and hardest boundary
+  │
+  5. Response headers     next.config.ts            nosniff · SAMEORIGIN · referrer · permissions
+  │
+  6. Rate limiting        (planned)                 in-memory limiter + Vercel WAF on public routes
+```
+
+### Audit posture (2026-09-15)
+
+The security audit of 2026-09-15 recorded the following. Hardening work is tracked under `.specs/features/` — the specs are the source of truth for what is done versus in flight.
+
+**In place**
+
+- **RLS on 85/85 live tables.** No table ships without policies; a table without RLS is treated as a bug (`RULES.md` §3).
+- **`SECURITY DEFINER` functions pin `search_path`.** Every definer function sets an explicit `search_path` so a caller cannot shadow a referenced object.
+- **Cron routes authenticate.** `/api/mkt/cron/*` require `Authorization: Bearer <CRON_SECRET>` and compare with `crypto.timingSafeEqual` rather than `===`, so the check is not timing-distinguishable.
+- **Baseline response headers** in `next.config.ts`: `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=()`.
+- **Service-role client is server-only.** `createServiceClient()` is used for the anonymous `/m/[slug]` landing writes and nothing anonymous is exposed through RLS instead.
+
+**Added 2026-09-15** (implemented this session; see `.specs/features/security-p0/spec.md` for the acceptance criteria)
+
+- **HSTS + `Content-Security-Policy-Report-Only`.** `Strict-Transport-Security: max-age=63072000; includeSubDomains` — `preload` is deliberately omitted, because entering the browser preload list is slow to reverse and binds the apex domain. CSP ships in Report-Only mode so violations are observable before anything is blocked; enforcement still needs a per-request nonce pass, since the app has an inline theme script and `/m` renders a `srcDoc` iframe.
+- **Brevo webhook authentication.** The Brevo delivery/engagement webhook now requires a shared secret (`BREVO_WEBHOOK_SECRET`) supplied as an `X-Brevo-Token` header or a `?token=` query param, compared with `secretEquals`, and fails closed in production. Previously it was fully unauthenticated while writing with the service-role client, so anyone could mark outreach as opened or bounced and insert arbitrary addresses into `mkt_suppression`.
+- **Rate limiting on public routes.** `src/lib/rate-limit.ts` is a dependency-free fixed-window limiter applied to `/api/m/[slug]/capture` (5/min per IP+slug), `/api/m/event` (60/min per IP), `/api/m/unsubscribe` (20/min per IP) and all three webhook routes (120/min per IP). Exceeding a window returns `429` with `Retry-After`.
+- **`sanitizeHtml` is server-safe.** `src/lib/sanitize.ts` now runs on `isomorphic-dompurify`, so one allow-list applies on both server and client. It previously returned its input unchanged whenever `window` was undefined, meaning every server-rendered fragment was emitted raw and only cleaned on hydration. Every `dangerouslySetInnerHTML` site in the app now passes through it.
+- **Sandbox isolation for public landings.** The `/m/[slug]` iframe dropped `allow-same-origin`; combined with `allow-scripts` it had let the framed document reach the parent origin, which defeats the sandbox entirely. The two public capture endpoints handle the resulting `Origin: null` explicitly via CORS, and UTM attribution is now resolved server-side from the request query string and injected into the tracker rather than read across the origin boundary.
+- **Service-role module is import-guarded.** `src/lib/supabase/server.ts` carries `import "server-only"`, so a client component importing it fails at build time rather than shipping the key path into a browser bundle.
+
+#### Rate limiting: where the real limit lives
+
+`src/lib/rate-limit.ts` holds its counters in module memory, which on Vercel means **per serverless instance**. A client that lands on a different instance gets a fresh window, so treat it as a best-effort courtesy layer, not a control. The authoritative limit belongs in a **Vercel Firewall rate-limit rule** on each public path — `/api/m/event`, `/api/m/[slug]/capture`, and `/api/webhooks/*` — configured in the Vercel dashboard for the project. Configure those rules before relying on any published rate-limit number.
+
+Related in-flight and completed work: `.specs/features/auth-roundtrips/` (redundant `getUser()` round-trips per request), `.specs/features/server-action-guards/` (uniform auth + column allow-lists across the mutation layer), `.specs/features/db-indexes/` (indexes on FK and RLS-predicate columns), `.specs/features/bundle-and-boundaries/` (code splitting and route boundaries).
+
+---
+
 ## Database Architecture
 
 ### Migration strategy
 
-- 35 migrations in `supabase/migrations/`, from `20260101000000_production_baseline.sql` onward, named `YYYYMMDDNNNNNN_description.sql`
+- 39 migrations in `supabase/migrations/`, from `20260101000000_production_baseline.sql` through `20260814140000_drop_legacy_user_ai_keys.sql`, named `YYYYMMDDNNNNNN_description.sql` (63 superseded pre-baseline files are parked in `archive/supabase-migrations-archive/` and are not applied)
 - **Append-only** — existing migration files are never edited
 - Migrations are idempotent (`IF NOT EXISTS` guards) and end with `NOTIFY pgrst, 'reload schema';` to hot-reload PostgREST
 - The local dev stack runs Supabase at `127.0.0.1:54321`; apply with `npm run db:reset` / `supabase migration up`
@@ -194,7 +244,7 @@ The `project_task` table has an expanded model to support self-service by client
 | Table | Purpose |
 |---|---|
 | `prompt` | AI prompt templates editable by admins/managers |
-| `user_ai_settings` | Per-user AI provider keys and model overrides |
+| `user_ai_settings` | Per-user OpenRouter **model** preference (`openrouter_model`). No keys — the platform owns the single `OPENROUTER_API_KEY`; the legacy per-provider key columns were dropped 2026-08-14 |
 | `agency` | Single-row agency config (its AI half — `agency_ai_settings` — was dropped 2026-06-14) |
 | `feedback` | Feedback wall entries; visibility scoped by `get_user_type()` |
 | `sop` / `sop_version` | Documents / SOPs with versioning |
@@ -219,7 +269,6 @@ The `project_task` table has an expanded model to support self-service by client
 | `os_task_type` | internal_checklist, stages_checking, developer_tasks, client_requests, qa_requests |
 | `os_task_status` | not_started, in_progress, ready_for_qa, done, blocked |
 | `os_project_status` | prospecting, not_started, in_progress, done, blocked, archived, lost_deal |
-| `os_ai_service` | gemini, claude, openai |
 | `os_idea_block` | ideas, structure_align, refining_icp, product_definition_flows, location_legislation, market_opportunity, benchmarking, strategic_frameworks, risk_and_validation, report, prd, database, visual_styles, milestones_and_tasks, playbook |
 | `mkt_funnel_mode` | b2b_outreach, consumer_capture, hybrid |
 | `mkt_validation_status` | validating, killed, doubling_down |
@@ -355,28 +404,40 @@ All data fetched in `loadAllDashboardMetrics()` — a single server-side call th
 
 ### Provider dispatch (`src/lib/api/ai-dispatcher.ts`)
 
+Since 2026-08-14 there is exactly one text/JSON path. OpenRouter fronts OpenAI, Anthropic, Google, xAI and DeepSeek behind one key and one schema, so the dispatcher no longer branches per provider:
+
 ```
-generateAiJsonResponse<T>({ service, apiKey, model, prompt })
-  ├─→ callOpenAI()    (src/lib/api/openai.ts)
-  ├─→ callGemini()    (src/lib/api/gemini.ts)
-  └─→ callClaude()    (src/lib/api/claude.ts)
+generateAiJsonResponse<T>({ service, apiKey, model, prompt, maxTokens })
+  └─→ generateOpenRouterJsonResponse()   (src/lib/api/openrouter.ts)
+
+generateAiTextResponse({ service, apiKey, model, prompt, maxTokens })
+  └─→ generateOpenRouterResponse()       (src/lib/api/openrouter.ts)
 ```
 
-All three functions return `ConvertResult<T>` with `{ data?, returned_an_error, error? }`.
+- `openrouter.ts` talks to the OpenRouter HTTP API with a raw `fetch` — there is **no AI SDK dependency** in the project.
+- Both functions return `{ data? | text?, returned_an_error, error? }`.
+- Large multi-field rich-HTML steps (single-document PRD, Database, Visual Styles, Report) must pass `maxTokens: 16384`; the 8,192 default truncates the JSON and fails the parse.
+
+**Image generation is the one direct-to-provider path.** It never goes through the dispatcher:
+
+```
+resolveImageKeys()                      (src/lib/api/ai-config.ts)
+  ├─→ GEMINI_API_KEY → src/lib/api/gemini.ts   (image generation)
+  └─→ OPENAI_API_KEY → src/lib/api/openai.ts   (gpt-image-1)
+```
 
 ### Config resolution (`src/lib/api/ai-config.ts`)
 
 ```
 resolveAiConfig(supabase, userId)
-  1. Read user_ai_settings + profiles.type
-  2. referrer/lead → personal key only (no env fallback)
-  3. Other roles:
-     a. Personal key present → personal config
-     b. OPENAI_API_KEY / GEMINI_API_KEY env → env fallback
-     c. null → no AI available
+  1. apiKey = process.env.OPENROUTER_API_KEY
+     └─ missing → return null  (app surfaces "No AI service configured.")
+  2. model  = user_ai_settings.openrouter_model  (for this userId)
+     └─ missing/invalid → DEFAULT_OPENROUTER_MODEL  ("openai/gpt-4.1")
+  3. return { service: "openrouter", apiKey, model }
 ```
 
-> There is no agency-key tier — `agency_ai_settings` was dropped on 2026-06-14. `resolveImageKeys()` follows the same personal→env order for Gemini/OpenAI image generation.
+> One platform key, shared by every user. There are **no per-user provider keys**, no `agency_ai_settings` tier, no `os_ai_service` enum and no referrer/lead carve-out — the legacy key columns and the enum were dropped in `20260814140000_drop_legacy_user_ai_keys.sql`. `profiles.type` is no longer read during AI config resolution. The model catalogue offered in `/settings` lives in `OPENROUTER_MODELS` (`src/types/settings.ts`).
 
 ### Prompt management
 
@@ -507,60 +568,95 @@ Buckets allow public read via direct URL but require authentication for upload/u
 ## Directory Map
 
 ```
-src/
-├── app/
-│   ├── [feature]/
-│   │   ├── page.tsx            # RSC — data fetch + access gate
-│   │   ├── actions.ts          # "use server" mutations
-│   │   ├── _components/        # Client UI for this feature
-│   │   │   ├── FeatureShell.tsx
-│   │   │   ├── tabs/           # Tab content components
-│   │   │   └── modals/         # Modal components
-│   │   ├── _hooks/             # Custom React hooks (feature-specific)
-│   │   └── _lib/               # Feature-specific utilities / queries
-│   └── layout.tsx              # Root layout (font loading, toast provider)
-├── components/
-│   ├── layout/
-│   │   ├── PageShell.tsx       # Sidebar + main wrapper (used by every page)
-│   │   ├── PageHeader.tsx      # Standardised page title bar
-│   │   └── Sidebar.tsx         # Navigation + user menu
-│   └── ui/
-│       ├── icons.tsx            # All SVG icons as named exports
-│       └── ...                  # Shared primitives
-├── lib/
-│   ├── api/
-│   │   ├── ai-config.ts        # resolveAiConfig / resolveImageKeys — provider resolution
-│   │   ├── ai-dispatcher.ts    # generateAiJsonResponse / generateAiTextResponse
-│   │   ├── claude.ts           # Anthropic Claude client (retry + backoff)
-│   │   ├── gemini.ts           # Google Gemini client (text + image)
-│   │   ├── openai.ts           # OpenAI Responses API (text + gpt-image-1)
-│   │   ├── json-converters.ts  # AI output type interfaces + parse helpers
-│   │   ├── brevo.ts            # Transactional/bulk email (+ attachments)
-│   │   ├── apify.ts            # Lead-sourcing actors (Google Maps / B2B / social)
-│   │   ├── buffer.ts           # Buffer social scheduling + analytics
-│   │   ├── postiz.ts           # Postiz social scheduling
-│   │   └── image-search.ts     # Pexels stock-image search
-│   ├── auth/
-│   │   └── page-gate.ts        # requirePageAccess + ROLE_FALLBACK
-│   ├── data/
-│   │   └── ideaPicker.ts       # Shared idea data fetchers
-│   ├── marketing/             # Validation-engine domain logic (sourcing, outreach, public, admin)
-│   ├── notifications/        # Work-feedback / invoice email builders
-│   └── supabase/
-│       ├── client.ts           # Browser Supabase client
-│       ├── server.ts           # Server client + createServiceClient() (service-role)
-│       └── types.ts            # Generated + manually maintained DB types
-├── types/
-│   ├── projects.ts             # Task, Project, UserType, TabKey, ...
-│   ├── chat.ts                 # ChatBlock, ChatTab, conversation types
-│   ├── idea-refiner.ts         # IdeaBlock (15), IdeaStyles, design token interfaces
-│   ├── marketing.ts            # mkt_* enums, validation/contract/funnel types
-│   ├── docs.ts                 # Invoice, PlaybookVersion, ProjectFile/Link/Video
-│   ├── internal-projects.ts    # InternalProject, InternalTask, time tracking
-│   ├── okrs.ts · sops.ts · feedback.ts · settings.ts
-│   └── ...
-└── proxy.ts                    # Next.js 16 session middleware
+move37-operational-system/
+├── src/
+│   ├── app/
+│   │   ├── [feature]/
+│   │   │   ├── page.tsx            # RSC — data fetch + access gate
+│   │   │   ├── actions.ts          # "use server" mutations
+│   │   │   ├── _components/        # Client UI for this feature
+│   │   │   │   ├── FeatureShell.tsx
+│   │   │   │   ├── tabs/           # Tab content components
+│   │   │   │   └── modals/         # Modal components
+│   │   │   ├── _hooks/             # Custom React hooks (feature-specific)
+│   │   │   └── _lib/               # Feature-specific utilities / queries
+│   │   ├── api/                    # Route handlers — webhooks, cron, public capture
+│   │   └── layout.tsx              # Root layout (font loading, toast provider)
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── PageShell.tsx       # Sidebar + main wrapper (used by every page)
+│   │   │   ├── PageHeader.tsx      # Standardised page title bar
+│   │   │   └── Sidebar.tsx         # Navigation + user menu
+│   │   └── ui/
+│   │       ├── icons.tsx           # All SVG icons as named exports
+│   │       └── ...                 # Shared primitives
+│   ├── lib/
+│   │   ├── api/
+│   │   │   ├── ai-config.ts        # resolveAiConfig / resolveImageKeys
+│   │   │   ├── ai-dispatcher.ts    # generateAiJsonResponse / generateAiTextResponse
+│   │   │   ├── openrouter.ts       # THE text/JSON client (raw fetch, no AI SDK)
+│   │   │   ├── gemini.ts           # Google Gemini — image generation only
+│   │   │   ├── openai.ts           # OpenAI gpt-image-1 — image generation only
+│   │   │   ├── json-converters.ts  # AI output type interfaces + parse helpers
+│   │   │   ├── brevo.ts            # Transactional/bulk email (+ attachments)
+│   │   │   ├── apify.ts            # Lead-sourcing actors (Google Maps / B2B / social)
+│   │   │   ├── buffer.ts           # Buffer social scheduling + analytics
+│   │   │   ├── buffer-labels.ts    # Buffer channel label helpers
+│   │   │   ├── postiz.ts           # Postiz social scheduling
+│   │   │   └── image-search.ts     # Pexels stock-image search
+│   │   ├── auth/
+│   │   │   └── page-gate.ts        # requirePageAccess + ROLE_FALLBACK
+│   │   ├── data/                   # Shared data fetchers (idea picker, etc.)
+│   │   ├── marketing/              # Validation-engine domain logic (sourcing, outreach, public, admin)
+│   │   ├── notifications/          # Work-feedback / invoice email builders
+│   │   ├── sanitize.ts             # sanitizeHtml — every dangerouslySetInnerHTML sink
+│   │   ├── markdown.ts             # Markdown → sanitized HTML
+│   │   └── supabase/
+│   │       ├── client.ts           # Browser Supabase client
+│   │       ├── server.ts           # Server client + createServiceClient() (service-role)
+│   │       └── types.ts            # Generated + manually maintained DB types
+│   ├── types/
+│   │   ├── projects.ts             # Task, Project, UserType, TabKey, ...
+│   │   ├── chat.ts                 # ChatBlock, ChatTab, conversation types
+│   │   ├── idea-refiner.ts         # IdeaBlock (15), IdeaStyles, design token interfaces
+│   │   ├── marketing.ts            # mkt_* enums, validation/contract/funnel types
+│   │   ├── docs.ts                 # Invoice, PlaybookVersion, ProjectFile/Link/Video
+│   │   ├── internal-projects.ts    # InternalProject, InternalTask, time tracking
+│   │   ├── settings.ts             # AI_SERVICE, OPENROUTER_MODELS, DEFAULT_OPENROUTER_MODEL
+│   │   ├── okrs.ts · sops.ts · feedback.ts
+│   │   └── ...
+│   └── proxy.ts                    # Next.js 16 session middleware
+├── supabase/migrations/            # 39 append-only SQL migrations
+├── .agents/stack-context.md        # Language, framework, commands, CI gates
+├── .claude/
+│   ├── agents/                     # 6 project subagents (see CLAUDE.md → Project agents)
+│   ├── settings.json               # Shared permissions (committed)
+│   ├── settings.local.json         # Personal overrides (untracked)
+│   └── launch.json                 # Debugger launch config (port 4000)
+├── .specs/
+│   ├── project/                    # Goals, roadmap, current state, decisions
+│   ├── codebase/                   # Stack, architecture, conventions, structure, testing
+│   ├── features/                   # Per-feature specs + acceptance criteria
+│   └── evaluations/                # Spec-conformance baselines & reports
+├── docs/
+│   ├── changelog.md                # 2026-07 onward
+│   ├── changelog-archive/          # 2026-H1.md
+│   ├── project_status.md           # Build completion status
+│   ├── rtk.md                      # Token-saving CLI reference
+│   └── marketing/                  # Validation-engine design notes
+├── archive/
+│   ├── legacy-logs/                # Retired dev/server logs
+│   ├── supabase-migrations-archive/ # 63 superseded pre-baseline migrations
+│   └── snippets/                   # Retired code snippets
+├── CLAUDE.md · RULES.md · README.md
+├── architecture.md                 # This file
+├── database.md                     # Narrative schema reference
+├── design-system.md                # Design tokens, typography, component contracts
+├── CHALLENGES.md                   # Session friction log
+└── hooks.example.md                # Optional Claude Code hooks (not enabled)
 ```
+
+> **Companion documents.** This file covers structure and flow. For the schema itself — every table, column and relationship — read `database.md`. For tokens, typography, spacing and component contracts, read `design-system.md`. The enforcement rules that these patterns must satisfy live in `RULES.md`.
 
 ---
 

@@ -1,6 +1,6 @@
 # Project Status
 
-_Last updated: 2026-06-23_
+_Last updated: 2026-09-15_
 
 Legend: ✅ complete · 🟡 in progress · ⬜ not started
 
@@ -10,7 +10,7 @@ Legend: ✅ complete · 🟡 in progress · ⬜ not started
 
 - ✅ Next.js 16 App Router + Turbopack scaffolded (dev port 4000, prod 30003)
 - ✅ Supabase project connected (hosted `bcarzmfdamsozmfjgnpv` + local stack at `127.0.0.1:54321`)
-- ✅ 35 append-only migrations applied (baseline `20260101000000` → `20260702000000`)
+- ✅ 40 append-only migrations (baseline `20260101000000` → `20260915000000_fk_indexes`); 63 superseded pre-baseline files parked in `archive/supabase-migrations-archive/`
 - ✅ Generated DB types in `src/lib/supabase/types.ts`
 - ✅ RLS on every table; helper functions (`get_user_type`, `is_admin_or_manager`, `is_staff_role`, `is_operational_user`)
 - ✅ Vercel auto-deploy on push to `master`
@@ -56,7 +56,7 @@ Legend: ✅ complete · 🟡 in progress · ⬜ not started
 
 ## Integrations
 
-- ✅ AI: OpenAI (Responses API + `gpt-image-1`), Gemini (text + image), Claude (retry/backoff)
+- ✅ AI: **OpenRouter** on a single platform `OPENROUTER_API_KEY` for all text/JSON (fronts OpenAI · Anthropic · Google · xAI · DeepSeek); OpenAI `gpt-image-1` + Gemini for images only
 - ✅ Email: Brevo (transactional templates + raw/attachment sends)
 - ✅ Apify (sourcing actors) · Buffer + Postiz (social) · Pexels (image search)
 - ✅ Storage buckets: `avatars`, `user-signatures`, `project-files`, `chat-attachments`
@@ -66,3 +66,21 @@ Legend: ✅ complete · 🟡 in progress · ⬜ not started
 - ✅ `talent-pool`, `talent-profile`, `leads`, `recommended-projects` pages + `talent`/`client`/`company` tables (dropped 2026-06-14)
 - ✅ `agency_ai_settings` table + agency-key AI tier (dropped 2026-06-14)
 - ✅ `/docs` page demoted to a role redirect (its components are reused by the Ideas Refiner Playbook step)
+- ✅ Per-user AI provider keys + `os_ai_service` enum (dropped 2026-08-14 — all AI now runs on the platform OpenRouter key; `user_ai_settings` keeps only `openrouter_model`)
+
+## In Progress
+
+Hardening specs live under `.specs/features/`; the pre-change gate baseline is
+`.specs/evaluations/_baseline-2026-09-15.md`.
+
+- ✅ `security-p0` — Brevo webhook secret, server-safe `isomorphic-dompurify` sanitizer, every HTML sink sanitized, `/m` iframe sandbox isolation with server-injected UTM, dedicated unsubscribe signing secret, in-memory rate limiter on all public routes, `server-only` guard on the service-role module, HSTS + CSP-Report-Only. Implemented 2026-09-15.
+- ✅ `auth-roundtrips` — middleware excluded from `/api/*` and `/m/*`, conditional profile lookup, request-scoped `cache()` auth helper, visibility-gated and slower chat polling. Implemented 2026-09-15.
+- ✅ `db-indexes` — 39 foreign-key indexes added, 4 duplicate index pairs dropped, unbounded list queries bounded, `max(order)` pushed into the database. Migration applied **locally only**; production apply is pending.
+- ✅ `bundle-and-boundaries` — TipTap and Recharts behind `next/dynamic`, route-level loading/error/not-found boundaries added, `removeConsole` in production.
+- 🟡 `server-action-guards` — explicit authentication gates on the server actions that previously relied on RLS alone, plus column allow-lists on unfiltered updates. In flight.
+
+## Documentation
+
+- ✅ Full documentation refresh + repo reorganisation (2026-09-15): `CLAUDE.md` gained the operating-rules block and lost the inlined RTK reference (now `docs/rtk.md`); `README.md`, `RULES.md`, `architecture.md` and this file brought in line with the OpenRouter migration; root docs split into `CLAUDE.md` · `README.md` · `RULES.md` · `architecture.md` · `database.md` · `design-system.md` · `CHALLENGES.md` · `hooks.example.md`; `.specs/` gained `features/` and `evaluations/`; changelog split at 2026-07 into `docs/changelog.md` + `docs/changelog-archive/2026-H1.md`; retired logs, snippets and superseded migrations moved under `archive/`
+- ✅ 6 project subagents in `.claude/agents/` (migration-author, server-action-author, ui-builder, spec-conformance-reviewer, security-reviewer, docs-sync)
+- ✅ Security audit 2026-09-15: RLS on 85/85 live tables, all `SECURITY DEFINER` functions pin `search_path`, cron routes use `timingSafeEqual` bearer checks, baseline response headers in `next.config.ts`

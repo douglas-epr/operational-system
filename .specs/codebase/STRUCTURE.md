@@ -4,13 +4,21 @@ _Brownfield analysis — 2026-06-21._
 
 ## Top level
 
+_Post-reorg (2026-09-15) — logs and archived migrations moved out of the root/`supabase/` into `archive/`:_
+
 ```
 move37-operational-system/
 ├── src/                      # Application code
-├── supabase/migrations/      # 35 append-only SQL migrations
-├── docs/                     # changelog, project_status, marketing/
-├── .specs/                   # This spec-driven workspace
+├── supabase/migrations/      # append-only SQL migrations (current)
+├── archive/
+│   ├── legacy-logs/          # dev-server.log, devlog.txt, server.log (moved from root)
+│   └── supabase-migrations-archive/  # superseded pre-baseline migrations
+├── docs/                     # changelog.md (+ changelog-archive/ once split), project_status, marketing/
+├── .specs/                   # This spec-driven workspace (project/, codebase/, features/; evaluations/ planned)
+├── .claude/                  # settings.json (permission allow/deny) + agents/ (subagents planned)
+├── .agents/                  # stack-context.md (planned)
 ├── CLAUDE.md README.md architecture.md RULES.md
+└── database.md design-system.md hooks.example.md CHALLENGES.md   # planned new root docs
 ```
 
 ## src/app (App Router routes)
@@ -32,7 +40,7 @@ move37-operational-system/
 | `feedback` | all auth | feedback wall |
 | `users` | admin | user management |
 | `prompts` | admin, manager | AI prompt library |
-| `settings` | all except referrer | per-user AI keys + theme |
+| `settings` | all except referrer | OpenRouter model + theme (per-user provider keys removed 2026-08-14) |
 | `profile` | all auth | profile + signature |
 | `docs` | all auth | role redirect (components reused by Playbook step) |
 | `api/*` | — | webhooks, public capture, `mkt/cron/*` workers |

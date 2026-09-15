@@ -150,6 +150,18 @@ auth.uid()                    -- UUID: current authenticated user
 
 Supabase RLS is row-level only. Column-level restrictions (e.g. never expose `profiles.signature` to other users) must be enforced in the application layer — select only the columns you need, never `SELECT *` on sensitive tables.
 
+### 3.6 Indexes on every foreign key
+
+Every foreign-key column gets a B-tree index **in the same migration that creates the column**. Postgres indexes the referenced primary key, never the referencing side, so an unindexed FK turns every parent-scoped read and every `ON DELETE` check into a sequential scan.
+
+```sql
+-- Correct — column and its index ship together
+ALTER TABLE public.mkt_signal ADD COLUMN validation_id UUID REFERENCES public.mkt_validation(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS mkt_signal_validation_id_idx ON public.mkt_signal (validation_id);
+```
+
+The same applies to any column used in an RLS policy predicate or as a hot filter (`created_by`, `project_id`, `idea_id`, `status`). Naming: `<table>_<column>_idx`.
+
 ---
 
 ## 4. TypeScript Discipline
@@ -268,6 +280,22 @@ referrer             → /projects, /feedback, /profile only (middleware-clamped
 lead                 → /ideas-refiner + /invoices + personal settings only
 ```
 
+### 6.5 API route authentication
+
+Route handlers under `src/app/api/` sit **outside** the page gate and outside the middleware's authenticated zone. Every one of them authenticates itself and **fails closed in production**:
+
+| Route class | Required check |
+|---|---|
+| Cron workers (`/api/mkt/cron/*`) | `Authorization: Bearer <CRON_SECRET>`, compared with `crypto.timingSafeEqual` — never `===` |
+| Inbound webhooks (Cal.com, Tally, Brevo) | HMAC signature over the raw request body against the provider's shared secret |
+| Service-to-service | A service token verified server-side |
+
+Rules:
+
+- A missing or malformed secret is a **401/403, never a pass-through**. Never let a route run unauthenticated because the env var is unset — that is an open endpoint, not a graceful degradation.
+- Public, deliberately anonymous inputs (`/api/m/*` landing capture) must **validate every field** before it touches the database and must be **rate limited**. They write through the service-role client, so a missing validation is a direct write primitive.
+- Never log a secret, a signature, or a raw request body containing PII.
+
 ---
 
 ## 7. UI & Styling
@@ -323,7 +351,17 @@ import { PlusIcon, TrashIcon } from "@/components/ui/icons";
 
 ### 7.4 Rich text
 
-Use `TipTap` via the shared `RichTextEditor` component. Never use `contentEditable` or `dangerouslySetInnerHTML` directly for user-authored content.
+Use `TipTap` via the shared `RichTextEditor` component. Never use `contentEditable` for user-authored content.
+
+**Every `dangerouslySetInnerHTML` goes through `sanitizeHtml`** (`src/lib/sanitize.ts`) — no exceptions, and no "this HTML came from our own AI so it's fine". AI output, TipTap output, and stored rich-HTML columns are all untrusted sinks. Sanitize on the server where the value is read, so a new client renderer cannot forget.
+
+```tsx
+// Correct
+<div dangerouslySetInnerHTML={{ __html: sanitizeHtml(idea.prd.description) }} />
+
+// Wrong — never do this
+<div dangerouslySetInnerHTML={{ __html: idea.prd.description }} />
+```
 
 ### 7.5 Client component boundaries
 
@@ -333,7 +371,7 @@ Keep client components as leaf nodes. Server components fetch data; client compo
 
 ## 8. AI Integration
 
-**Rule:** Never hardcode AI provider keys. Always use `resolveAiConfig`.
+**Rule:** Never hardcode an AI key or a model slug. Always use `resolveAiConfig`.
 
 ### 8.1 Standard AI call pattern
 
@@ -351,15 +389,20 @@ const result = await generateAiJsonResponse<MyOutputType>({
 
 ### 8.2 Config resolution order
 
-1. Personal key from `user_ai_settings` (set in Settings)
-2. `OPENAI_API_KEY` / `GEMINI_API_KEY` environment variable fallback
-3. `null` → surface "Configure AI in Settings" message to user
+1. Platform `OPENROUTER_API_KEY` environment variable — one key, shared by every user
+2. `null` → surface "No AI service configured." to the user
 
-There is **no agency-key tier** — `agency_ai_settings` was dropped on 2026-06-14. Never reintroduce an agency key path without a migration and a doc update.
+That is the entire chain. Since 2026-08-14 there are **no per-user provider keys**, no `agency_ai_settings` tier, no `os_ai_service` enum, and no referrer/lead carve-out (the legacy columns and enum were dropped in `20260814140000_drop_legacy_user_ai_keys.sql`). Never reintroduce a second key tier without a migration and a doc update.
 
-### 8.3 Referrer / Lead users
+`resolveImageKeys()` is the one exception: image generation still calls OpenAI/Gemini directly and reads `GEMINI_API_KEY` / `OPENAI_API_KEY` from the environment. It is for **images only** — never route text or JSON through it.
 
-`referrer` and `lead` role users are restricted to personal keys only — they must never reach the env fallback. Enforce this in `resolveAiConfig`.
+### 8.3 Model selection
+
+Users pick a model, not a provider. The selected OpenRouter slug lives in `user_ai_settings.openrouter_model`; `resolveAiConfig` falls back to `DEFAULT_OPENROUTER_MODEL` when it is missing or invalid.
+
+- **Never hardcode a model slug** anywhere except `DEFAULT_OPENROUTER_MODEL` in `src/types/settings.ts`. Always pass `aiConfig.model` through.
+- New models are added to the `OPENROUTER_MODELS` catalogue in `src/types/settings.ts` — verify the slug against `https://openrouter.ai/api/v1/models` first.
+- `service` is always `"openrouter"`. Do not branch on it.
 
 ### 8.4 Prompts in the database
 
@@ -433,6 +476,25 @@ Keep `docs/project_status.md` current. Mark features as `complete`, `in-progress
 - `architecture.md` — System architecture, request lifecycle, data flows. Update when the architecture changes.
 - `CLAUDE.md` — AI assistant working instructions, coding patterns with code examples. Update when new patterns are established.
 - `RULES.md` (this file) — Enforcement-focused, non-negotiable rules. Update only when a new rule is ratified or an existing rule is tightened.
+- `database.md` — Narrative schema reference. Update with every migration.
+- `design-system.md` — Design tokens, typography, component contracts. Update when a token or contract changes.
+- `CHALLENGES.md` — Dated self-learning log. Append a section at the end of every session that hit friction.
+- `hooks.example.md` — Optional, not-enabled Claude Code hook recipes. Update when a recipe stops matching the current hooks schema.
+
+### 10.4 A changelog entry is not enough on its own
+
+Every changelog entry must ship with matching updates to whichever of these the change touched. A changelog entry with stale companions is an incomplete session:
+
+| If the change… | Also update |
+|---|---|
+| made an architectural or tooling decision | `.specs/project/STATE.md` — record the decision and its date |
+| added a migration | `docs/project_status.md` — bump the migration count and the latest-migration timestamp |
+| changed the stack, structure, conventions, integrations or testing story | the affected file(s) in `.specs/codebase/` (`STACK.md`, `STRUCTURE.md`, `CONVENTIONS.md`, `INTEGRATIONS.md`, `ARCHITECTURE.md`, `TESTING.md`) |
+| changed the schema | `database.md` |
+| changed tokens or component contracts | `design-system.md` |
+| hit recurring friction worth remembering | `CHALLENGES.md` (append a dated section) |
+
+Use the `move37-docs-sync` agent for this pass rather than doing it by hand.
 
 ---
 
@@ -457,7 +519,14 @@ Keep `docs/project_status.md` current. Mark features as `complete`, `in-progress
 | Use per-block polling ticks in Chat | Use a single global polling tick for all chat blocks |
 | Co-locate `actions.ts` with the feature page | Centralise all mutations in one god actions file |
 | Use `unknown` + type narrowing for uncertain types | Use `any` to silence TypeScript errors |
+| Index every foreign-key column in the same migration | Add an FK column and leave it unindexed |
+| Authenticate every `/api/*` route and fail closed | Let a route run because its secret env var is unset |
+| Compare bearer secrets with `crypto.timingSafeEqual` | Compare secrets with `===` |
+| Validate and rate-limit public `/api/m/*` input | Trust anonymous input because RLS is bypassed anyway |
+| Pass every `dangerouslySetInnerHTML` value through `sanitizeHtml` | Render stored or AI-generated HTML raw |
+| Pass `aiConfig.model` through from `resolveAiConfig` | Hardcode a model slug outside `DEFAULT_OPENROUTER_MODEL` |
+| Update `.specs/project/STATE.md`, `docs/project_status.md` and `.specs/codebase/*` alongside the changelog | Ship a changelog entry with stale companion docs |
 
 ---
 
-*Last updated: 2026-06-23*
+*Last updated: 2026-09-15*

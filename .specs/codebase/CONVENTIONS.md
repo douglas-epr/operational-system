@@ -12,6 +12,9 @@ _Brownfield analysis — 2026-06-21. Enforced rules in root `RULES.md`._
 | Enum | `os_` (operational) / `mkt_` (marketing) prefix | `os_task_type`, `mkt_channel` |
 | RLS policy | `"table: actor action"` | `"task: client insert"` |
 | RLS helper | `public.verb_noun()` | `public.is_admin_or_manager()` |
+| Index | **duality observed** — some `<table>_<col>_idx` suffix, others `idx_<table>_<col>` prefix; both
+  conventions coexist and have produced at least one true duplicate (`idea_project_id_idx` and
+  `idx_idea_project_id`, both on `idea(project_id)` — `supabase/migrations/20260101000000_production_baseline.sql:3394,3398`). New indexes should use the `idx_<table>_<col(s)>` prefix form (more common — see `.specs/codebase/CONCERNS.md`). |
 | TS interface/type/component | `PascalCase` | `IdeaReport`, `PageShell` |
 | Variable/function | `camelCase` | `resolveAiConfig` |
 | Hook | `use` prefix | `useRegenerate` |
@@ -54,7 +57,13 @@ _Brownfield analysis — 2026-06-21. Enforced rules in root `RULES.md`._
 
 ## AI
 
-- Always `resolveAiConfig` — never hardcode keys/models.
+- Always `resolveAiConfig` — never call OpenRouter or hardcode a key/model directly. Since 2026-08-14
+  it returns `{ service: "openrouter", apiKey: process.env.OPENROUTER_API_KEY, model }`; there is no
+  per-user key to manage and no role gate to check.
+- Image generation is the exception — call `resolveImageKeys()` and go straight to `gemini.ts` /
+  `openai.ts`; do not route images through OpenRouter.
 - Guard multi-step generation with `isRequestActive` before every write **and** check the write error.
 - Pass `maxTokens: 16384` for multi-field rich-HTML steps.
 - DB prompt is the ceiling, the `FALLBACK_*` constant is the floor.
+- Validate any user-supplied model slug against `OPENROUTER_MODELS` server-side before saving —
+  it's sent to OpenRouter verbatim.

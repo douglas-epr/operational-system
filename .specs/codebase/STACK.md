@@ -36,22 +36,33 @@ _Brownfield analysis — 2026-06-21. Versions from `package.json`._
 
 ## AI Providers
 
-| Provider | Default model | Notes |
-|---|---|---|
-| OpenAI | `gpt-4.1` | Responses API; `gpt-image-1` for images |
-| Google Gemini | `gemini-2.5-flash` | text + image generation |
-| Anthropic Claude | `claude-sonnet-4-20250514` | retry + exponential backoff |
+_Since 2026-08-14 (`src/lib/api/ai-config.ts:26-44`): raw `fetch`, no AI SDK dependency._
+
+| Provider | Use | Default model | Notes |
+|---|---|---|---|
+| OpenRouter | **All text/JSON generation** | `openai/gpt-4.1` (per-user pref, `user_ai_settings.openrouter_model`) | Platform-owned `OPENROUTER_API_KEY`; Chat Completions schema (`openrouter.ts`) |
+| Google Gemini | **Image generation only** | `gemini-2.5-flash-image` | `resolveImageKeys()` — platform `GEMINI_API_KEY` |
+| OpenAI | **Image generation only** | `gpt-image-1` | `resolveImageKeys()` — platform `OPENAI_API_KEY` |
+
+`src/lib/api/claude.ts` was deleted 2026-08-14 (text generation was its only consumer).
 
 ## Tooling & Scripts
 
-- `npm run dev` — Turbopack dev server on **port 4000**
+- `npm run dev` — Turbopack dev server on **port 4000** (also `npm run dev:prod` — build + start on 30003)
 - `npm run build` / `npm start` — production build / serve on **port 30003**
 - `npm run lint` — ESLint ^9 (`eslint-config-next` 16.1.6)
 - `npm run db:start|stop|reset|status|studio` — local Supabase stack (`127.0.0.1:54321`)
+- **No test runner configured** — no `test` script in `package.json`, no Jest/Vitest/Playwright
+  config or `*.test.ts` files checked in. See `.specs/codebase/TESTING.md`.
 
 ## Deployment
 
 - Vercel, auto-deploy on push to `master`.
-- Required env: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
-- Optional env: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `BREVO_API_KEY`, `APIFY_TOKEN`, `PEXELS_API_KEY`,
-  `BUFFER_API_KEY`, `POSTIZ_API_KEY`, `CRON_SECRET`.
+- Required env: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `OPENROUTER_API_KEY` (all text/JSON generation fails closed to "No AI service configured" without it).
+- Optional env: `GEMINI_API_KEY` / `OPENAI_API_KEY` (image generation only), `BREVO_API_KEY`,
+  `BREVO_TEMPLATE_*` (per-template transactional IDs), `APIFY_TOKEN`, `PEXELS_API_KEY`,
+  `BUFFER_API_KEY`, `BUFFER_*` (channel/profile ids), `POSTIZ_API_KEY`, `CRON_SECRET` (guards
+  `/api/mkt/cron/*`, compared via `src/lib/auth/secretCompare.ts`), `CALCOM_WEBHOOK_SECRET`,
+  `TALLY_WEBHOOK_SECRET` (HMAC verification for those two webhooks — Brevo's has no such secret; see
+  `.specs/codebase/CONCERNS.md`).

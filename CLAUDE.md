@@ -4,7 +4,123 @@
 
 Move37 Operational System is a modern, type-safe Next.js + Supabase platform for running the studio's internal operations — projects, chat, OKRs, SOPs, invoices, AI idea development, and market validation. The app is the product; **the codebase and the `.specs/` workspace are the source of truth.** Build features to fit the patterns already established in the code, not against an external specification.
 
-> **History:** the operational core was originally ported from a legacy Bubble.io app. That migration is complete and the Bubble export is no longer maintained or referenced — do not reintroduce it as a source of truth. When extending a feature, read the existing implementation and `.specs/` instead.
+> **History:** the operational core was ported from a legacy Bubble.io app; that migration is complete and the Bubble export is no longer a source of truth — do not reintroduce it.
+
+---
+
+## Operating Rules
+
+These rules govern how you (Claude) work in this project. Follow them every session.
+
+### Deployment & Commit Guardrails
+
+Never take an irreversible or externally-visible action unless I explicitly say so in that message:
+
+- Never commit or push to GitHub unless I explicitly say so.
+- Never apply migrations to the **hosted** Supabase project (`supabase db push`) unless I explicitly say so — the local stack (`npm run db:reset`) is always fair game.
+- Never deploy to Vercel unless I explicitly say so. Remember a push to `master` **is** a production deploy.
+
+`.claude/settings.json` denies `git push`, `vercel deploy`, `vercel --prod` and `supabase db push` as a backstop, but the rule stands regardless of tooling.
+
+Prepare the change, show me what would happen, and wait. "I fixed it" is not permission to ship it.
+
+### Be a Critical Advisor
+
+Be a critical advisor, not an assistant who agrees with me. Prioritize accuracy over validation.
+
+- When you spot flaws in my reasoning, point them out clearly and explain why.
+- If there is uncertainty, say so explicitly and state your level of confidence.
+- Do not invent information to fill gaps.
+- Disagree when there are grounds to — but don't manufacture artificial objections.
+- Go straight to the point and lead with the most important information, even if it's uncomfortable.
+
+### Finalize Session
+
+When you finish and there is nothing pending and nothing left to do, put this at the very end of your response:
+
+═══ ✅ SESSION FINALIZED ═══
+
+(This tells me I can archive the session — nothing more to do there.)
+
+### Pending Actions
+
+Everything that depends on a decision from me goes at the end, in a separate block:
+
+═══ ⚠️ PENDING: <confirmation / decision / choice, with your recommendation in one line> ═══
+
+(This lets me glance at it and know exactly what I need to do to move forward.)
+
+### Don't Ask Me to Do Grunt Work
+
+Never ask me to run terminal commands or manipulate files directly if it's something you can do yourself. Do it.
+
+### Highly Technical Decisions
+
+Every time you need to make a technical decision (stack, libraries, code patterns, security, maintainability), give me the pros and cons of each option, plus your recommendation based on technical criteria — DRY and clean code.
+
+### Context Management (to save tokens)
+
+When starting multi-step tasks, document everything in `.md` files so I can compact the conversation and start new sessions without losing context. Specs belong in `.specs/features/<slug>/spec.md`.
+
+Whenever the conversation context is no longer needed, suggest that I compact or start a new session to save tokens.
+
+Tell me whether the next step needs **Opus**, or whether it can be **Sonnet** (clear plan) or **Haiku** (purely mechanical).
+
+### Self-Learning
+
+At the end of every session, capture the challenges and friction points you ran into that might recur.
+
+- If it can be fixed, fix it.
+- If it can't be fixed, record it in `CHALLENGES.md` (append a new dated section; never edit past entries).
+- If the learning relates to a Skill, modify the skill instead of recording it.
+
+Read `CHALLENGES.md` at the start of every new session.
+
+### Stack Context
+
+Before applying any coding principle, read `.agents/stack-context.md`. It records the language, framework, test/lint/format commands, CI gates, and this project's conventions. If it is missing or older than 30 days, regenerate it with the `detect-stack` skill. For framework API details it does not cover, use context7 MCP or web search. Do not guess.
+
+### Code Quality Routing
+
+Every code decision has an owning skill. Invoke it instead of improvising, and name it when you present the decision.
+
+| Decision | Skill |
+|---|---|
+| Duplicated knowledge, single source of truth | `dry` |
+| Complexity, readability, nesting depth | `kiss` |
+| Speculative features, premature abstraction | `yagni` |
+| Module boundaries, interfaces, dependency injection | `solid` |
+| Layer boundaries, fat handlers, policy vs mechanism | `separation-of-concerns` |
+| Coupling, chained access, wrapping external SDKs | `law-of-demeter` |
+| Project structure, naming patterns, defaults over config | `convention-over-configuration` |
+| Incremental cleanup of files you touch | `boy-scout-rule` |
+| Guard pass on generated or changed code | `clean-code-guard` |
+| UX of a flow, screen, or journey | `dont-make-me-think` |
+| XP, levels, streaks, quests, reward economies | `gamification` |
+| Long repetitive run with a measurable target | `loop-goal` |
+
+### Clean Code Guard Pass
+
+Run `clean-code-guard` over every file you generate, edit, or refactor, before presenting or committing it, and keep running it on every later change in the same session. Close each batch with its one-line report: `clean-code-guard: <N> fixed, <M> flagged for author`, or `clean-code-guard: clean`.
+
+Its floor is not negotiable, even while stripping speculation and dead code:
+
+- Validation and sanitization at every trust boundary.
+- Error handling that prevents data loss.
+- Security measures: authorization, output escaping, parameterized queries, secret handling.
+- Behavior I explicitly asked for.
+
+Removing one of those is a behavior change, not a cleanup. Keep it, or flag it and ask.
+
+Refactors preserve observable behavior. A bug fix found during a refactor is a separate change: flag it and ask before bundling it in.
+
+### UX Work
+
+UX changes are journey-level, not screen-level. Run `dont-make-me-think`: audit to a friction map, rebuild the journey on paper as a blueprint, present the blueprint and stop. No UI code until I approve it. Engagement mechanics (XP, levels, streaks, quests, leaderboards) only when the surface actually calls for them, designed through `gamification`, never bolted on.
+
+### Long Iterative Runs
+
+When a task has to converge to a measurable target over many passes, use `loop-goal` to generate the `/loop` prompt instead of hand-driving the iterations. Goal must be measurable, verification independent of whoever produced the work, and the stopping conditions explicit: win, give-up, and ceiling.
 
 ---
 
@@ -13,14 +129,24 @@ Move37 Operational System is a modern, type-safe Next.js + Supabase platform for
 | Domain | Source of Truth |
 |---|---|
 | **DB** — tables, types, RLS | `supabase/migrations/` (applied schema) · `src/lib/supabase/types.ts` (generated types) |
+| **DB** — narrative schema reference | `database.md` |
 | **APIs** — external integrations | `src/lib/api/*` (the client modules themselves) |
 | **UI** — pages & layout | `src/app/*/page.tsx` + `src/components/layout/` |
 | **Components** — reusable elements | `src/components/ui/` · `src/components/layout/` |
+| **Design tokens, typography, component contracts** | `design-system.md` |
 | **Logic** — server-side workflows | `src/app/*/actions.ts` (`"use server"` functions) |
+| **Architecture** — request lifecycle, security layers | `architecture.md` |
+| **Non-negotiable rules** | `RULES.md` |
 | **Project & codebase specs** | `.specs/project/` · `.specs/codebase/` |
+| **Feature specs & acceptance criteria** | `.specs/features/<slug>/spec.md` |
+| **Spec-conformance evaluations** | `.specs/evaluations/` |
+| **Session friction log (read at session start)** | `CHALLENGES.md` |
+| **Stack, commands, CI gates** | `.agents/stack-context.md` |
+| **Project subagents** | `.claude/agents/` |
 | **Marketing engine design notes** | `docs/marketing/` |
 | **Build status** | `docs/project_status.md` |
-| **Change log** | `docs/changelog.md` |
+| **Change log** | `docs/changelog.md` (2026-07 onward) · `docs/changelog-archive/2026-H1.md` |
+| **Token-saving CLI reference** | `docs/rtk.md` |
 
 ---
 
@@ -35,7 +161,7 @@ Move37 Operational System is a modern, type-safe Next.js + Supabase platform for
 | Styling | Tailwind CSS v4, CSS custom properties |
 | Rich Text | TipTap v3 |
 | Charts | Recharts v3 |
-| AI | OpenAI GPT-4.1 · Gemini 2.5 Flash · Claude Sonnet 4 |
+| AI | OpenRouter (platform key) for text/JSON · OpenAI gpt-image-1 / Gemini for images |
 | Integrations | Brevo (email) · Apify (sourcing) · Buffer/Postiz (social) · Pexels (images) |
 | Export | jsPDF + html2canvas · html-docx-js |
 | Deployment | Vercel (auto-deploy on push to `master`); dev port 4000, prod 30003 |
@@ -159,7 +285,7 @@ Key rules:
 
 ## AI Integration Pattern
 
-Always use `resolveAiConfig` — never hardcode provider keys:
+All text/JSON generation goes through **OpenRouter** on a single platform-owned key. Always use `resolveAiConfig` — never hardcode a provider key or a model slug:
 
 ```typescript
 const aiConfig = await resolveAiConfig(supabase, user.id);
@@ -173,7 +299,11 @@ const res = await generateAiJsonResponse<MyOutputType>({
 });
 ```
 
-Resolution order: personal key (`user_ai_settings`) → `OPENAI_API_KEY` / `GEMINI_API_KEY` env → `null`. **No agency-key tier** (`agency_ai_settings` dropped 2026-06-14). `referrer`/`lead` are personal-key-only (no env fallback). Multi-field rich-HTML generations must pass `maxTokens: 16384`.
+- **Key resolution** (`src/lib/api/ai-config.ts`): platform `OPENROUTER_API_KEY` env var → `null`. That is the whole chain. Since 2026-08-14 there are **no per-user provider keys**, no `agency_ai_settings` tier, no `os_ai_service` enum, and no referrer/lead personal-key carve-out.
+- **Model resolution**: `user_ai_settings.openrouter_model`, falling back to `DEFAULT_OPENROUTER_MODEL` (`openai/gpt-4.1`). Users pick from `OPENROUTER_MODELS` in `/settings`. `service` is always `"openrouter"`.
+- **Dispatch**: `src/lib/api/ai-dispatcher.ts` → `src/lib/api/openrouter.ts` (raw `fetch`, no AI SDK dependency).
+- **Images** are the one exception — they still call the providers directly. `resolveImageKeys()` reads `GEMINI_API_KEY` / `OPENAI_API_KEY` and dispatches to `src/lib/api/gemini.ts` / `src/lib/api/openai.ts`.
+- Multi-field rich-HTML generations must pass `maxTokens: 16384` (the 8,192 default truncates the JSON and fails the parse).
 
 ---
 
@@ -255,150 +385,44 @@ Import from `@/components/ui/icons` — never write inline `<svg>` in component 
 
 | Topic | Location |
 |---|---|
-| Database tables, columns & enums | `supabase/migrations/` · `src/lib/supabase/types.ts` |
-| External API integrations | `src/lib/api/` (openai, gemini, claude, brevo, apify, buffer, postiz, image-search) |
+| Database tables, columns & enums | `supabase/migrations/` · `src/lib/supabase/types.ts` · `database.md` |
+| External API integrations | `src/lib/api/` (openrouter, ai-config, ai-dispatcher, openai, gemini, brevo, apify, buffer, postiz, image-search) |
 | Page layouts & access gating | `src/app/*/page.tsx` · `src/lib/auth/page-gate.ts` |
 | Server-side workflows | `src/app/*/actions.ts` |
 | Reusable components | `src/components/ui/` · `src/components/layout/` |
+| Design tokens & component contracts | `design-system.md` |
 | Project goals, roadmap, state | `.specs/project/` |
 | Codebase conventions & architecture | `.specs/codebase/` · `architecture.md` |
+| Feature specs & acceptance criteria | `.specs/features/<slug>/spec.md` |
+| Spec-conformance evaluations | `.specs/evaluations/` |
+| Session friction log | `CHALLENGES.md` |
+| Stack, commands, CI gates | `.agents/stack-context.md` |
+| Project subagents | `.claude/agents/` |
+| Optional Claude Code hooks (not enabled) | `hooks.example.md` |
 | Marketing engine design notes | `docs/marketing/` |
+| RTK command reference | `docs/rtk.md` |
 
-<!-- rtk-instructions v2 -->
-# RTK (Rust Token Killer) - Token-Optimized Commands
+---
 
-## Golden Rule
+## Project agents
 
-**Always prefix commands with `rtk`**. If RTK has a dedicated filter, it uses it. If not, it passes through unchanged. This means RTK is always safe to use.
+Six project-scoped subagents live in `.claude/agents/`. Delegate to the owning agent rather than improvising:
 
-**Important**: Even in command chains with `&&`, use `rtk`:
-```bash
-# ❌ Wrong
-git add . && git commit -m "msg" && git push
+| Agent | Owns |
+|---|---|
+| `move37-migration-author` | Append-only Supabase migrations: enums, RLS enablement + three-tier policies, `SECURITY DEFINER` hygiene, an index on every new FK, and keeping `src/lib/supabase/types.ts` in sync. Local stack only — refuses production apply. |
+| `move37-server-action-author` | The `"use server"` mutation layer: auth via `supabase.auth.getUser()`, `created_by: user.id`, `{ error?: string }` returns, `revalidatePath()`, column allow-lists, and the `resolveAiConfig` + `isRequestActive` AI call path. |
+| `move37-ui-builder` | Pages and components: `PageShell` + `PageHeader`, design-token classes only, icons from `@/components/ui/icons`, `next/dynamic` for heavy libraries, sanitized HTML sinks, route-level `loading.tsx` / `error.tsx`. |
+| `move37-spec-conformance-reviewer` | Read-only grading of a diff against `.specs/features/<slug>/spec.md` acceptance criteria — MET/UNMET with `file:line` evidence, weighted P0/P1/P2. |
+| `move37-security-reviewer` | Read-only security review of the real attack surface: RLS coverage, `SECURITY DEFINER` search_path, service-role usage, unauthenticated `/api/*` routes, the anonymous `/m/[slug]` pages, HTML sinks, secrets, `next.config.ts` headers. |
+| `move37-docs-sync` | Keeping `CLAUDE.md`, `README.md`, `RULES.md`, `architecture.md`, `database.md`, `design-system.md`, `docs/project_status.md` and `docs/changelog.md` consistent with the code after a change. |
 
-# ✅ Correct
-rtk git add . && rtk git commit -m "msg" && rtk git push
-```
+---
 
-## RTK Commands by Workflow
+## RTK
 
-### Build & Compile (80-90% savings)
-```bash
-rtk cargo build         # Cargo build output
-rtk cargo check         # Cargo check output
-rtk cargo clippy        # Clippy warnings grouped by file (80%)
-rtk tsc                 # TypeScript errors grouped by file/code (83%)
-rtk lint                # ESLint/Biome violations grouped (84%)
-rtk prettier --check    # Files needing format only (70%)
-rtk next build          # Next.js build with route metrics (87%)
-```
+Prefix every shell command with `rtk` (`rtk git status`, `rtk npm run build`, `rtk grep …`) — it filters output for 60–90% token savings and passes through unchanged when no filter matches, so it is always safe. Use it inside `&&` chains too.
 
-### Test (60-99% savings)
-```bash
-rtk cargo test          # Cargo test failures only (90%)
-rtk go test             # Go test failures only (90%)
-rtk jest                # Jest failures only (99.5%)
-rtk vitest              # Vitest failures only (99.5%)
-rtk playwright test     # Playwright failures only (94%)
-rtk pytest              # Python test failures only (90%)
-rtk rake test           # Ruby test failures only (90%)
-rtk rspec               # RSpec test failures only (60%)
-rtk test <cmd>          # Generic test wrapper - failures only
-```
+Filters are trusted per-repo via `rtk trust`; if you see "Filters NOT applied", run it.
 
-### Git (59-80% savings)
-```bash
-rtk git status          # Compact status
-rtk git log             # Compact log (works with all git flags)
-rtk git diff            # Compact diff (80%)
-rtk git show            # Compact show (80%)
-rtk git add             # Ultra-compact confirmations (59%)
-rtk git commit          # Ultra-compact confirmations (59%)
-rtk git push            # Ultra-compact confirmations
-rtk git pull            # Ultra-compact confirmations
-rtk git branch          # Compact branch list
-rtk git fetch           # Compact fetch
-rtk git stash           # Compact stash
-rtk git worktree        # Compact worktree
-```
-
-Note: Git passthrough works for ALL subcommands, even those not explicitly listed.
-
-### GitHub (26-87% savings)
-```bash
-rtk gh pr view <num>    # Compact PR view (87%)
-rtk gh pr checks        # Compact PR checks (79%)
-rtk gh run list         # Compact workflow runs (82%)
-rtk gh issue list       # Compact issue list (80%)
-rtk gh api              # Compact API responses (26%)
-```
-
-### JavaScript/TypeScript Tooling (70-90% savings)
-```bash
-rtk pnpm list           # Compact dependency tree (70%)
-rtk pnpm outdated       # Compact outdated packages (80%)
-rtk pnpm install        # Compact install output (90%)
-rtk npm run <script>    # Compact npm script output
-rtk npx <cmd>           # Compact npx command output
-rtk prisma              # Prisma without ASCII art (88%)
-```
-
-### Files & Search (60-75% savings)
-```bash
-rtk ls <path>           # Tree format, compact (65%)
-rtk read <file>         # Code reading with filtering (60%)
-rtk grep <pattern>      # Search grouped by file (75%). Format flags (-c, -l, -L, -o, -Z) run raw.
-rtk find <pattern>      # Find grouped by directory (70%)
-```
-
-### Analysis & Debug (70-90% savings)
-```bash
-rtk err <cmd>           # Filter errors only from any command
-rtk log <file>          # Deduplicated logs with counts
-rtk json <file>         # JSON structure without values
-rtk deps                # Dependency overview
-rtk env                 # Environment variables compact
-rtk summary <cmd>       # Smart summary of command output
-rtk diff                # Ultra-compact diffs
-```
-
-### Infrastructure (85% savings)
-```bash
-rtk docker ps           # Compact container list
-rtk docker images       # Compact image list
-rtk docker logs <c>     # Deduplicated logs
-rtk kubectl get         # Compact resource list
-rtk kubectl logs        # Deduplicated pod logs
-```
-
-### Network (65-70% savings)
-```bash
-rtk curl <url>          # Compact HTTP responses (70%)
-rtk wget <url>          # Compact download output (65%)
-```
-
-### Meta Commands
-```bash
-rtk gain                # View token savings statistics
-rtk gain --history      # View command history with savings
-rtk discover            # Analyze Claude Code sessions for missed RTK usage
-rtk proxy <cmd>         # Run command without filtering (for debugging)
-rtk init                # Add RTK instructions to CLAUDE.md
-rtk init --global       # Add RTK to ~/.claude/CLAUDE.md
-```
-
-## Token Savings Overview
-
-| Category | Commands | Typical Savings |
-|----------|----------|-----------------|
-| Tests | vitest, playwright, cargo test | 90-99% |
-| Build | next, tsc, lint, prettier | 70-87% |
-| Git | status, log, diff, add, commit | 59-80% |
-| GitHub | gh pr, gh run, gh issue | 26-87% |
-| Package Managers | pnpm, npm, npx | 70-90% |
-| Files | ls, read, grep, find | 60-75% |
-| Infrastructure | docker, kubectl | 85% |
-| Network | curl, wget | 65-70% |
-
-Overall average: **60-90% token reduction** on common development operations.
-<!-- /rtk-instructions -->
+Full command reference: `docs/rtk.md`. Global reference: `~/.claude/RTK.md`.

@@ -12,6 +12,8 @@ A full-stack internal operations platform built with **Next.js 16, Supabase, and
 - [Getting Started](#getting-started)
 - [Environment Variables](#environment-variables)
 - [Project Structure](#project-structure)
+- [Documentation Map](#documentation-map)
+- [Project Agents](#project-agents)
 - [Pages & Feature Map](#pages--feature-map)
 - [User Roles](#user-roles)
 - [Database & Migrations](#database--migrations)
@@ -51,7 +53,8 @@ The codebase and the `.specs/` workspace are the source of truth — features fo
 | Date Handling | date-fns v4 + react-day-picker v9 |
 | Toast / Notifications | Sonner v2 |
 | Email | Brevo (transactional + bulk) |
-| AI Providers | OpenAI GPT-4.1 · Google Gemini 2.5 Flash · Anthropic Claude Sonnet 4 |
+| AI — text / JSON | **OpenRouter** — one platform key fronting OpenAI, Anthropic, Google, xAI, DeepSeek |
+| AI — images | OpenAI `gpt-image-1` · Google Gemini |
 | Lead sourcing | Apify (Google Maps, B2B leads, social discovery) |
 | Social scheduling | Buffer · Postiz |
 | Stock imagery | Pexels (landing-page image search) |
@@ -82,7 +85,8 @@ npm install
 
 # 3. Copy and fill environment variables
 cp .env.example .env.local
-# Edit .env.local — add NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+# Edit .env.local — at minimum NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+# SUPABASE_SERVICE_ROLE_KEY and OPENROUTER_API_KEY (required for every AI feature)
 
 # 4. Apply all database migrations
 npx supabase db push
@@ -103,15 +107,25 @@ npm run dev
 | `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Your Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anon/public key |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Service-role key — **server only, never sent to browser** |
-| `OPENAI_API_KEY` | Optional | Last-resort fallback AI key when no per-user key is configured |
-| `GEMINI_API_KEY` | Optional | Fallback Google Gemini key (text + image generation) |
+| `OPENROUTER_API_KEY` | ✅ | **Required for all AI.** Single platform key for every text/JSON generation. Without it the app reports "No AI service configured." |
+| `NEXT_PUBLIC_APP_URL` | ✅ | Public base URL — used in emails and landing-page links |
+| `OPENAI_API_KEY` | Optional | **Image generation only** (`gpt-image-1`). Not used for text/JSON. |
+| `GEMINI_API_KEY` | Optional | **Image generation only.** Not used for text/JSON. |
 | `BREVO_API_KEY` | Optional | Transactional/bulk email (password reset, invoices, work-feedback, outreach) |
+| `BREVO_FROM_EMAIL` / `BREVO_FROM_NAME` | Optional | Sender identity on every Brevo send |
+| `BREVO_TEMPLATE_MAGIC_LINK` | Optional | Brevo template id for the magic-link sign-in email |
+| `BREVO_TEMPLATE_PASSWORD_RESET` | Optional | Brevo template id for the password-reset email |
 | `APIFY_TOKEN` | Optional | Lead sourcing actors (Market Validation → Sourcing) |
 | `PEXELS_API_KEY` | Optional | Stock-image search in the landing-page builder |
-| `BUFFER_API_KEY` / `POSTIZ_API_KEY` | Optional | Social scheduling for the Content studio |
-| `CRON_SECRET` | Optional | Guards the marketing cron worker endpoints |
+| `BUFFER_API_KEY` | Optional | Buffer social scheduling for the Content studio |
+| `BUFFER_ORG_ID` | Optional | Buffer organisation id paired with `BUFFER_API_KEY` |
+| `POSTIZ_API_KEY` / `POSTIZ_API_URL` | Optional | Postiz social scheduling (Buffer alternative) |
+| `CRON_SECRET` | ✅ in prod | Bearer token guarding the marketing cron workers (`/api/mkt/cron/*`) |
+| `CALCOM_WEBHOOK_SECRET` | Optional | HMAC secret verifying the Cal.com booking webhook |
+| `TALLY_WEBHOOK_SECRET` | Optional | HMAC secret verifying the Tally survey webhook |
+| `BREVO_WEBHOOK_SECRET` | Planned | Shared secret for the Brevo delivery/engagement webhook — being added (see `.specs/features/security-p0/spec.md`) |
 
-> Per-user AI provider keys (OpenAI, Gemini, Claude) are configured through the **Settings** page inside the running app. There is **no** agency-level key tier — resolution is personal key → `OPENAI_API_KEY`/`GEMINI_API_KEY` env fallback → none.
+> **AI keys are not per-user.** Since 2026-08-14 the platform owns one `OPENROUTER_API_KEY` and every user shares it. The **Settings** page only lets a user pick which OpenRouter model to generate with (`user_ai_settings.openrouter_model`). There is no agency-key tier and no personal-key tier. `OPENAI_API_KEY` / `GEMINI_API_KEY` survive strictly for image generation.
 
 ---
 
@@ -137,7 +151,7 @@ move37-operational-system/
 │   │   ├── profile/                  # User profile & signature
 │   │   ├── projects/                 # Client project management
 │   │   ├── prompts/                  # AI prompt library (admin/manager)
-│   │   ├── settings/                 # AI provider keys & theme
+│   │   ├── settings/                 # OpenRouter model selection & theme
 │   │   ├── signin/ & reset_pw/       # Authentication
 │   │   ├── sops/                     # Documents / Standard Operating Procedures
 │   │   └── users/                    # User management (admin)
@@ -145,27 +159,74 @@ move37-operational-system/
 │   │   ├── layout/                   # PageShell, PageHeader, Sidebar
 │   │   └── ui/                       # Icons, primitives
 │   ├── lib/
-│   │   ├── api/                      # AI dispatchers (OpenAI/Gemini/Claude), Brevo, Apify, Buffer, Postiz, Pexels
+│   │   ├── api/                      # openrouter (all text/JSON), ai-config, ai-dispatcher,
+│   │   │                             # openai + gemini (images only), brevo, apify,
+│   │   │                             # buffer, postiz, image-search
 │   │   ├── auth/                     # requirePageAccess, page-gate
 │   │   ├── data/                     # Shared data fetchers (idea picker, etc.)
-│   │   ├── marketing/               # Validation-engine domain logic (sourcing, outreach, public)
-│   │   ├── notifications/           # Work-feedback / invoice email builders
+│   │   ├── marketing/                # Validation-engine domain logic (sourcing, outreach, public)
+│   │   ├── notifications/            # Work-feedback / invoice email builders
 │   │   └── supabase/                 # Client, server, service client, generated types
 │   └── types/                        # Shared TypeScript interfaces per feature
-├── docs/
-│   ├── changelog.md                  # Feature-level changelog (updated every session)
-│   ├── project_status.md             # Current build completion status
-│   └── marketing/                    # Marketing-engine design notes & reports
+├── .agents/
+│   └── stack-context.md              # Language, framework, commands, CI gates
+├── .claude/
+│   ├── agents/                       # 6 project subagents (see Project Agents)
+│   ├── settings.json                 # Shared permissions (committed)
+│   ├── settings.local.json           # Personal overrides (untracked)
+│   └── launch.json                   # Debugger launch config (port 4000)
 ├── .specs/
-│   ├── project/                      # Project goals, roadmap, current state
-│   └── codebase/                     # Stack, architecture, conventions, structure, concerns
+│   ├── project/                      # Goals, roadmap, current state
+│   ├── codebase/                     # Stack, architecture, conventions, structure, testing
+│   ├── features/                     # Per-feature specs + acceptance criteria
+│   └── evaluations/                  # Spec-conformance baselines & reports
+├── docs/
+│   ├── changelog.md                  # Feature-level changelog, 2026-07 onward
+│   ├── changelog-archive/2026-H1.md  # Archived first-half-2026 changelog
+│   ├── project_status.md             # Current build completion status
+│   ├── rtk.md                        # Token-saving CLI command reference
+│   └── marketing/                    # Marketing-engine design notes & reports
 ├── supabase/
-│   └── migrations/                   # Numbered SQL migrations (append-only)
+│   └── migrations/                   # 39 numbered SQL migrations (append-only)
+├── archive/
+│   ├── legacy-logs/                  # Retired dev/server logs
+│   ├── supabase-migrations-archive/  # 63 superseded pre-baseline migrations
+│   └── snippets/                     # Retired code snippets kept for reference
 ├── README.md                         # This file
-├── CLAUDE.md                         # AI assistant working instructions
+├── CLAUDE.md                         # AI assistant working instructions + operating rules
+├── RULES.md                          # Non-negotiable coding rules
 ├── architecture.md                   # System architecture deep-dive
-└── RULES.md                          # Non-negotiable coding rules
+├── database.md                       # Narrative schema reference
+├── design-system.md                  # Design tokens, typography, component contracts
+├── CHALLENGES.md                     # Session friction log (self-learning)
+└── hooks.example.md                  # Optional Claude Code hooks (not enabled)
 ```
+
+### Documentation Map
+
+| Document | What it is for | Audience |
+|---|---|---|
+| `README.md` | Getting started, stack, structure, deployment | Humans / GitHub |
+| `CLAUDE.md` | Project memory + operating rules, loaded into every Claude Code session | Claude Code |
+| `RULES.md` | Enforcement-focused, non-negotiable rules | Everyone |
+| `architecture.md` | Request lifecycle, data flows, security layers, directory map | Engineers |
+| `database.md` | Narrative schema reference — tables, columns, relationships | Engineers |
+| `design-system.md` | Design tokens, typography, spacing, component contracts | Engineers / design |
+| `CHALLENGES.md` | Dated log of friction hit while working in this repo; read at session start | Claude Code |
+| `hooks.example.md` | Optional, **not-enabled** Claude Code hook recipes for `.claude/settings.json` | Maintainers |
+| `docs/project_status.md` | Feature-by-feature build completion status | Everyone |
+| `docs/changelog.md` | What changed, per session | Everyone |
+| `docs/rtk.md` | RTK token-saving command reference | Claude Code |
+| `docs/marketing/` | Market Validation Engine design notes | Engineers |
+| `.specs/project/` | Goals, roadmap, current state, decisions | Everyone |
+| `.specs/codebase/` | Stack, architecture, conventions, structure, testing | Everyone |
+| `.specs/features/<slug>/spec.md` | Per-feature spec + acceptance criteria | Everyone |
+| `.specs/evaluations/` | Spec-conformance baselines and grading reports | Everyone |
+| `.agents/stack-context.md` | Language, framework, test/lint/format commands, CI gates | Claude Code |
+
+### Project Agents
+
+Six project-scoped subagents live in `.claude/agents/`: `move37-migration-author` (append-only SQL + RLS + types), `move37-server-action-author` (the `"use server"` mutation layer), `move37-ui-builder` (pages, components, design tokens), `move37-spec-conformance-reviewer` (grades a diff against `.specs/features/*/spec.md`), `move37-security-reviewer` (read-only RLS / endpoint / secret audit), and `move37-docs-sync` (keeps these documents consistent with the code).
 
 ---
 
@@ -185,7 +246,7 @@ move37-operational-system/
 | `/sops` | admin, manager, operational, developer, client, qa | Documents / SOPs with versioning and TipTap editing |
 | `/feedback` | All authenticated | Feedback wall (admin/manager see all; others see own) |
 | `/users` | admin | User creation, role assignment, invitation emails |
-| `/settings` | All except referrer | Per-user AI provider keys, model selection, theme |
+| `/settings` | All except referrer | OpenRouter model selection, theme |
 | `/profile` | All authenticated | Personal info, photo, digital signature |
 | `/prompts` | admin, manager | AI prompt library — edit DB prompts used by Ideas Refiner & chatbots |
 
@@ -217,7 +278,7 @@ Access is enforced at three independent layers:
 
 ## Database & Migrations
 
-Schema changes live in `supabase/migrations/` as timestamped SQL files. Migrations are **append-only** — never edit an existing file.
+Schema changes live in `supabase/migrations/` as timestamped SQL files — **39 append-only migrations**, from the `20260101000000_production_baseline.sql` baseline through `20260814140000_drop_legacy_user_ai_keys.sql`. Migrations are **append-only** — never edit an existing file. (63 superseded pre-baseline migrations are kept for history in `archive/supabase-migrations-archive/` and are not applied.)
 
 ```bash
 # Push all pending migrations to the remote Supabase project
@@ -243,23 +304,35 @@ npx supabase gen types typescript --project-id <ref> > src/lib/supabase/types.ts
 
 ## AI Integration
 
-Used across **Ideas Refiner** (15-step generation + chatbots + Devil's-Advocate debate), the **Market Validation Engine** (positioning, outreach personalisation, content drafting, interview analysis), and **invoices** (AI fill). Three providers are supported and swappable per-user:
+Used across **Ideas Refiner** (15-step generation + chatbots + Devil's-Advocate debate), the **Market Validation Engine** (positioning, outreach personalisation, content drafting, interview analysis), and **invoices** (AI fill).
 
-| Provider | Default Model | Notes |
-|---|---|---|
-| OpenAI | `gpt-4.1` | Text/JSON via Responses API; `gpt-image-1` for images |
-| Google Gemini | `gemini-2.5-flash` | Text/JSON + image generation |
-| Anthropic Claude | `claude-sonnet-4-20250514` | Text/JSON; built-in retry + backoff |
+### Text / JSON — OpenRouter only
 
-**Config resolution order** (see `src/lib/api/ai-config.ts`):
+Since 2026-08-14 every text and JSON generation goes through a single **OpenRouter** call path on one platform-owned key. OpenRouter fronts OpenAI, Anthropic, Google, xAI and DeepSeek behind one schema, so adding a model is a slug change rather than a new client.
 
-1. Personal key from `user_ai_settings` (set in **Settings**)
-2. `OPENAI_API_KEY` / `GEMINI_API_KEY` environment fallback
-3. `null` → app shows "Configure AI in Settings"
+| Concern | Where |
+|---|---|
+| HTTP client | `src/lib/api/openrouter.ts` (raw `fetch` — no AI SDK dependency) |
+| Dispatcher | `src/lib/api/ai-dispatcher.ts` — `generateAiJsonResponse` / `generateAiTextResponse` |
+| Config resolver | `src/lib/api/ai-config.ts` — `resolveAiConfig(supabase, userId)` |
+| Model catalogue + default | `src/types/settings.ts` — `OPENROUTER_MODELS`, `DEFAULT_OPENROUTER_MODEL` (`openai/gpt-4.1`) |
 
-There is **no agency-key tier** (the `agency_ai_settings` table was dropped on 2026-06-14). `referrer` and `lead` users are restricted to personal keys only — they never trigger the env fallback.
+**Config resolution** (`resolveAiConfig`) is deliberately flat:
 
-AI prompts are stored in the `prompt` database table and editable by admins/managers at `/prompts`. Each action file also defines a hardcoded `FALLBACK_*` constant used when no database prompt exists for that step.
+1. `OPENROUTER_API_KEY` env var → the key every user shares
+2. Missing → `null` → app shows "No AI service configured."
+
+The model comes from `user_ai_settings.openrouter_model`, falling back to `DEFAULT_OPENROUTER_MODEL`. `service` is always `"openrouter"`.
+
+There are **no per-user provider keys**, no `agency_ai_settings` tier, no `os_ai_service` enum (all dropped in `20260814140000_drop_legacy_user_ai_keys.sql`), and no referrer/lead carve-out. The **Settings** page now only picks a model.
+
+### Images — providers called directly
+
+Image generation is the one path that still talks to providers directly. `resolveImageKeys()` reads `GEMINI_API_KEY` / `OPENAI_API_KEY` from the environment and dispatches to `src/lib/api/gemini.ts` or `src/lib/api/openai.ts` (`gpt-image-1`).
+
+### Prompts
+
+AI prompts are stored in the `prompt` database table and editable by admins/managers at `/prompts`. Each action file also defines a hardcoded `FALLBACK_*` constant used when no database prompt exists for that step. Large rich-HTML generations (single-document PRD, Database, Visual Styles) must pass `maxTokens: 16384`.
 
 ---
 
@@ -279,7 +352,13 @@ npm start
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `OPENAI_API_KEY` (optional)
+- `NEXT_PUBLIC_APP_URL`
+- `OPENROUTER_API_KEY` — all AI generation fails without it
+- `CRON_SECRET` — the marketing cron workers refuse to run unauthenticated in production
+- `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME` (email delivery)
+- `OPENAI_API_KEY` / `GEMINI_API_KEY` (optional — image generation only)
+- `APIFY_TOKEN`, `PEXELS_API_KEY`, `BUFFER_API_KEY` + `BUFFER_ORG_ID`, `POSTIZ_API_KEY` (optional — Market Validation Engine)
+- `CALCOM_WEBHOOK_SECRET`, `TALLY_WEBHOOK_SECRET` (optional — webhook signature verification)
 
 ---
 

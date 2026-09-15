@@ -5,6 +5,39 @@ _Initialized 2026-06-21 from git history + changelog._
 
 ## Decisions
 
+- **2026-09-15 — Hardening decisions.** Rate limiting: an in-memory per-instance limiter
+  (`src/lib/rate-limit.ts`) plus Vercel Firewall rules as the authoritative control — chosen over
+  Upstash Redis to avoid a paid dependency; the limiter is explicitly best-effort and says so.
+  Sanitizer: `isomorphic-dompurify` so one allow-list runs on both server and client, rather than
+  sanitizing only at write time (which would have left every pre-existing row unsanitized).
+  HSTS ships **without** `preload` — entering the browser preload list is slow to reverse and binds
+  the apex domain, so it is a deliberate opt-in, not a default. CSP ships Report-Only because the
+  app has an inline theme script and `/m` renders a `srcDoc` iframe; enforcement needs a nonce pass.
+- **2026-09-15 — Authentication gates add authentication only, never authorization.** Server actions
+  that relied on RLS alone are getting an explicit "is there a signed-in user" check. RLS remains the
+  authority on *which rows* a user may touch. Adding role checks to those actions would change who
+  can do what, which is a product decision and is tracked separately.
+- **2026-09-15 — UX blueprint phase deliberately skipped.** The `app-update-kickoff` workflow calls
+  for a `dont-make-me-think` friction map and blueprint before UI work. This session changed no user
+  journey — only loading/error boundaries and lazy loading, which are invisible when they work — so
+  the blueprint gate was skipped on purpose rather than by oversight.
+- **2026-09-15 — Repo reorg.** Root logs moved to `archive/legacy-logs/`; `supabase/migrations-archive`
+  moved to `archive/supabase-migrations-archive/`; `docs/changelog.md` split at 2026-07 with older
+  entries in `docs/changelog-archive/2026-H1.md`; new root docs (`database.md`, `design-system.md`,
+  `hooks.example.md`, `CHALLENGES.md`) and `.agents/stack-context.md` created; new
+  `.claude/settings.json` (permission allow/deny lists) landed; `.claude/agents/` holds 6 authored
+  subagents. Nothing was deleted except five unreferenced Next.js scaffold SVGs — everything else
+  was archived, so deletion stays the user's call.
+- **2026-08-14 — OpenRouter platform key replaces per-user keys** (migrations
+  `20260814120000_openrouter_platform_ai.sql`, `20260814140000_drop_legacy_user_ai_keys.sql`;
+  supersedes the 2026-06-14 "agency AI key tier" entry below — kept for history, marked superseded).
+  `resolveAiConfig` (`src/lib/api/ai-config.ts:26-44`) now returns `{ service: "openrouter", apiKey:
+  process.env.OPENROUTER_API_KEY, model }` — no per-user provider key, no role gate. `user_ai_settings`
+  is reduced to `owner_id, created_at, updated_at, openrouter_model` (default `openai/gpt-4.1`);
+  `active_service`, all three provider key/model columns, `use_agency_settings`, and the `os_ai_service`
+  enum were dropped. `resolveImageKeys()` (`ai-config.ts:51-56`) is untouched — image generation still
+  calls Gemini/OpenAI directly on `GEMINI_API_KEY`/`OPENAI_API_KEY`. `referrer`/`lead` no longer have a
+  personal-key-only restriction; everyone shares the platform key.
 - **2026-07-02 (migration date) — PRD collapsed to one document.** `idea_prd` now stores a single rich-HTML
   `description` (the 10 per-section columns were backfilled into it, then dropped — migration
   `20260702000000_idea_prd_single_description.sql`). The PRD prompt emits 10 numbered sections with
@@ -17,8 +50,9 @@ _Initialized 2026-06-21 from git history + changelog._
   several docs had drifted to the old market→benchmarking order and were corrected 2026-06-23.
 - **2026-06-14 — Removed talent/leads domain.** Dropped `talent*`, `client`, `company` tables and
   the `/talent-pool`, `/talent-profile`, `/leads`, `/recommended-projects` pages. Referrer home → `/projects`.
-- **2026-06-14 — Removed agency AI key tier.** Dropped `agency_ai_settings`. AI resolution is now
-  personal key → `OPENAI_API_KEY`/`GEMINI_API_KEY` env → null. `referrer`/`lead` are personal-only.
+- **2026-06-14 — Removed agency AI key tier.** _(Superseded 2026-08-14 — see entry above; kept for
+  history.)_ Dropped `agency_ai_settings`. AI resolution was personal key → `OPENAI_API_KEY`/
+  `GEMINI_API_KEY` env → null. `referrer`/`lead` were personal-key-only.
 - **Marketing validation is per-idea, not per-project** (migrated 2026-06-10). All `mkt_*` tables FK to `idea`.
 - **Devil's-Advocate debate lives in Risk & Validation (step 9), not Report (step 10).** Report reads the
   debate output; this broke a circular dependency.
@@ -42,6 +76,10 @@ _Initialized 2026-06-21 from git history + changelog._
   adapt automatically.
 - **html2canvas can't parse Tailwind v4 `oklch()`** — use inline hex styles for client-side PDF rendering.
 - **Windows + Turbopack** can hold stale bracket-route entries; a config no-op edit forces a rescan.
+- **Docs/`.specs` drift is a real failure mode, not a hypothetical one.** The 2026-08-14 OpenRouter
+  migration left `.specs/codebase/` describing the old per-user-key AI model for 7 weeks before this
+  2026-09-15 reconciliation pass. RULES §10 now ties a `.specs/` refresh to every `docs/changelog.md`
+  entry that touches architecture, AI, or auth — not just to explicit "map codebase" requests.
 
 ## Blockers / Watch-outs
 
@@ -61,3 +99,5 @@ _Initialized 2026-06-21 from git history + changelog._
 - Changelog entry required every session (`docs/changelog.md`).
 - Commands prefixed with `rtk` for token savings (see `CLAUDE.md`).
 - Local-first: most sessions are local-only (no prod Supabase push / no Vercel deploy) unless explicitly authorized.
+- Model routing by task: **Opus** for cross-file reconciliation/audit work (this kind of `.specs`
+  catch-up), **Sonnet** for implementing already-spec'd features, **Haiku** for mechanical/rote edits.
