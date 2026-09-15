@@ -5,6 +5,30 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-09-15] — Fix: Vercel deployments were failing since the cron block was added
+
+Every push after `006e34b` failed to deploy, so none of that day's security work
+reached production until this fix. Cause and correction below.
+
+- **Cause was self-inflicted.** `vercel.json` was given three *hourly* cron
+  expressions (`0 * * * *`, `15 * * * *`, `30 * * * *`). This project is on the
+  Vercel Hobby plan, where cron jobs may run **at most once per day**; a
+  more-frequent expression does not degrade, it **fails the deployment**. Vercel's
+  commit status linked straight to its cron pricing doc: "Cron expressions that
+  would run more frequently will fail during deployment."
+- `.specs/project/ROADMAP.md` already recorded this constraint — "Hobby-plan cron
+  config removed — needs paid plan or external scheduler" — and the hourly block
+  was added anyway. Read the roadmap's known constraints before re-adding config
+  that was previously removed on purpose.
+- **Fix**: the three schedules are now daily and staggered (06:00, 06:20, 06:40
+  UTC). Hobby precision is ±59 minutes, so treat these as "some time in the 06:00
+  hour" rather than exact. Hourly cadence needs the Pro plan, or Cloudflare Cron
+  Triggers, which are free and have no frequency floor — a concrete point in
+  favour of the in-progress Cloudflare migration rather than a hypothetical one.
+- **How this was found**: `gh api repos/.../commits/<sha>/status` showed
+  `context: Vercel, state: failure` on the pushed commits. A push landing on
+  GitHub says nothing about whether it deployed; check the commit status.
+
 ## [2026-09-15] — Fix: dashboard hydration mismatch in production (React #418)
 
 Found by testing the deployed app rather than localhost.

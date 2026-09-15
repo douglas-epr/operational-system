@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/api/mkt/cron/process-outreach", "schedule": "0 * * * *" },
-    { "path": "/api/mkt/cron/process-content", "schedule": "15 * * * *" },
-    { "path": "/api/mkt/cron/sync-sourcing", "schedule": "30 * * * *" }
+    { "path": "/api/mkt/cron/process-outreach", "schedule": "0 6 * * *" },
+    { "path": "/api/mkt/cron/process-content", "schedule": "20 6 * * *" },
+    { "path": "/api/mkt/cron/sync-sourcing", "schedule": "40 6 * * *" }
   ]
 }

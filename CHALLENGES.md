@@ -129,3 +129,23 @@ Self-learning log of friction hit while operating on this repo (per `app-update-
   was kept to the public surface, signed-out redirect behaviour, and read-only navigation using the
   session already present in the browser profile — no writes, and no POSTs to endpoints that would
   insert real rows.
+
+## [2026-09-15] — Sixth pass: the deploy was failing, not missing
+
+- **I broke the production deploy pipeline and then misdiagnosed it.** Adding three *hourly* cron
+  expressions to `vercel.json` made every subsequent Vercel deployment fail, because the Hobby plan
+  caps cron frequency at once per day and rejects the deployment outright rather than degrading.
+  Worse, I first concluded the Git integration was "disconnected" — from the absence of repo
+  webhooks — and told the user so. That was wrong: Vercel uses a GitHub App, not a repo webhook, so
+  an empty `repos/.../hooks` list proves nothing.
+- **The authoritative check is the commit status**, not the webhook list and not a live header:
+  `gh api repos/<owner>/<repo>/commits/<sha>/status` returned `context: Vercel, state: failure`
+  with a `target_url` that redirected to Vercel's cron pricing doc — cause and evidence in one
+  step. Run this immediately after any push whose deployment matters.
+- **`.specs/project/ROADMAP.md` already warned about it** — "Hobby-plan cron config removed — needs
+  paid plan or external scheduler" — and I re-added the config anyway. When a project has
+  deliberately removed something, the roadmap's constraint list outranks a fresh assumption that it
+  was simply missing.
+- **Lesson on ordering**: platform-limit config (crons, regions, plan-gated features) should be
+  verified against the plan *before* being committed alongside unrelated work. Bundling it into a
+  large commit meant one rejected line blocked an entire session's security fixes from shipping.
