@@ -41,7 +41,7 @@ import {
 
 /** Build the Apify→app webhook URL for a given DB source-run ID. */
 function apifyWebhookUrl(dbRunId: string): string | null {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || null;
   const secret = process.env.CRON_SECRET;
   if (!appUrl || !secret) return null;
   return `${appUrl}/api/mkt/apify-webhook?sourceRunId=${dbRunId}&token=${secret}`;

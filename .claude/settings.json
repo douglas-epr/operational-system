@@ -23,6 +23,8 @@
     ],
     "deny": [
       "Bash(git push:*)",
+      "Bash(wrangler deploy:*)",
+      "Bash(npx wrangler deploy:*)",
       "Bash(vercel deploy:*)",
       "Bash(vercel --prod:*)",
       "Bash(supabase db push:*)",

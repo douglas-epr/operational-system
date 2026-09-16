@@ -18,9 +18,9 @@ Never take an irreversible or externally-visible action unless I explicitly say 
 
 - Never commit or push to GitHub unless I explicitly say so.
 - Never apply migrations to the **hosted** Supabase project (`supabase db push`) unless I explicitly say so — the local stack (`npm run db:reset`) is always fair game.
-- Never deploy to Vercel unless I explicitly say so. Remember a push to `master` **is** a production deploy.
+- Never deploy to Cloudflare Workers (`wrangler deploy`) unless I explicitly say so. Production is `https://move37-operational-system.f3importers.workers.dev`; Vercel is retired and must not be redeployed to.
 
-`.claude/settings.json` denies `git push`, `vercel deploy`, `vercel --prod` and `supabase db push` as a backstop, but the rule stands regardless of tooling.
+`.claude/settings.json` denies `git push`, `wrangler deploy`, `vercel deploy`, `vercel --prod` and `supabase db push` as a backstop, but the rule stands regardless of tooling.
 
 Prepare the change, show me what would happen, and wait. "I fixed it" is not permission to ship it.
 

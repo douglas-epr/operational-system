@@ -114,6 +114,6 @@ _Initialized 2026-06-21 from git history + changelog._
 
 - Changelog entry required every session (`docs/changelog.md`).
 - Commands prefixed with `rtk` for token savings (see `CLAUDE.md`).
-- Local-first: most sessions are local-only (no prod Supabase push / no Vercel deploy) unless explicitly authorized.
+- Local-first: most sessions are local-only (no prod Supabase push / no `wrangler deploy` to Cloudflare Workers) unless explicitly authorized.
 - Model routing by task: **Opus** for cross-file reconciliation/audit work (this kind of `.specs`
   catch-up), **Sonnet** for implementing already-spec'd features, **Haiku** for mechanical/rote edits.

@@ -101,7 +101,7 @@ writing SQL. A guessed RLS policy is a security bug.
   `git status`/`git diff` (read-only), `ls`/`grep`.
 - **Refuse outright:** `supabase db push`, `supabase link`, any `--project-ref`/`--linked` apply,
   `psql` against a remote host, the Supabase MCP write tools against the hosted project,
-  `git commit`, `git push`, `vercel deploy`. Put them in the PENDING block for the user instead.
+  `git commit`, `git push`, `wrangler deploy`. Put them in the PENDING block for the user instead.
 - **No `DROP TABLE` / `DROP COLUMN` / destructive `ALTER`** without the user saying so in that
   request; propose expand-contract (add → backfill → switch reads → drop later) instead.
 - **Column-level secrets are an app-layer concern** (RULES.md §3.5): never rely on RLS to hide a

@@ -2,6 +2,8 @@
 
 A full-stack internal operations platform built with **Next.js 16, Supabase, and Tailwind CSS v4** — a modern, type-safe system for running the studio's projects, communication, billing, and AI-assisted idea development.
 
+**Production:** [https://move37-operational-system.f3importers.workers.dev](https://move37-operational-system.f3importers.workers.dev) (Cloudflare Workers)
+
 ---
 
 ## Table of Contents

@@ -5,6 +5,17 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-09-16] — Docs: production URL sweep after the Cloudflare move
+
+Replaced the remaining "Vercel is the host" statements with the Cloudflare Workers URL `https://move37-operational-system.f3importers.workers.dev`.
+
+- **README.md**: production link added under the intro
+- **CLAUDE.md**: deploy guardrail now names `wrangler deploy` and the Workers URL instead of Vercel / "push to master deploys"
+- **.agents/stack-context.md**: Deploy, `CRON_SECRET` and CI-gates bullets rewritten for Cloudflare Workers
+- **.env.example**: `NEXT_PUBLIC_APP_URL` documents the production value; `CRON_SECRET` comment describes Cloudflare Cron Triggers
+- **.claude/settings.json** + `move37-migration-author` agent: `wrangler deploy` added to the deny list / refuse list
+- **sourcing/actions.ts**: dropped the dead `VERCEL_URL` fallback in `apifyWebhookUrl` (never set on Workers); `NEXT_PUBLIC_APP_URL` is the only source
+
 ## [2026-09-16] — Deploy: Cloudflare Workers migration (Vercel retired)
 
 The app is now hosted on Cloudflare Workers via `@opennextjs/cloudflare` 1.20.6. Vercel is retired as the deployment platform.
