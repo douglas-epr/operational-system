@@ -4,7 +4,7 @@ _Brownfield analysis — 2026-06-21. Clients live in `src/lib/api/`._
 
 ## AI providers
 
-_Since 2026-08-14, OpenRouter is the only path for text/JSON generation; `claude.ts` was deleted._
+_Since 2026-08-14, OpenRouter is the only path for text/JSON generation; `claude.ts` was deleted. Since 2026-09-16, sanitiser is `sanitize-html` (jsdom-free); `isomorphic-dompurify` was used until the Cloudflare Workers migration._
 
 | Service | File | Endpoint | Notes |
 |---|---|---|---|
@@ -15,8 +15,7 @@ _Since 2026-08-14, OpenRouter is the only path for text/JSON generation; `claude
 `ai-config.ts` resolves the config: `resolveAiConfig()` for text/JSON (platform key + per-user model,
 no role gate), `resolveImageKeys()` for images (platform Gemini/OpenAI keys). `ai-dispatcher.ts` routes
 `generateAiJsonResponse` / `generateAiTextResponse` to `openrouter.ts` only. All AI code uses raw
-`fetch` — no AI SDK dependency. `openrouter.ts` and the legacy providers share the same
-JSON-sanitisation approach (escape bare control chars, strip code fences).
+`fetch` — no AI SDK dependency.
 
 ## Email — Brevo (`brevo.ts`)
 
@@ -56,7 +55,7 @@ JSON-sanitisation approach (escape bare control chars, strip code fences).
 - `/api/mkt/apify-webhook` — one-shot callback registered per Apify run (`registerRunWebhook` in
   `apify.ts`) fires on terminal run states to pull results without polling.
 - `/api/mkt/cron/process-outreach|process-content|sync-sourcing` — bearer `CRON_SECRET`, checked via
-  `hasBearerSecret`/`secretEquals` (`src/lib/auth/secretCompare.ts`, `timingSafeEqual`-based, fails closed). Not scheduled by Vercel today (`vercel.json` has no `crons` block) — needs a paid plan or an external scheduler.
+  `hasBearerSecret`/`secretEquals` (`src/lib/auth/secretCompare.ts`, `timingSafeEqual`-based, fails closed). Scheduled by Cloudflare Cron Triggers in `wrangler.jsonc` (`0 * * * *`, `15 * * * *`, `30 * * * *` — hourly, staggered).
 
 ## Supabase
 

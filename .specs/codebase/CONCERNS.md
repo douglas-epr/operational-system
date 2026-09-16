@@ -54,15 +54,13 @@ _Severity: 🔴 high · 🟠 medium · 🟡 low. Each item cites file:line evide
 - **Rule already in place:** check the write `error` after every AI write; pass `maxTokens: 16384` for
   multi-field rich-HTML steps; guard with `isRequestActive`. Any new generation function must follow this.
 
-## 🟠 Sanitizer is a no-op on the server; 36 `dangerouslySetInnerHTML` sites
+## ✅ Sanitizer server-side no-op resolved (2026-09-16)
 
-- `src/lib/sanitize.ts:24` — `sanitizeHtml()` returns the input **unmodified** whenever
-  `typeof window === "undefined"`, i.e. on every server render. The comment justifies this as
-  "messages come from trusted LLM/server sources," but 27 files (36 occurrences) call
-  `dangerouslySetInnerHTML`, and not all of that HTML originates server-side (e.g. rich-text fields
-  edited by users, AI-generated landing-page HTML rendered inside `/m/[slug]`).
-- **Fix:** see `.specs/features/security-p0/spec.md` — direction agreed 2026-09-15 is
-  `isomorphic-dompurify` so the same sanitizer runs on both server and client.
+- `src/lib/sanitize.ts` — changed from `isomorphic-dompurify` (jsdom-incompatible on Cloudflare Workers)
+  to `sanitize-html` (htmlparser2, pure JS). All 36 `dangerouslySetInnerHTML` sites now receive
+  sanitized output on both server and client. Stricter allow-list: inline `style` is a 3-property
+  allow-list with per-property value patterns, URL schemes limited to http/https/mailto (data: only
+  on img src), disallowed tags drop their contents, `target=_blank` gains `rel="noopener noreferrer"`.
 
 ## 🟠 Public landing iframe sandboxed with `allow-scripts allow-same-origin`
 
@@ -86,7 +84,7 @@ _Severity: 🔴 high · 🟠 medium · 🟡 low. Each item cites file:line evide
   unauthenticated and (currently) unthrottled." Field-length caps exist, but there's no per-IP/session
   throttle on `/api/m/*` writes (capture, event beacons).
 - **Fix:** see `.specs/features/security-p0/spec.md` — direction agreed 2026-09-15 is in-memory +
-  Vercel WAF, no new dependency.
+  Cloudflare WAF rate-limit rules, no new dependency.
 
 ## 🟠 Repeated auth round-trips per request
 
@@ -115,11 +113,12 @@ _Severity: 🔴 high · 🟠 medium · 🟡 low. Each item cites file:line evide
 - **Fix:** see `.specs/features/bundle-and-boundaries/spec.md` — add pagination or a row cap once one
   of these tables is large enough to matter.
 
-## 🟠 Cron workers not scheduled
+## ✅ Cron workers scheduled (resolved 2026-09-16)
 
-- `/api/mkt/cron/*` workers exist but Vercel cron config was removed (Hobby-plan incompatibility).
-- **Impact:** outreach sending and scheduled-content publishing don't fire automatically — need a paid
-  plan or an external scheduler (e.g. cron-job.org hitting the `CRON_SECRET`-guarded endpoints).
+- `/api/mkt/cron/*` workers are now scheduled via Cloudflare Cron Triggers in `wrangler.jsonc`
+  (`0 * * * *`, `15 * * * *`, `30 * * * *` — hourly, staggered). Resolved the Vercel Hobby-plan
+  incompatibility (≤1 cron/day) and the per-day frequency ceiling that broke deployments. Cloudflare
+  Cron Triggers are free with no frequency floor.
 
 ## 🟠 Service-role client surface
 

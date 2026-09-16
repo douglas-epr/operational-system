@@ -42,7 +42,7 @@ The codebase and the `.specs/` workspace are the source of truth — features fo
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 16.1.6 — App Router + Turbopack |
+| Framework | Next.js 16.3.5 — App Router + Turbopack |
 | Language | TypeScript 5 (strict) |
 | Database | Supabase (PostgreSQL 15 + RLS) |
 | Auth | Supabase Auth (email/password + magic link) |
@@ -58,8 +58,10 @@ The codebase and the `.specs/` workspace are the source of truth — features fo
 | Lead sourcing | Apify (Google Maps, B2B leads, social discovery) |
 | Social scheduling | Buffer · Postiz |
 | Stock imagery | Pexels (landing-page image search) |
-| PDF / DOCX export | jsPDF + html2canvas · html-docx-js |
-| Deployment | Vercel |
+| PDF / DOCX export | jsPDF + html2canvas · html-docx-js (vendored, loaded on demand) |
+| HTML sanitisation | sanitize-html (jsdom-free) |
+| Deployment | Cloudflare Workers via `@opennextjs/cloudflare` 1.20.6 + `wrangler` 4.x |
+| Crons | Cloudflare Cron Triggers (free, hourly, no frequency floor) |
 | Version Control | GitHub |
 
 ---
@@ -69,7 +71,7 @@ The codebase and the `.specs/` workspace are the source of truth — features fo
 - Node.js 20+
 - npm 10+
 - A Supabase project (free tier works for development)
-- Vercel account (for production deployment)
+- Cloudflare account with a Workers domain (for production deployment)
 
 ---
 
@@ -108,7 +110,7 @@ npm run dev
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅ | Supabase anon/public key |
 | `SUPABASE_SERVICE_ROLE_KEY` | ✅ | Service-role key — **server only, never sent to browser** |
 | `OPENROUTER_API_KEY` | ✅ | **Required for all AI.** Single platform key for every text/JSON generation. Without it the app reports "No AI service configured." |
-| `NEXT_PUBLIC_APP_URL` | ✅ | Public base URL — used in emails and landing-page links |
+| `NEXT_PUBLIC_APP_URL` | ✅ | Public base URL — the Cloudflare Workers domain (e.g. `https://move37-operational-system.f3importers.workers.dev`) |
 | `OPENAI_API_KEY` | Optional | **Image generation only** (`gpt-image-1`). Not used for text/JSON. |
 | `GEMINI_API_KEY` | Optional | **Image generation only.** Not used for text/JSON. |
 | `BREVO_API_KEY` | Optional | Transactional/bulk email (password reset, invoices, work-feedback, outreach) |
@@ -338,27 +340,42 @@ AI prompts are stored in the `prompt` database table and editable by admins/mana
 
 ## Deployment
 
-Connected to **Vercel** via GitHub. Every push to `master` triggers an automatic production deployment.
+Deployed on **Cloudflare Workers** via `@opennextjs/cloudflare` 1.20.6 and `wrangler` 4.x. The production domain is `https://move37-operational-system.f3importers.workers.dev`.
+
+### Build & Deploy
+
+**Builds must run on Linux** — the OpenNext adapter requires symlink support and fails on Windows locally. Use a container or CI.
 
 ```bash
-# Verify the build locally before pushing
-npm run build
+# Build for Cloudflare Workers
+npx opennextjs-cloudflare build
 
-# The production server runs on port 30003
-npm start
+# Deploy to Cloudflare Workers
+npx wrangler deploy
 ```
 
-**Required Vercel environment variables:**
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `NEXT_PUBLIC_APP_URL`
-- `OPENROUTER_API_KEY` — all AI generation fails without it
-- `CRON_SECRET` — the marketing cron workers refuse to run unauthenticated in production
-- `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME` (email delivery)
-- `OPENAI_API_KEY` / `GEMINI_API_KEY` (optional — image generation only)
-- `APIFY_TOKEN`, `PEXELS_API_KEY`, `BUFFER_API_KEY` + `BUFFER_ORG_ID`, `POSTIZ_API_KEY` (optional — Market Validation Engine)
-- `CALCOM_WEBHOOK_SECRET`, `TALLY_WEBHOOK_SECRET` (optional — webhook signature verification)
+### Cloudflare Secrets
+
+Worker secrets are set via the CLI, not the codebase. Set them with:
+
+```bash
+npx wrangler secret put NAME
+```
+
+**Required secrets:**
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- `NEXT_PUBLIC_APP_URL` (the Cloudflare domain)
+- `OPENROUTER_API_KEY` — all text/JSON AI generation fails without it
+- `CRON_SECRET` — guards `/api/mkt/cron/*` routes
+
+**Optional secrets** (see `Environment Variables` above for descriptions):
+- `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME`, `BREVO_TEMPLATE_*`
+- `OPENAI_API_KEY` / `GEMINI_API_KEY` (image generation only)
+- `APIFY_TOKEN`, `PEXELS_API_KEY`, `BUFFER_API_KEY` + `BUFFER_ORG_ID`, `POSTIZ_API_KEY`
+- `CALCOM_WEBHOOK_SECRET`, `TALLY_WEBHOOK_SECRET`
+
+**10 secrets currently unset on the Worker** (as of 2026-09-16):
+Outbound email templates, Cal.com/Tally webhook verification, social publishing via Postiz, stock images, and AI image generation will fail until these are set: `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME`, `BREVO_TEMPLATE_MAGIC_LINK`, `BREVO_TEMPLATE_PASSWORD_RESET`, `CALCOM_WEBHOOK_SECRET`, `TALLY_WEBHOOK_SECRET`, `POSTIZ_API_KEY`, `POSTIZ_API_URL`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `PEXELS_API_KEY`.
 
 ---
 

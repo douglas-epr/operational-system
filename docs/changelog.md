@@ -5,6 +5,42 @@
 All notable changes to this project are documented here.
 Format: `[YYYY-MM-DD] — Description`
 
+## [2026-09-16] — Deploy: Cloudflare Workers migration (Vercel retired)
+
+The app is now hosted on Cloudflare Workers via `@opennextjs/cloudflare` 1.20.6. Vercel is retired as the deployment platform.
+
+- **Host**: Cloudflare Workers at `https://move37-operational-system.f3importers.workers.dev`
+- **Adapter**: `@opennextjs/cloudflare` 1.20.6 + `wrangler` 4.x over vinext (stability + Next 16 support)
+- **Next.js**: Upgraded 16.1.6 → 16.3.5 (peer range requires ≥16.3.3)
+- **Compatibility flags**: `nodejs_compat` (required: four files use `node:crypto`), `global_fetch_strictly_public`
+- **Sanitiser**: Swapped `isomorphic-dompurify` → `sanitize-html` (htmlparser2, jsdom-incompatible on Workers); stricter allow-list (3-property inline style, http/https/mailto URLs, data: img-only, `target=_blank` → `rel="noopener noreferrer"`)
+- **DOCX export**: html-docx-js vendored at `public/vendor/html-docx.js`, loaded on demand (cheaper than replacement); six export modals call `loadHtmlDocx()`
+- **Crons**: Cloudflare Cron Triggers in `wrangler.jsonc` (`0 * * * *`, `15 * * * *`, `30 * * * *` — hourly, staggered); free with no frequency floor (vs. Vercel Hobby: once/day max, deployment fails on higher frequency)
+- **Build requirement**: Linux only (OpenNext uses symlinks); runs in `node:24-bookworm` container locally or CI
+- **Supabase**: Unchanged, same project, 40 migrations, local and production in sync (85 tables, 44 enums)
+
+**Verification** (all tested 2026-09-16 on production):
+- ✅ Cron `/api/mkt/cron/process-outreach` returns 200 with correct bearer `CRON_SECRET`
+- ✅ Same endpoint returns 401 with wrong bearer
+- ✅ Response headers present (HSTS, CSP-Report-Only, etc.)
+- ✅ Signed-out redirects to `/signin`
+- ✅ 0 console errors on `/signin` and `/dashboard`
+
+**Known gaps** (10 secrets unset on the Worker):
+- Email: `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME`, `BREVO_TEMPLATE_MAGIC_LINK`, `BREVO_TEMPLATE_PASSWORD_RESET`
+- Webhooks: `CALCOM_WEBHOOK_SECRET`, `TALLY_WEBHOOK_SECRET`
+- Social: `POSTIZ_API_KEY`, `POSTIZ_API_URL`
+- Images: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `PEXELS_API_KEY`
+
+Set with `npx wrangler secret put NAME` once installed. Until set: outbound email, Cal.com/Tally webhook verification, Postiz publishing, stock images, and AI image generation will fail.
+
+**Manual cleanup needed**:
+- Delete or disable the Vercel project `move37-operational-system` in the Vercel dashboard (no API token available in this environment)
+- Create Cloudflare WAF rate-limit rules in the dashboard (exact table in `architecture.md` § Rate limiting)
+
+**Local-only drift** (not a gap):
+- 9 duplicate RLS policies exist only in the local dev database (`loc_leg_*`, `mkt_opp_*`, `risk_val_*`) with no migration source; they are semantic duplicates of the descriptive policies production has and were never pushed. Safe to delete locally if desired.
+
 ## [2026-09-15] — Fix: Vercel deployments were failing since the cron block was added
 
 Every push after `006e34b` failed to deploy, so none of that day's security work

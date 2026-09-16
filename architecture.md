@@ -26,7 +26,7 @@ Last updated: 2026-09-15
 ```
 Browser
   │
-  ├─→ Vercel Edge (proxy.ts)          # Session refresh + referrer clamping
+  ├─→ Cloudflare Workers (proxy.ts)   # Session refresh + referrer clamping
   │
   ├─→ Next.js App Router (RSC)        # Server components + server actions
   │         │
@@ -38,7 +38,7 @@ Browser
             └─→ Storage buckets       # File attachments, avatars
 ```
 
-**No separate backend.** All server logic runs as Next.js Server Actions or Server Components. There is no standalone API layer.
+**No separate backend.** All server logic runs as Next.js Server Actions or Server Components. The app runs on Cloudflare Workers via `@opennextjs/cloudflare`. There is no standalone API layer.
 
 ---
 
@@ -157,7 +157,7 @@ Request
   │
   5. Response headers     next.config.ts            nosniff · SAMEORIGIN · referrer · permissions
   │
-  6. Rate limiting        (planned)                 in-memory limiter + Vercel WAF on public routes
+  6. Rate limiting        src/lib/rate-limit.ts     in-memory limiter + Cloudflare WAF/rate-limit rules on public routes
 ```
 
 ### Audit posture (2026-09-15)
@@ -183,38 +183,30 @@ The security audit of 2026-09-15 recorded the following. Hardening work is track
 
 #### Rate limiting: where the real limit lives
 
-`src/lib/rate-limit.ts` holds its counters in module memory, which on Vercel means **per serverless
-instance**. A client that lands on a different instance gets a fresh window, so treat it as a
-best-effort courtesy layer, not a control. The authoritative limit belongs in **Vercel Firewall
-rate-limit rules**, which run at the edge before a function is invoked.
+`src/lib/rate-limit.ts` holds its counters in module memory (per Cloudflare isolate). The authoritative limit lives in **Cloudflare WAF rate-limit rules**, which enforce at the edge before a request reaches the worker.
 
-These rules cannot be created from the repository — they need either the dashboard or an
-authenticated API token, and no token is stored locally. Project: `move37-operational-system`
-(`prj_S58WjOsmcw0CQMQV6xWvAmG8FHQo`). Create them under **Project → Firewall → Rate Limiting**,
-matching the in-code limits so behaviour is consistent when a request does reach a function:
+Create rules in **Cloudflare Dashboard → Security → WAF → Rate limiting rules**, matching the in-code limits:
 
 | Rule name | Path matches | Limit | Window | Key | Action |
 |---|---|---|---|---|---|
-| `mkt-capture` | `/api/m/*/capture` | 5 | 60s | IP | Deny (429) |
-| `mkt-event` | `/api/m/event` | 60 | 60s | IP | Deny (429) |
-| `mkt-unsubscribe` | `/api/m/unsubscribe` | 20 | 60s | IP | Deny (429) |
-| `webhooks` | `/api/webhooks/*` | 120 | 60s | IP | Deny (429) |
+| `mkt-capture` | `/api/m/*/capture` | 5 | 60s | IP | Block (429) |
+| `mkt-event` | `/api/m/event` | 60 | 60s | IP | Block (429) |
+| `mkt-unsubscribe` | `/api/m/unsubscribe` | 20 | 60s | IP | Block (429) |
+| `webhooks` | `/api/webhooks/*` | 120 | 60s | IP | Block (429) |
 
-Leave the three `/api/mkt/cron/*` routes unlimited: they are called by Vercel Cron on a schedule and
-already require a bearer `CRON_SECRET`.
+Leave the three `/api/mkt/cron/*` routes unlimited: they are called by Cloudflare Cron Triggers on a schedule and already require a bearer `CRON_SECRET`.
 
-After creating them, verify from a shell — the 6th request inside a minute should return 429:
+After creating them, verify — the 6th request to `/api/m/some-slug/capture` inside 60s should return 429:
 
 ```bash
 for i in $(seq 1 6); do
   curl -s -o /dev/null -w "%{http_code}\n" -X POST \
     -H 'content-type: application/json' -d '{}' \
-    https://<your-domain>/api/m/some-slug/capture
+    https://move37-operational-system.f3importers.workers.dev/api/m/some-slug/capture
 done
 ```
 
-Until those rules exist, the published limits are advisory: a determined client can exceed them by
-spreading requests across instances.
+The in-memory limiter is best-effort: treat Cloudflare WAF rules as the authoritative control.
 
 Related in-flight and completed work: `.specs/features/auth-roundtrips/` (redundant `getUser()` round-trips per request), `.specs/features/server-action-guards/` (uniform auth + column allow-lists across the mutation layer), `.specs/features/db-indexes/` (indexes on FK and RLS-predicate columns), `.specs/features/bundle-and-boundaries/` (code splitting and route boundaries).
 
@@ -640,7 +632,8 @@ move37-operational-system/
 │   │   ├── data/                   # Shared data fetchers (idea picker, etc.)
 │   │   ├── marketing/              # Validation-engine domain logic (sourcing, outreach, public, admin)
 │   │   ├── notifications/          # Work-feedback / invoice email builders
-│   │   ├── sanitize.ts             # sanitizeHtml — every dangerouslySetInnerHTML sink
+│   │   ├── sanitize.ts             # sanitizeHtml (sanitize-html, jsdom-free)
+│   │   ├── load-html-docx.ts       # Load html-docx.js on demand (from public/vendor/)
 │   │   ├── markdown.ts             # Markdown → sanitized HTML
 │   │   └── supabase/
 │   │       ├── client.ts           # Browser Supabase client
@@ -657,7 +650,10 @@ move37-operational-system/
 │   │   ├── okrs.ts · sops.ts · feedback.ts
 │   │   └── ...
 │   └── proxy.ts                    # Next.js 16 session middleware
-├── supabase/migrations/            # 39 append-only SQL migrations
+├── supabase/migrations/            # 40 append-only SQL migrations
+├── wrangler.jsonc                  # Cloudflare Workers config + hourly cron triggers
+├── open-next.config.ts             # @opennextjs/cloudflare adapter config
+├── public/vendor/html-docx.js       # html-docx-js UMD build (vendored, loaded on demand)
 ├── .agents/stack-context.md        # Language, framework, commands, CI gates
 ├── .claude/
 │   ├── agents/                     # 6 project subagents (see CLAUDE.md → Project agents)

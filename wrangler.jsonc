@@ -1,7 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "move37-operational-system",
-  "main": ".open-next/worker.js",
+  // worker-entry.mjs wraps the generated .open-next/worker.js so the Worker can
+  // also answer Cron Triggers; OpenNext only emits a `fetch` handler.
+  "main": "worker-entry.mjs",
 
   // 2025-03-01 or later is required by @opennextjs/cloudflare.
   "compatibility_date": "2026-09-01",
@@ -25,10 +27,13 @@
     "enabled": true
   },
 
-  // Cron Triggers replace the `crons` block in vercel.json. Cloudflare invokes
-  // the Worker's scheduled() handler rather than fetching a path, so the
-  // schedules below are wired to the /api/mkt/cron/* routes in src/cron.ts and
-  // signed with CRON_SECRET, exactly as Vercel Cron did.
+  // Cron Triggers, replacing the crons block Vercel used. Cloudflare invokes the
+  // Worker's scheduled() handler rather than fetching a path, so worker-entry.mjs
+  // maps each expression below onto its /api/mkt/cron/* route and signs the call
+  // with CRON_SECRET. Keep these in sync with CRON_ROUTES in that file.
+  // Hourly is safe here: Cloudflare Cron Triggers have no frequency floor,
+  // unlike the Vercel Hobby plan which capped them at once per day and failed
+  // the deployment outright for anything more frequent.
   "triggers": {
     "crons": ["0 * * * *", "15 * * * *", "30 * * * *"]
   }

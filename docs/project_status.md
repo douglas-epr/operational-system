@@ -1,6 +1,6 @@
 # Project Status
 
-_Last updated: 2026-09-15_
+_Last updated: 2026-09-16_
 
 Legend: ✅ complete · 🟡 in progress · ⬜ not started
 
@@ -8,12 +8,19 @@ Legend: ✅ complete · 🟡 in progress · ⬜ not started
 
 ## Platform Foundation
 
-- ✅ Next.js 16 App Router + Turbopack scaffolded (dev port 4000, prod 30003)
+- ✅ Next.js 16.3.5 App Router + Turbopack scaffolded (dev port 4000)
 - ✅ Supabase project connected (hosted `bcarzmfdamsozmfjgnpv` + local stack at `127.0.0.1:54321`)
 - ✅ 40 append-only migrations (baseline `20260101000000` → `20260915000000_fk_indexes`); 63 superseded pre-baseline files parked in `archive/supabase-migrations-archive/`
+
+## Deployment
+
+- ✅ **2026-09-16 — Cloudflare Workers migration**: Host is now Cloudflare Workers (`https://move37-operational-system.f3importers.workers.dev`); Vercel is retired. Adapter: `@opennextjs/cloudflare` 1.20.6 + `wrangler` 4.x. Next.js upgraded 16.1.6 → 16.3.5 (required by the adapter's peer range). Sanitizer changed from `isomorphic-dompurify` to `sanitize-html` (jsdom-free). html-docx-js vendored at `public/vendor/html-docx.js` and loaded on demand. Crons: Cloudflare Cron Triggers in `wrangler.jsonc` (hourly, free, no frequency floor). Builds require Linux. Supabase production verified in sync (40 migrations, 85 tables, 44 enums on both).
+  - **Unset secrets (10):** Outbound email (Brevo), Cal.com/Tally webhook verification, Postiz, stock images, AI image generation. Until set, affected features fail: `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME`, `BREVO_TEMPLATE_MAGIC_LINK`, `BREVO_TEMPLATE_PASSWORD_RESET`, `CALCOM_WEBHOOK_SECRET`, `TALLY_WEBHOOK_SECRET`, `POSTIZ_API_KEY`, `POSTIZ_API_URL`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `PEXELS_API_KEY` (11 total, but one is empty locally not unset).
+  - **Vercel project not deleted:** No Vercel API token available to delete it from this environment; manual Vercel dashboard action required to delete or disable the project.
+  - **9 duplicate RLS policies in local DB only:** `loc_leg_*`, `mkt_opp_*`, `risk_val_*` on their respective tables exist in local dev stack but have no migration source and were never pushed to production. Local-only drift; no production gap.
 - ✅ Generated DB types in `src/lib/supabase/types.ts`
 - ✅ RLS on every table; helper functions (`get_user_type`, `is_admin_or_manager`, `is_staff_role`, `is_operational_user`)
-- ✅ Vercel auto-deploy on push to `master`
+- ✅ Cloudflare Workers deployment via `@opennextjs/cloudflare` 1.20.6 + `wrangler` 4.x (`https://move37-operational-system.f3importers.workers.dev`)
 
 ## Auth & Access
 

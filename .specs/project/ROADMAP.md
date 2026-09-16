@@ -1,6 +1,6 @@
 # ROADMAP — Move37 Operational System
 
-_Snapshot 2026-09-15. Status mirrors `docs/project_status.md`._
+_Snapshot 2026-09-16. Status mirrors `docs/project_status.md`._
 
 ## Shipped
 
@@ -20,6 +20,7 @@ _Snapshot 2026-09-15. Status mirrors `docs/project_status.md`._
 | **2026-09-15 — auth-roundtrips**: middleware off `/api/*` and `/m/*`, conditional profile lookup, request-scoped `cache()` auth helper, visibility-gated + slower chat polling | ✅ |
 | **2026-09-15 — db-indexes**: 39 FK indexes added, 4 duplicate pairs dropped, list queries bounded, `max(order)` pushed into the database (applied to local and production) | ✅ |
 | **2026-09-15 — bundle-and-boundaries**: TipTap + Recharts behind `next/dynamic`, route loading/error/not-found boundaries, `removeConsole` in production | ✅ |
+| **2026-09-16 — Cloudflare Workers deployment**: Host migrated from Vercel to Cloudflare Workers. Adapter `@opennextjs/cloudflare` 1.20.6 + `wrangler` 4.x. Next 16.1.6 → 16.3.5. Sanitizer: `isomorphic-dompurify` → `sanitize-html` (jsdom-free). html-docx-js vendored + on-demand loaded. Crons: Cloudflare Cron Triggers (free, hourly). Production Supabase verified in sync. | ✅ |
 
 ## In Progress / Next
 
@@ -29,12 +30,12 @@ _Snapshot 2026-09-15. Status mirrors `docs/project_status.md`._
 | ~~Apply `20260915000000_fk_indexes.sql` to production~~ | ✅ | Applied 2026-09-15. Every target table was under 50 kB so a plain `CREATE INDEX` locked for under a millisecond; `CONCURRENTLY` was unnecessary at this size |
 | ~~Repair local migration history~~ | ✅ | Repaired 2026-09-15: 14 migrations applied, 2 marked applied via `migration repair`, 0 unrecorded remaining, types regenerated |
 | CSP enforce mode with a per-request nonce | 🟡 | Report-Only is live; enforcement needs a nonce for the inline theme script and the `/m` `srcDoc` iframe |
-| Vercel Firewall rate-limit rules | 🟠 | Blocked on dashboard access — no Vercel token is stored locally. Exact rule table and a verify command are in `architecture.md` under "Rate limiting: where the real limit lives" |
+| Cloudflare WAF rate-limit rules | 🟡 | Rules need to be created in the Cloudflare dashboard; exact table in `architecture.md` under "Rate limiting: where the real limit lives". 4 rules (mkt-capture, mkt-event, mkt-unsubscribe, webhooks). |
+| Worker secrets (10 unset) | 🟡 | Must set via `npx wrangler secret put`: Brevo templates/sender (email), Postiz (social), Gemini/OpenAI (images), Cal.com/Tally (webhooks), Pexels (stock images). Deployment works; features using these fail gracefully. |
 | Lazy-load the ref-based rich-text callers | 🟡 | `next/dynamic` does not forward refs, so these need an imperative-handle-free editor API first |
 | Stripe pre-order capture | 🟡 | Quiz + waitlist live; preorder stubbed (deferred per decision) |
 | A/B landing variants + decision-log pivot taxonomy (P2) | 🟡 | Partial |
 | Test suite (unit / integration / E2E) | ⬜ | No automated test runner configured yet — see `.specs/codebase/TESTING.md` |
-| Vercel cron scheduling | ⬜ | `vercel.json` now declares 3 staggered hourly crons; schedules are unconfirmed and need a paid plan |
 
 ## Deferred
 

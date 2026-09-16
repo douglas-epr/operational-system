@@ -154,7 +154,7 @@ When a task has to converge to a measurable target over many passes, use `loop-g
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 16.1.6, App Router, Turbopack |
+| Framework | Next.js 16.3.5, App Router, Turbopack |
 | Language | TypeScript 5 (strict) |
 | Database | Supabase — PostgreSQL 15, RLS on every table |
 | Auth | Supabase Auth (email/password + magic link) |
@@ -163,8 +163,9 @@ When a task has to converge to a measurable target over many passes, use `loop-g
 | Charts | Recharts v3 |
 | AI | OpenRouter (platform key) for text/JSON · OpenAI gpt-image-1 / Gemini for images |
 | Integrations | Brevo (email) · Apify (sourcing) · Buffer/Postiz (social) · Pexels (images) |
-| Export | jsPDF + html2canvas · html-docx-js |
-| Deployment | Vercel (auto-deploy on push to `master`); dev port 4000, prod 30003 |
+| Export | jsPDF + html2canvas · html-docx-js (vendored at `public/vendor/html-docx.js`, loaded on demand) · sanitize-html (jsdom-free HTML sanitisation) |
+| Deployment | Cloudflare Workers via `@opennextjs/cloudflare` 1.20.6 + `wrangler` 4.x; dev port 4000 |
+| Crons | Cloudflare Cron Triggers in `wrangler.jsonc` (hourly, no frequency floor, free) |
 
 ---
 
