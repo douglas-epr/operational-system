@@ -1,16 +1,15 @@
 /**
- * In-memory, per-instance, fixed-window rate limiter. Dependency-free.
+ * In-memory, per-isolate, fixed-window rate limiter. Dependency-free.
  *
- * IMPORTANT — per-instance only: Vercel serverless/edge functions do not
- * share memory across invocations or regions, so this limiter is
- * best-effort — a client can get a fresh window by hitting a different
- * lambda instance. It still stops naive floods from a single warm instance
- * and cheaply shapes traffic, but it is NOT the authoritative control.
- * The authoritative limit is the Vercel Firewall rate-limit rule documented
- * in `architecture.md` (per-IP rules on `/api/m/*` and `/api/webhooks/*`),
- * which is enforced at the edge in front of every instance. Treat every
- * limit here as a courtesy throttle layered under that WAF rule, not a
- * replacement for it.
+ * IMPORTANT — per-isolate only: Cloudflare Workers do not share memory across
+ * isolates or regions, so this limiter is best-effort — a client can get a
+ * fresh window by hitting a different isolate. It still stops naive floods
+ * from a single warm isolate and cheaply shapes traffic, but it is NOT the
+ * authoritative control. The authoritative limit is the Cloudflare WAF
+ * rate-limit rule documented in `architecture.md` (per-IP rules on `/api/m/*`
+ * and `/api/webhooks/*`), which is enforced at the edge in front of every
+ * isolate. Treat every limit here as a courtesy throttle layered under that
+ * WAF rule, not a replacement for it.
  */
 
 interface Bucket {

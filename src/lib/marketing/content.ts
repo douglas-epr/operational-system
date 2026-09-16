@@ -1,8 +1,8 @@
 /**
  * Content publish worker (Phase 4). Server-only.
  * Publishes due scheduled posts (mkt_content.status='scheduled',
- * scheduled_at <= now) to Buffer, then marks them posted. Run by the Vercel
- * Cron route /api/mkt/cron/process-content.
+ * scheduled_at <= now) to Buffer, then marks them posted. Run by the Cloudflare
+ * Cron Trigger route /api/mkt/cron/process-content.
  */
 
 import "server-only";

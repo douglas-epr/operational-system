@@ -45,11 +45,14 @@ export function useRegenerate(
     clearAutoTriggerGuard(ideaId, step);
     // risk_and_validation runs the multi-call Devil's Advocate debate loop (up to
     // 10 rounds × 2 sides × 2 gates ≈ 40 sequential calls) PLUS the risk/validation
-    // + demand-evidence synthesis call — give it a 15-min ceiling. Vercel Pro's
-    // function timeout is ~800 s (~13 min); any longer run will be killed by Vercel
-    // before the client timer fires. strategic_frameworks loops per-ICP — 10 min is
-    // plenty. (isRegenerating also clears on the Realtime edge, so this timeout
-    // mainly governs the error toast.)
+    // + demand-evidence synthesis call — give it a 15-min ceiling. On Cloudflare
+    // Workers there is no wall-clock limit for an HTTP request as long as the
+    // client stays connected; the limit that applies is CPU time (30 s by default
+    // on the paid Standard usage model, raisable to 5 min), and time spent waiting
+    // on a fetch() does NOT count toward it. These steps are almost entirely spent
+    // waiting on OpenRouter, so the ceiling below is the effective one.
+    // strategic_frameworks loops per-ICP — 10 min is plenty. (isRegenerating also
+    // clears on the Realtime edge, so this timeout mainly governs the error toast.)
     const debateTimeoutMs =
       step === "risk_and_validation" || step === "report" ? 900_000 : undefined;
     const frameworksTimeoutMs = step === "strategic_frameworks" ? 600_000 : undefined;
@@ -69,8 +72,7 @@ export function useRegenerate(
         router.refresh();
       }
     } catch (e) {
-      // Server action threw — e.g. Vercel killed the HTTP connection after
-      // its function timeout. Always clean up so the step is not stuck.
+      // Server action threw — e.g. request timeout or network error. Always clean up so the step is not stuck.
       setIsRegenerating(false);
       const msg = e instanceof Error ? e.message : "AI generation failed — please try again.";
       setError(msg);

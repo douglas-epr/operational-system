@@ -1,7 +1,7 @@
 /**
  * Outreach engine core (Phase 3).
  *
- * Server-only helpers shared by the admin actions and the Vercel Cron worker:
+ * Server-only helpers shared by the admin actions and the Cloudflare Cron Trigger worker:
  *  - template rendering ({{first_name}} etc.)
  *  - suppression checks + signed unsubscribe tokens (GDPR/PECR)
  *  - processDueOutreach(): the worker that sends due sequence steps via Brevo,
